@@ -1,0 +1,6 @@
+{
+  "name": "MotoDZ - موطو ديزاد",
+  "description": "منصة وتطبيق حجز ونقل الأشخاص بالدراجات النارية في الجزائر - تطبيق الراكب، تطبيق السائق، ولوحة تحكم الإدارة",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
