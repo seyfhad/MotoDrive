@@ -16,35 +16,35 @@ export const PassengerHome: React.FC = () => {
   const [selectedDestination, setSelectedDestination] = useState<Coordinates | null>(ALGERIA_LOCATIONS[4].coords);
   const [isLocating, setIsLocating] = useState(false);
 
-  // جلب موقع الـ GPS الحقيقي للهاتف
+  // جلب موقع الـ GPS الحقيقي للهاتف مع تخطي الأخطاء بسلاسة ودون إزعاج
   const handleGetRealGPSLocation = () => {
+    setIsLocating(true);
+    
     if (!navigator.geolocation) {
-      alert('خاصية تحديد الموقع غير متوفرة في متصفحك');
+      setIsLocating(false);
       return;
     }
 
-    setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const realCoords: Coordinates = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
-          name: 'موقعي الحالي (GPS الحقيقي)',
+          name: 'موقعي الحالي (GPS)',
           address: 'موقعي الحالي عبر الهاتف'
         };
         setSelectedPickup(realCoords);
         setIsLocating(false);
       },
       (error) => {
-        console.error('Error getting GPS location:', error);
-        alert('تعذر تحديد موقعك الحالي. تأكد من تفعيل الـ GPS وصلاحيات الموقع للمتصفح.');
+        console.log('GPS skipped or blocked, using default location:', error);
         setIsLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
     );
   };
 
-  // محاولة أخذ الموقع الحقيقي تلقائياً عند فتح الصفحة
+  // محاولة أخذ الموقع تلقائياً عند فتح الصفحة بصمت
   useEffect(() => {
     handleGetRealGPSLocation();
   }, []);
@@ -114,7 +114,7 @@ export const PassengerHome: React.FC = () => {
                       📍
                     </div>
                     <div className="truncate flex-1">
-                      <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق (GPS)</div>
+                      <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق</div>
                       <div className="text-xs font-bold text-slate-200 truncate">
                         {selectedPickup?.name || selectedPickup?.address || 'موقعي الحالي'}
                       </div>
@@ -125,7 +125,7 @@ export const PassengerHome: React.FC = () => {
                     onClick={handleGetRealGPSLocation}
                     disabled={isLocating}
                     className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-amber-400 text-xs flex items-center gap-1 transition-all shrink-0"
-                    title="تحديث موقعي عبر الـ GPS"
+                    title="تحديث الموقع"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
                     <span className="text-[10px]">تحديث</span>
