@@ -157,6 +157,8 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
   theme = 'dark',
 }) => {
   const [selectedDriver, setSelectedDriver] = useState<DriverProfile | null>(null);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const mapInstance = useMap();
 
   const handleMapClick = useCallback(
     (e: MapMouseEvent) => {
@@ -168,6 +170,47 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
     },
     [onMapClick]
   );
+
+  // دالة طلب إذن وتحديد الموقع الجغرافي للـ GPS وتوجيه الخريطة نحوه
+  const requestUserLocation = () => {
+    if (!navigator.geolocation) {
+      alert("المتصفح لا يدعم تحديد الموقع الجغرافي");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userCoords: Coordinates = {
+          lat: Math.round(position.coords.latitude * 100000) / 100000,
+          lng: Math.round(position.coords.longitude * 100000) / 100000,
+          name: "موقعي الحالي"
+        };
+        setIsLocating(false);
+
+        // تحريك الخريطة إلى الموقع الحالي للمستخدم
+        if (mapInstance) {
+          mapInstance.panTo({ lat: userCoords.lat, lng: userCoords.lng });
+          mapInstance.setZoom(16);
+        }
+
+        // إرسال الإحداثيات لموقع الانطلاق إذا كان مطلوباً
+        if (onMapClick) {
+          onMapClick(userCoords);
+        }
+      },
+      (error) => {
+        setIsLocating(false);
+        console.error("فشل جلب الموقع:", error);
+        alert("يرجى السماح بالتطبيق بالوصول إلى الموقع الجغرافي من إعدادات المتصفح أو الهاتف.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  };
 
   return (
     <div className={`relative overflow-hidden rounded-2xl ${className}`} id="google-map-container-root">
@@ -302,6 +345,23 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           </InfoWindow>
         )}
       </Map>
+
+      {/* زر تحديد الموقع الحالي GPS عائم على الخريطة */}
+      {interactive && (
+        <button
+          type="button"
+          onClick={requestUserLocation}
+          disabled={isLocating}
+          className="absolute bottom-6 right-6 z-10 bg-slate-900/95 border border-amber-500/50 text-amber-400 p-3.5 rounded-full shadow-2xl hover:bg-slate-800 transition-all flex items-center justify-center group active:scale-95"
+          title="تحديد موقعي الحالي"
+        >
+          {isLocating ? (
+            <span className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
+          ) : (
+            <span className="text-xl">🎯</span>
+          )}
+        </button>
+      )}
 
       {/* Visual GPS Center Target when interactive */}
       {interactive && onMapClick && (
