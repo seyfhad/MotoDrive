@@ -27,7 +27,7 @@ export const DriverProfile: React.FC = () => {
           <p className="text-xs text-slate-400 mt-0.5">{activeDriver.phone}</p>
           <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold text-amber-400 mt-2">
             <Star className="w-3.5 h-3.5 fill-amber-400" />
-            <span>{activeDriver.rating.toFixed(1)} ({activeDriver.totalTrips} رحلة منجزة)</span>
+            <span>{(activeDriver.rating ?? 5.0).toFixed(1)} ({activeDriver.totalTrips ?? 0} رحلة منجزة)</span>
           </div>
         </div>
 

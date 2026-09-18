@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Ride } from '../../types';
+import { Ride, RideOffer } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, ThumbsUp } from 'lucide-react';
+import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ActiveRideViewProps {
@@ -11,7 +11,15 @@ interface ActiveRideViewProps {
 }
 
 export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose }) => {
-  const { cancelRide, submitRating, submitComplaint, advanceRideStatus } = useApp();
+  const {
+    cancelRide,
+    submitRating,
+    submitComplaint,
+    advanceRideStatus,
+    acceptDriverOffer,
+    declineDriverOffer,
+    updatePassengerOffer,
+  } = useApp();
 
   const [ratingStars, setRatingStars] = useState(5);
   const [selectedTags, setSelectedTags] = useState<string[]>(['قيادة آمنة', 'الالتزام بالوقت']);
@@ -26,6 +34,8 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
   const [complaintReason, setComplaintReason] = useState('سلوك السائق');
   const [complaintDesc, setComplaintDesc] = useState('');
   const [complaintSent, setComplaintSent] = useState(false);
+
+  const [isRaisingPrice, setIsRaisingPrice] = useState(false);
 
   const availableTags = ['قيادة آمنة 🪖', 'احترام وأدب ✨', 'نظافة الدراجة 🧼', 'الالتزام بالوقت ⏱️', 'سياقة مريحة 🏍️'];
 
@@ -61,41 +71,193 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
     setShowCancelModal(false);
   };
 
-  // Render Searching Radar
-  if (ride.status === 'searching') {
+  const handleRaisePrice = (delta: number) => {
+    const currentOffered = ride.passengerOfferedPrice || ride.estimatedPrice;
+    const newPrice = currentOffered + delta;
+    updatePassengerOffer(ride.id, newPrice);
+    setIsRaisingPrice(false);
+  };
+
+  // --------------------------------------------------------------------------
+  // Render InDrive-style Negotiating & Driver Offers Feed Screen
+  // --------------------------------------------------------------------------
+  if (ride.status === 'searching' || ride.status === 'offers_available') {
+    const pendingOffers = (ride.offers || []).filter(o => o.status === 'pending');
+    const passengerPrice = ride.passengerOfferedPrice || ride.estimatedPrice;
+
     return (
-      <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-5 text-center text-slate-100 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4" id="active-ride-searching">
-        {/* Animated Radar Visual */}
-        <div className="relative w-24 h-24 mx-auto my-3 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full bg-amber-500/20 radar-wave"></div>
-          <div className="w-16 h-16 rounded-full bg-slate-950 border-2 border-amber-500 shadow-xl flex items-center justify-center text-3xl">
-            🏍️
+      <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-5 text-slate-100 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 space-y-4" id="active-ride-negotiation">
+        {/* Top Header & Proposed Price Banner */}
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+              <span className="text-xs font-black text-amber-400">
+                {pendingOffers.length > 0 ? `وصلك ${pendingOffers.length} عروض من سائقين` : 'بث الطلب لسائقي الدراجات...'}
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              #{ride.id}
+            </span>
           </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+            <div>
+              <div className="text-[10px] text-slate-400">سعرك المقترح حالياً:</div>
+              <div className="text-xl font-black text-amber-400">
+                {formatCurrencyDZD(passengerPrice)}
+              </div>
+            </div>
+
+            {/* Quick Raise Price Buttons */}
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleRaisePrice(30)}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all flex items-center gap-1"
+                title="زيادة 30 د.ج لتسريع القبول"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+30 د.ج</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRaisePrice(50)}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all flex items-center gap-1 shadow-md shadow-amber-500/20"
+                title="زيادة 50 د.ج لقبول فوري"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+50 د.ج</span>
+              </button>
+            </div>
+          </div>
+
+          {ride.passengerNote && (
+            <div className="text-[11px] text-slate-300 bg-slate-900/90 px-2.5 py-1 rounded-xl border border-slate-800 flex items-center gap-1.5">
+              <span>💬</span>
+              <span>{ride.passengerNote}</span>
+            </div>
+          )}
         </div>
 
-        <h3 className="text-base font-black text-white">جاري البحث عن أقرب سائق دراجة...</h3>
-        <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-          يتم فحص السائقين المتصلين في محيط 3 كم لتأكيد رحلتك بسرعة
-        </p>
+        {/* Live Offers Stream */}
+        {pendingOffers.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300 px-1">
+              <span>عروض السائقين المتاحة:</span>
+              <span className="text-[11px] text-amber-400">اختر السائق الأنسب لك 👇</span>
+            </div>
 
-        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 my-4 text-right text-xs space-y-1.5">
-          <div className="flex items-center justify-between text-slate-400">
-            <span>رقم الطلب:</span>
-            <span className="font-mono font-bold text-amber-400">{ride.id}</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-400">
-            <span>السعر المقدر:</span>
-            <span className="font-bold text-white">{formatCurrencyDZD(ride.estimatedPrice)}</span>
-          </div>
-          <div className="flex items-center justify-between text-slate-400 truncate">
-            <span>الوجهة:</span>
-            <span className="font-medium text-slate-200 truncate">{ride.destination.name || ride.destination.address}</span>
-          </div>
-        </div>
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-0.5">
+              {pendingOffers.map(offer => {
+                const isExact = offer.offeredPrice === passengerPrice;
+                const diff = offer.offeredPrice - passengerPrice;
 
+                return (
+                  <div
+                    key={offer.id}
+                    className="bg-slate-950 border-2 border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 transition-all space-y-3 shadow-md relative overflow-hidden"
+                  >
+                    {/* Top Driver Header */}
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={offer.driverPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
+                          alt={offer.driverName}
+                          className="w-11 h-11 rounded-full border-2 border-amber-500 object-cover shrink-0"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-black text-white">{offer.driverName}</span>
+                            <span className="flex items-center text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded">
+                              ⭐ {(offer.driverRating ?? 5.0).toFixed(1)}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400">
+                            {offer.driverMotorcycle?.brand || ''} {offer.driverMotorcycle?.model || ''} ({offer.driverMotorcycle?.color || ''})
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {offer.driverTripsCount ?? 0} رحلة مكتملة • لوحة: {offer.driverMotorcycle?.plateNumber || ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Offered Price Tag */}
+                      <div className="text-left shrink-0">
+                        <div className="text-lg font-black text-amber-400">
+                          {formatCurrencyDZD(offer.offeredPrice)}
+                        </div>
+                        <div className="text-[10px] mt-0.5">
+                          {isExact ? (
+                            <span className="text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                              قبل سعرك ✅
+                            </span>
+                          ) : (
+                            <span className="text-amber-300 font-semibold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                              +{diff} د.ج مضاد
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Distance & ETA Badge */}
+                    <div className="flex items-center justify-between text-[11px] bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-slate-300">
+                      <div className="flex items-center gap-1.5">
+                        <Navigation className="w-3.5 h-3.5 text-amber-400" />
+                        <span>على بعد {(offer.distanceToPickupKm ?? 0).toFixed(1)} كم</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>يصلك خلال ~{offer.etaMinutes} دقيقة</span>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons for this offer */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => declineDriverOffer(ride.id, offer.id)}
+                        className="py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-red-400 rounded-xl text-xs font-semibold transition-colors border border-slate-800"
+                      >
+                        تخطي
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => acceptDriverOffer(ride.id, offer.id)}
+                        className="col-span-2 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>قبول السائق ({offer.offeredPrice} د.ج)</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* Searching Radar View while waiting for driver offers */
+          <div className="py-6 text-center space-y-3">
+            <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-amber-500/20 radar-wave"></div>
+              <div className="w-14 h-14 rounded-full bg-slate-950 border-2 border-amber-500 shadow-xl flex items-center justify-center text-2xl">
+                🏍️
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-white">جاري استقبال عروض السائقين...</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                السائقون القريبون يراجعون طلبك الآن وسيقدمون عروضهم خلال ثوانٍ.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Cancellation trigger */}
         <button
           onClick={() => setShowCancelModal(true)}
-          className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-red-400 font-bold rounded-xl text-xs transition-colors"
+          className="w-full py-2.5 bg-slate-950 hover:bg-slate-800 text-red-400 font-bold rounded-xl text-xs transition-colors border border-slate-800"
         >
           إلغاء الطلب
         </button>
@@ -103,10 +265,10 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         {/* Cancellation Modal */}
         {showCancelModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-xs w-full text-right">
-              <h4 className="text-sm font-bold text-white mb-2">تأكيد إلغاء الرحلة</h4>
-              <p className="text-xs text-slate-400 mb-3">هل أنت متأكد من رغبتك في إلغاء الطلب؟ الإلغاء مجاني قبل قبول السائق.</p>
-              <div className="space-y-1.5 mb-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 max-w-xs w-full text-right space-y-3">
+              <h4 className="text-sm font-bold text-white">تأكيد إلغاء الرحلة</h4>
+              <p className="text-xs text-slate-400">هل أنت متأكد من رغبتك في إلغاء الطلب؟ الإلغاء مجاني قبل قبول السائق.</p>
+              <div className="space-y-1.5">
                 {['انتظرت طويلاً', 'غيرت رأيي', 'وجدت وسيلة أخرى'].map(r => (
                   <button
                     key={r}
@@ -119,7 +281,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
                   </button>
                 ))}
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   onClick={() => setShowCancelModal(false)}
                   className="py-2 bg-slate-800 text-slate-300 text-xs rounded-xl font-bold"
@@ -140,7 +302,9 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
     );
   }
 
+  // --------------------------------------------------------------------------
   // Render Completed Summary & Rating Screen
+  // --------------------------------------------------------------------------
   if (ride.status === 'completed') {
     return (
       <div className="bg-slate-900/95 border border-emerald-500/40 rounded-3xl p-5 text-right text-slate-100 shadow-2xl backdrop-blur-md animate-in zoom-in-95" id="active-ride-completed">
@@ -159,11 +323,15 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
             <span className="text-xs font-bold text-white">{ride.distanceKm} كم</span>
           </div>
           <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">السعر المتفق عليه:</span>
+            <span className="text-xs font-bold text-white">{formatCurrencyDZD(ride.finalPrice || ride.estimatedPrice)}</span>
+          </div>
+          <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">طريقة الدفع:</span>
             <span className="text-xs font-bold text-amber-400">نقدًا (Cash)</span>
           </div>
           <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-            <span className="text-xs font-bold text-slate-200">المبلغ المستحق للدفع:</span>
+            <span className="text-xs font-bold text-slate-200">المبلغ المستحق للدفع للسائق:</span>
             <span className="text-xl font-black text-amber-400">{formatCurrencyDZD(ride.finalPrice || ride.estimatedPrice)}</span>
           </div>
         </div>
@@ -294,7 +462,9 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
     );
   }
 
+  // --------------------------------------------------------------------------
   // Active States: accepted, driver_arriving, driver_arrived, trip_started
+  // --------------------------------------------------------------------------
   return (
     <div className="bg-slate-900/95 border border-amber-500/30 rounded-3xl p-4 sm:p-5 text-right text-slate-100 shadow-2xl backdrop-blur-md space-y-4 animate-in slide-in-from-bottom-3" id="active-ride-in-progress">
       {/* Status Banner */}
@@ -302,7 +472,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></div>
           <span className="text-xs font-black text-amber-400">
-            {ride.status === 'accepted' && 'السائق قبل الرحلة وفي الطريق إليك'}
+            {ride.status === 'accepted' && 'السائق قبل العرض وهو في الطريق إليك'}
             {ride.status === 'driver_arriving' && 'السائق يقترب من موقعك (خلال دقيقتين)'}
             {ride.status === 'driver_arrived' && '📍 السائق وصل إلى موقع الانطلاق!'}
             {ride.status === 'trip_started' && '🏍️ الرحلة جارية الآن في الطريق إلى الوجهة'}
@@ -365,7 +535,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         </div>
         <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-slate-300">
           <span>المسافة: {ride.distanceKm} كم</span>
-          <span className="text-amber-400 font-bold">المبلغ: {formatCurrencyDZD(ride.estimatedPrice)} (نقدًا)</span>
+          <span className="text-amber-400 font-bold">السعر المتفق عليه: {formatCurrencyDZD(ride.finalPrice || ride.estimatedPrice)} (نقدًا)</span>
         </div>
       </div>
 
@@ -473,3 +643,4 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
     </div>
   );
 };
+

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Ride } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRight } from 'lucide-react';
+import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRight, DollarSign } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface DriverActiveRideProps {
@@ -10,11 +10,14 @@ interface DriverActiveRideProps {
 }
 
 export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
-  const { advanceRideStatus, cancelRide } = useApp();
-  const [showConfirmStart, setShowConfirmStart] = useState(false);
+  const { advanceRideStatus, cancelRide, pricing } = useApp();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('الراكب لم يحضر');
   const [cashCollected, setCashCollected] = useState(false);
+
+  const agreedPrice = ride.finalPrice || ride.estimatedPrice;
+  const commissionRate = (pricing.driverCommissionPercent || 15) / 100;
+  const driverNetEarnings = ride.driverEarning || Math.round(agreedPrice * (1 - commissionRate));
 
   const handleNextStep = () => {
     advanceRideStatus(ride.id);
@@ -47,7 +50,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
           </span>
         </div>
         <span className="font-mono text-xs text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-          {ride.id}
+          #{ride.id}
         </span>
       </div>
 
@@ -77,7 +80,15 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
         </a>
       </div>
 
-      {/* Route & Destination */}
+      {/* Passenger Note (if any) */}
+      {ride.passengerNote && (
+        <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-amber-200 flex items-center gap-2">
+          <span>💬</span>
+          <span className="font-medium">{ride.passengerNote}</span>
+        </div>
+      )}
+
+      {/* Route & Negotiated Fare Details */}
       <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2 text-xs">
         <div className="flex items-start gap-2">
           <span className="text-emerald-400 font-bold">📍</span>
@@ -96,8 +107,14 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
         </div>
 
         <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-          <span className="text-slate-400">المسافة المقدرة: {ride.distanceKm} كم</span>
-          <span className="text-amber-400 font-black text-sm">{formatCurrencyDZD(ride.estimatedPrice)}</span>
+          <div>
+            <div className="text-slate-400 text-[10px]">السعر المتفق عليه (يُحصّل نقدًا):</div>
+            <div className="text-amber-400 font-black text-base">{formatCurrencyDZD(agreedPrice)}</div>
+          </div>
+          <div className="text-left">
+            <div className="text-slate-400 text-[10px]">صافي ربحك التقديري:</div>
+            <div className="text-emerald-400 font-bold text-sm">{formatCurrencyDZD(driverNetEarnings)}</div>
+          </div>
         </div>
       </div>
 
@@ -138,7 +155,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
             onClick={handleNextStep}
             className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all active:scale-95"
           >
-            <span>وصلنا إلى الوجهة [ إنهاء الرحلة وتحصيل المبلغ 🏁 ]</span>
+            <span>وصلنا إلى الوجهة [ إنهاء الرحلة وتحصيل {agreedPrice} د.ج 🏁 ]</span>
           </button>
         )}
 
@@ -192,3 +209,4 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
     </div>
   );
 };
+

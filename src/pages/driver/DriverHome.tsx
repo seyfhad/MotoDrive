@@ -109,13 +109,13 @@ export const DriverHome: React.FC = () => {
                     مرحباً <span className="text-amber-400">{activeDriver.name}</span>
                   </h2>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    {activeDriver.motorcycle.brand} {activeDriver.motorcycle.model} • <span className="font-mono text-slate-300">{activeDriver.motorcycle.plateNumber}</span>
+                    {activeDriver.motorcycle?.brand || ''} {activeDriver.motorcycle?.model || ''} • <span className="font-mono text-slate-300">{activeDriver.motorcycle?.plateNumber || ''}</span>
                   </p>
                 </div>
 
                 <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl text-xs font-bold text-amber-400">
                   <Star className="w-3.5 h-3.5 fill-amber-400" />
-                  <span>{activeDriver.rating.toFixed(1)}</span>
+                  <span>{(activeDriver.rating ?? 5.0).toFixed(1)}</span>
                 </div>
               </div>
 

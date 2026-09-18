@@ -119,7 +119,7 @@ export const AdminDrivers: React.FC = () => {
                   <div className="text-[11px] text-slate-400 mt-0.5">{driver.phone}</div>
                   <div className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold mt-0.5">
                     <Star className="w-3 h-3 fill-amber-400" />
-                    <span>{driver.rating.toFixed(1)} ({driver.totalTrips} رحلة)</span>
+                    <span>{(driver.rating ?? 5.0).toFixed(1)} ({driver.totalTrips ?? 0} رحلة)</span>
                   </div>
                 </div>
               </div>

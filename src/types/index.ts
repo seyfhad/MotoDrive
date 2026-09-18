@@ -6,6 +6,7 @@ export type Driver = DriverProfile;
 
 export type RideStatus =
   | 'searching'
+  | 'offers_available'
   | 'accepted'
   | 'driver_arriving'
   | 'driver_arrived'
@@ -15,11 +16,35 @@ export type RideStatus =
   | 'cancelled_by_driver'
   | 'expired';
 
+export type OfferStatus = 'pending' | 'accepted' | 'declined' | 'countered' | 'expired';
+
 export interface Coordinates {
   lat: number;
   lng: number;
   address?: string;
   name?: string;
+}
+
+export interface RideOffer {
+  id: string;
+  rideId: string;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  driverPhoto?: string;
+  driverRating: number;
+  driverTripsCount: number;
+  driverMotorcycle: MotorcycleInfo;
+  driverLocation: Coordinates;
+  distanceToPickupKm: number;
+  etaMinutes: number;
+  offeredPrice: number;
+  isCounterOffer: boolean;
+  passengerOfferedPrice: number;
+  priceDifference: number;
+  status: OfferStatus;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface UserProfile {
@@ -29,6 +54,8 @@ export interface UserProfile {
   phone: string;
   email?: string;
   photoUrl?: string;
+  rating?: number;
+  totalTrips?: number;
   status: 'active' | 'suspended';
   cancellationCount: number;
   createdAt: string;
@@ -94,6 +121,7 @@ export interface Ride {
   passengerPhone: string;
   passengerPhoto?: string;
   passengerRating?: number;
+  passengerNote?: string;
 
   driverId?: string | null;
   driverName?: string;
@@ -111,10 +139,15 @@ export interface Ride {
   estimatedDurationMins: number;
   actualDurationMins?: number;
 
+  recommendedPrice: number;
+  passengerOfferedPrice: number;
   estimatedPrice: number;
   finalPrice?: number;
   platformCommission: number;
   driverEarning: number;
+
+  offers?: RideOffer[];
+  selectedOfferId?: string;
 
   paymentMethod: 'cash' | 'card' | 'wallet';
   paymentStatus: 'pending' | 'paid';
@@ -166,6 +199,10 @@ export interface PricingSettings {
   nightMultiplier: number; // e.g. 1.2
   peakMultiplier: number; // e.g. 1.15
   isTimeCalculationEnabled: boolean;
+  minOfferedPriceRatio: number; // e.g. 0.70 (-30% minimum price tolerance)
+  maxOfferedPriceRatio: number; // e.g. 2.00 (+100% maximum price tolerance)
+  offerTimeoutSeconds: number; // e.g. 30 seconds
+  allowDriverCounterOffer: boolean;
 }
 
 export interface ServiceArea {

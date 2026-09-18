@@ -10,6 +10,10 @@ export const DEFAULT_PRICING: PricingSettings = {
   nightMultiplier: 1.0,
   peakMultiplier: 1.0,
   isTimeCalculationEnabled: false,
+  minOfferedPriceRatio: 0.70, // -30% lower bound
+  maxOfferedPriceRatio: 2.00, // +100% upper bound
+  offerTimeoutSeconds: 30, // 30 seconds expiration per offer
+  allowDriverCounterOffer: true,
 };
 
 export interface PriceBreakdown {
@@ -79,6 +83,48 @@ export function calculateFare(
     platformCommission,
     driverEarning,
   };
+}
+
+export function getQuickFareChips(recommendedPrice: number): number[] {
+  const step = 50;
+  const p1 = Math.max(150, Math.round((recommendedPrice - step) / 10) * 10);
+  const p2 = recommendedPrice;
+  const p3 = recommendedPrice + step;
+  const p4 = recommendedPrice + step * 2;
+  const unique = Array.from(new Set([p1, p2, p3, p4]));
+  return unique.sort((a, b) => a - b);
+}
+
+export function validateOfferedPrice(
+  price: number,
+  recommendedPrice: number,
+  pricing: PricingSettings = DEFAULT_PRICING
+): { isValid: boolean; minPrice: number; maxPrice: number; error?: string } {
+  const minRatio = pricing.minOfferedPriceRatio || 0.7;
+  const maxRatio = pricing.maxOfferedPriceRatio || 2.0;
+
+  const minPrice = Math.max(pricing.minimumFare, Math.round((recommendedPrice * minRatio) / 10) * 10);
+  const maxPrice = Math.round((recommendedPrice * maxRatio) / 10) * 10;
+
+  if (price < minPrice) {
+    return {
+      isValid: false,
+      minPrice,
+      maxPrice,
+      error: `السعر المقترح منخفض جداً. الحد الأدنى المقبول لهذه الرحلة هو ${minPrice} د.ج`,
+    };
+  }
+
+  if (price > maxPrice) {
+    return {
+      isValid: false,
+      minPrice,
+      maxPrice,
+      error: `السعر المقترح مرتفع جداً عن التسعيرة الموصى بها. الحد الأقصى هو ${maxPrice} د.ج`,
+    };
+  }
+
+  return { isValid: true, minPrice, maxPrice };
 }
 
 export function formatCurrencyDZD(amount: number): string {

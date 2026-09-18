@@ -37,6 +37,10 @@ export const Header: React.FC = () => {
                 <span className="text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded">
                   موطو ديزاد
                 </span>
+                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>متصل سحابياً (Firebase)</span>
+                </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">رحلتك أسرع وأسهل بالدراجة</p>
             </div>

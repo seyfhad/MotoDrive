@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Coordinates } from '../../types';
 import { ALGERIA_LOCATIONS, calculateDistanceKm, estimateDurationMinutes } from '../../utils/geo';
-import { calculateFare, formatCurrencyDZD } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, Tag, Shield, Clock, Check, Search, X } from 'lucide-react';
+import { calculateFare, formatCurrencyDZD, getQuickFareChips, validateOfferedPrice } from '../../utils/pricing';
+import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare } from 'lucide-react';
 
 interface BookRideModalProps {
   onClose: () => void;
@@ -11,6 +11,13 @@ interface BookRideModalProps {
   initialPickup?: Coordinates | null;
   initialDestination?: Coordinates | null;
 }
+
+const QUICK_NOTES = [
+  '🪖 أحتاج خوذة إضافية',
+  '🎒 معي حقيبة ظهر خفيفة',
+  '⚡ مستعجل جداً',
+  '📍 أنا أمام المدخل الرئيسي',
+];
 
 export const BookRideModal: React.FC<BookRideModalProps> = ({
   onClose,
@@ -31,6 +38,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
+  const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
+  const [customNote, setCustomNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -39,6 +48,28 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 
   const discountPercent = appliedPromo === 'MOTO20' ? 20 : appliedPromo === 'SAHL10' ? 10 : 0;
   const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
+  const recommendedPrice = fareBreakdown.roundedPrice;
+
+  // Passenger offered price state (defaults to recommended)
+  const [offeredPrice, setOfferedPrice] = useState<number>(recommendedPrice);
+  const quickChips = getQuickFareChips(recommendedPrice);
+
+  // Update offered price if recommended changes
+  React.useEffect(() => {
+    setOfferedPrice(recommendedPrice);
+  }, [recommendedPrice]);
+
+  const handleAdjustPrice = (delta: number) => {
+    const newPrice = Math.max(pricing.minimumFare, offeredPrice + delta);
+    setOfferedPrice(newPrice);
+    setErrorMsg(null);
+  };
+
+  const handleToggleNote = (note: string) => {
+    setSelectedNotes(prev =>
+      prev.includes(note) ? prev.filter(n => n !== note) : [...prev, note]
+    );
+  };
 
   const handleApplyPromo = () => {
     if (promoCode.trim().toUpperCase() === 'MOTO20' || promoCode.trim().toUpperCase() === 'SAHL10') {
@@ -50,10 +81,25 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   };
 
   const handleConfirmRide = async () => {
+    // Validate price bounds
+    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing);
+    if (!validation.isValid) {
+      setErrorMsg(validation.error || 'السعر المقترح غير صالح');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    const res = await requestRide(pickup, destination, appliedPromo || undefined);
+    const fullNote = [...selectedNotes, customNote.trim()].filter(Boolean).join(' • ');
+
+    const res = await requestRide(
+      pickup,
+      destination,
+      offeredPrice,
+      fullNote || undefined,
+      appliedPromo || undefined
+    );
     setIsSubmitting(false);
 
     if (res.success) {
@@ -70,9 +116,11 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       loc.wilaya.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const priceDiff = offeredPrice - recommendedPrice;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in" id="book-ride-modal">
-      <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 text-right text-slate-100 shadow-2xl space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-5 text-right text-slate-100 shadow-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <button
@@ -82,11 +130,11 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
             <X className="w-4 h-4" />
           </button>
           <div className="text-center">
-            <h3 className="text-base font-black text-white">تأكيد طلب الرحلة بالدراجة</h3>
-            <p className="text-[11px] text-slate-400">سائق دراجة نارية معتمد يصلك في دقائق</p>
+            <h3 className="text-base font-black text-white">طلب رحلة بالتفاوض الحر</h3>
+            <p className="text-[11px] text-amber-400 font-medium">حدد سعرك واستقبل عروض السائقين مباشرة 🏍️</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
-            🏍️
+            ⚡
           </div>
         </div>
 
@@ -214,50 +262,136 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                   <Clock className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-[10px] text-slate-400">المدة التقريبية</div>
-                  <div className="text-sm font-black text-white">{estimatedDuration} دقيقة</div>
+                  <div className="text-[10px] text-slate-400">المدة بالدراجة</div>
+                  <div className="text-sm font-black text-white">~{estimatedDuration} دقيقة</div>
                 </div>
               </div>
             </div>
 
-            {/* Pricing Breakdown Card */}
-            <div className="bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>سعر الانطلاق الأساسي:</span>
-                <span>{pricing.baseFare} د.ج</span>
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>المسافة ({distanceKm} كم × {pricing.pricePerKm} د.ج):</span>
-                <span>{fareBreakdown.distanceCost} د.ج</span>
-              </div>
-              {discountPercent > 0 && (
-                <div className="flex items-center justify-between text-xs text-emerald-400 font-semibold">
-                  <span>خصم كود العرض ({discountPercent}%):</span>
-                  <span>- {fareBreakdown.discountAmount} د.ج</span>
+            {/* InDrive-style Fare Negotiation Section */}
+            <div className="bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 space-y-3.5 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>اقترح سعرك للرحلة (د.ج)</span>
                 </div>
-              )}
+                <div className="text-[11px] text-slate-400 bg-slate-800/80 px-2.5 py-1 rounded-full">
+                  السعر المقترح بالنظام: <span className="font-bold text-amber-400">{recommendedPrice} د.ج</span>
+                </div>
+              </div>
 
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-slate-400 font-medium">السعر التقديري النهائي</div>
-                  <div className="text-[10px] text-amber-500/80">الدفع نقدًا للسائق عند الوصول</div>
+              {/* Price Adjuster with big +/- controls */}
+              <div className="flex items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 rounded-2xl p-3">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustPrice(-20)}
+                  disabled={offeredPrice <= pricing.minimumFare}
+                  className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 font-bold flex items-center justify-center text-lg disabled:opacity-30 transition-all"
+                  title="إنقاص 20 د.ج"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+
+                <div className="text-center flex-1">
+                  <div className="text-3xl font-black text-amber-400 tracking-tight">
+                    {offeredPrice} <span className="text-sm font-semibold text-slate-400">د.ج</span>
+                  </div>
+                  <div className="text-[10px] font-medium mt-0.5">
+                    {priceDiff === 0 ? (
+                      <span className="text-slate-400">مطابق للتسعيرة المقترحة</span>
+                    ) : priceDiff > 0 ? (
+                      <span className="text-emerald-400 font-semibold">+{priceDiff} د.ج (قبول فوري وأسرع)</span>
+                    ) : (
+                      <span className="text-amber-400/90 font-semibold">{priceDiff} د.ج (عرض اقتصادي)</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-2xl font-black text-amber-400">
-                  {formatCurrencyDZD(fareBreakdown.roundedPrice)}
+
+                <button
+                  type="button"
+                  onClick={() => handleAdjustPrice(20)}
+                  className="w-12 h-12 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center text-lg transition-all"
+                  title="زيادة 20 د.ج"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Quick Fare Chips */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] text-slate-400">خيارات سريعة مقترحة:</div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {quickChips.map((chipPrice, i) => {
+                    const isSelected = offeredPrice === chipPrice;
+                    const diff = chipPrice - recommendedPrice;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setOfferedPrice(chipPrice)}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center border ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-[1.02]'
+                            : 'bg-slate-950/90 text-slate-300 hover:bg-slate-800 border-slate-800'
+                        }`}
+                      >
+                        <div>{chipPrice} د.ج</div>
+                        <div className={`text-[9px] ${isSelected ? 'text-slate-900 font-black' : 'text-slate-500'}`}>
+                          {diff === 0 ? 'الموصى به' : diff > 0 ? `+${diff}` : `${diff}`}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
+            </div>
+
+            {/* Quick Trip Notes & Requirements */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
+                <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                <span>ملاحظات إضافية لسائق الدراجة:</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_NOTES.map((note, idx) => {
+                  const active = selectedNotes.includes(note);
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleToggleNote(note)}
+                      className={`text-[11px] px-2.5 py-1.5 rounded-xl border transition-all ${
+                        active
+                          ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {note}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <input
+                type="text"
+                placeholder="أضف ملاحظة مخصصة (مثال: أمام العمارة B2)..."
+                value={customNote}
+                onChange={e => setCustomNote(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+              />
             </div>
 
             {/* Promo Code Input */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
-                placeholder="رمز العرض الترويجي (مثال: MOTO20)"
+                placeholder="كود خصم (MOTO20 أو SAHL10)"
                 value={promoCode}
                 onChange={e => setPromoCode(e.target.value)}
                 className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 flex-1 uppercase"
               />
               <button
+                type="button"
                 onClick={handleApplyPromo}
                 className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl text-xs font-bold transition-colors"
               >
@@ -268,7 +402,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
             {appliedPromo && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
                 <Check className="w-3.5 h-3.5" />
-                <span>تم تطبيق الكود {appliedPromo} بنجاح!</span>
+                <span>تم تطبيق الكود {appliedPromo} (-{discountPercent}%) بنجاح!</span>
               </div>
             )}
 
@@ -278,14 +412,14 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             )}
 
-            {/* Action Button */}
+            {/* Submit Action Button */}
             <button
               id="confirm-ride-booking-btn"
               onClick={handleConfirmRide}
               disabled={isSubmitting}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 text-base transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 text-base transition-all active:scale-[0.98] disabled:opacity-50"
             >
-              <span>{isSubmitting ? 'جاري إرسال الطلب...' : 'تأكيد طلب الرحلة الآن 🏍️'}</span>
+              <span>{isSubmitting ? 'جاري نشر طلبك...' : `نشر الطلب بسعر ${offeredPrice} د.ج واستقبال العروض 🏍️`}</span>
             </button>
           </>
         )}
@@ -293,3 +427,4 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     </div>
   );
 };
+

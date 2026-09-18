@@ -49,7 +49,7 @@ export const AdminUsers: React.FC = () => {
                   <div className="text-[11px] text-slate-400 mt-0.5">{user.phone}</div>
                   <div className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold mt-0.5">
                     <Star className="w-3 h-3 fill-amber-400" />
-                    <span>{user.rating.toFixed(1)} ({user.totalTrips} رحلة)</span>
+                    <span>{(user.rating ?? 5.0).toFixed(1)} ({user.totalTrips ?? userRides.length} رحلة)</span>
                   </div>
                 </div>
               </div>

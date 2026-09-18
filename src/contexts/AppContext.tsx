@@ -1,10 +1,23 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
+  collection,
+  doc,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  getDocs,
+  setDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+import {
   UserRole,
   UserProfile,
   DriverProfile,
   Ride,
   RideStatus,
+  RideOffer,
   PricingSettings,
   ServiceArea,
   Complaint,
@@ -15,13 +28,27 @@ import {
 import {
   INITIAL_PASSENGERS,
   INITIAL_DRIVERS,
-  INITIAL_RIDES,
   INITIAL_SERVICE_AREAS,
   INITIAL_COMPLAINTS,
   INITIAL_PROMO_CODES,
 } from '../data/mockData';
-import { DEFAULT_PRICING, calculateFare } from '../utils/pricing';
-import { calculateDistanceKm, estimateDurationMinutes, interpolateRoute, calculateBearing } from '../utils/geo';
+import { DEFAULT_PRICING, calculateFare, validateOfferedPrice } from '../utils/pricing';
+import { calculateDistanceKm, estimateDurationMinutes, calculateBearing } from '../utils/geo';
+import {
+  createRideInFirestore,
+  updatePassengerOfferInFirestore,
+  cancelRideInFirestore,
+  submitDriverOfferInFirestore,
+  acceptDriverOfferTransaction,
+  advanceRideStatusInFirestore,
+  submitRatingToFirestore,
+  submitComplaintToFirestore,
+  updateDriverLocation as updateFirestoreDriverLocation,
+  updateDriverOnlineStatus as updateFirestoreDriverOnlineStatus,
+  syncDriverProfile,
+  syncUserProfile,
+} from '../services/firestoreService';
+import { subscribeToAuth, signInQuickGuest } from '../services/authService';
 
 interface AppContextType {
   currentRole: UserRole;
@@ -40,38 +67,52 @@ interface AppContextType {
   notifications: AppNotification[];
   ratings: Rating[];
 
+  // Firebase Realtime State
+  isFirebaseConnected: boolean;
+  currentUser: any;
+
   // Passenger actions
   currentPassengerRide: Ride | null;
   requestRide: (
     pickup: Coordinates,
     destination: Coordinates,
+    passengerOfferedPrice?: number,
+    passengerNote?: string,
     promoCode?: string
   ) => Promise<{ success: boolean; rideId?: string; error?: string }>;
-  cancelRide: (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => void;
-  submitRating: (rideId: string, stars: number, tags: string[], comment?: string) => void;
+  acceptDriverOffer: (rideId: string, offerId: string) => Promise<{ success: boolean; error?: string }>;
+  declineDriverOffer: (rideId: string, offerId: string) => void;
+  updatePassengerOffer: (rideId: string, newOfferedPrice: number) => Promise<{ success: boolean; error?: string }>;
+  cancelRide: (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => Promise<void>;
+  submitRating: (rideId: string, stars: number, tags: string[], comment?: string) => Promise<void>;
   submitComplaint: (
     rideId: string | undefined,
     reason: string,
     description: string,
     targetUserId?: string
-  ) => void;
+  ) => Promise<void>;
 
   // Driver actions
   currentDriverRide: Ride | null;
   pendingDriverRideRequest: Ride | null;
-  toggleDriverOnline: (driverId: string, isOnline: boolean) => { success: boolean; error?: string };
+  toggleDriverOnline: (driverId: string, isOnline: boolean) => Promise<{ success: boolean; error?: string }>;
+  submitDriverOffer: (
+    rideId: string,
+    driverId: string,
+    offeredPrice: number
+  ) => Promise<{ success: boolean; error?: string }>;
   acceptRide: (rideId: string, driverId: string) => Promise<{ success: boolean; error?: string }>;
   rejectRide: (rideId: string, driverId: string) => void;
-  advanceRideStatus: (rideId: string) => void;
+  advanceRideStatus: (rideId: string) => Promise<void>;
   updateDriverLocation: (driverId: string, location: Coordinates, heading?: number) => void;
-  registerDriver: (driverData: Partial<DriverProfile>) => { success: boolean; driverId: string };
+  registerDriver: (driverData: Partial<DriverProfile>) => Promise<{ success: boolean; driverId: string }>;
 
   // Admin actions
-  approveDriver: (driverId: string) => void;
-  rejectDriver: (driverId: string, reason: string) => void;
-  suspendDriver: (driverId: string) => void;
-  updatePricing: (newPricing: PricingSettings) => void;
-  resolveComplaint: (complaintId: string, notes: string) => void;
+  approveDriver: (driverId: string) => Promise<void>;
+  rejectDriver: (driverId: string, reason: string) => Promise<void>;
+  suspendDriver: (driverId: string) => Promise<void>;
+  updatePricing: (newPricing: PricingSettings) => Promise<void>;
+  resolveComplaint: (complaintId: string, notes: string) => Promise<void>;
   broadcastNotification: (title: string, body: string, targetRole?: UserRole) => void;
 
   // Simulator controls
@@ -81,86 +122,167 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const STORAGE_PREFIX = 'motodz_v1_';
+const STORAGE_PREFIX = 'motodz_v2_';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Current active role for testing / viewing
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
+
+  // Current role selector for seamless UI preview
   const [currentRole, setCurrentRole] = useState<UserRole>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
     return (saved as UserRole) || 'passenger';
   });
 
-  const [passengers, setPassengers] = useState<UserProfile[]>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'passengers');
-    return saved ? JSON.parse(saved) : INITIAL_PASSENGERS;
-  });
-
-  const [drivers, setDrivers] = useState<DriverProfile[]>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'drivers');
-    return saved ? JSON.parse(saved) : INITIAL_DRIVERS;
-  });
-
-  const [rides, setRides] = useState<Ride[]>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'rides');
-    return saved ? JSON.parse(saved) : INITIAL_RIDES;
-  });
-
-  const [pricing, setPricing] = useState<PricingSettings>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'pricing');
-    return saved ? JSON.parse(saved) : DEFAULT_PRICING;
-  });
-
-  const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'service_areas');
-    return saved ? JSON.parse(saved) : INITIAL_SERVICE_AREAS;
-  });
-
-  const [complaints, setComplaints] = useState<Complaint[]>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'complaints');
-    return saved ? JSON.parse(saved) : INITIAL_COMPLAINTS;
-  });
-
+  const [passengers, setPassengers] = useState<UserProfile[]>(INITIAL_PASSENGERS);
+  const [drivers, setDrivers] = useState<DriverProfile[]>(INITIAL_DRIVERS);
+  const [rides, setRides] = useState<Ride[]>([]);
+  const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
+  const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>(INITIAL_SERVICE_AREAS);
+  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
-  const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(true);
 
-  // Active user profiles
-  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => passengers[0] || INITIAL_PASSENGERS[0]);
-  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => drivers[0] || INITIAL_DRIVERS[0]);
+  // Simulation switch (default to false for real Firebase mode, toggleable in UI)
+  const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
 
-  // Keep active driver/passenger in sync with state lists
+  // Active profiles
+  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => INITIAL_PASSENGERS[0]);
+  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => INITIAL_DRIVERS[0]);
+
+  // Track GPS location watcher
+  const geoWatchIdRef = useRef<number | null>(null);
+
+  // --------------------------------------------------------------------------
+  // 1. FIREBASE AUTH & USER PROFILE INITIALIZATION
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    const foundP = passengers.find(p => p.id === activePassenger.id);
-    if (foundP) setActivePassenger(foundP);
-  }, [passengers]);
+    const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
+      if (firebaseUser && userProfile) {
+        setCurrentUser(firebaseUser);
+        setIsFirebaseConnected(true);
+        setActivePassenger(userProfile);
+      } else if (!firebaseUser) {
+        // Auto sign in anonymously for immediate preview readiness
+        try {
+          const { user, profile } = await signInQuickGuest('سيف الدين (الراكب)', '0550123456', 'passenger');
+          setCurrentUser(user);
+          setIsFirebaseConnected(true);
+          setActivePassenger(profile);
+        } catch (e) {
+          console.warn('Firebase anonymous auth fallback:', e);
+        }
+      }
+    });
 
+    return () => unsubscribe();
+  }, []);
+
+  // --------------------------------------------------------------------------
+  // 2. REAL-TIME FIRESTORE SUBSCRIPTIONS (RIDES, OFFERS, DRIVERS, PRICING)
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // 2.1 Subscribe to System Pricing
+    const pricingDocRef = doc(db, 'system_config', 'pricing');
+    const unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setPricing(docSnap.data() as PricingSettings);
+      } else {
+        // Initialize default pricing in Firestore if missing
+        setDoc(pricingDocRef, { ...DEFAULT_PRICING, updatedAt: serverTimestamp() }).catch(console.error);
+      }
+    }, (err) => console.warn('Pricing snapshot notice:', err.message));
+
+    // 2.2 Subscribe to Real-Time Rides
+    const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'));
+    const unsubRides = onSnapshot(ridesQuery, async (querySnap) => {
+      const fetchedRides: Ride[] = [];
+      
+      for (const rideDoc of querySnap.docs) {
+        const rideData = { id: rideDoc.id, ...rideDoc.data() } as Ride;
+        
+        // Fetch subcollection offers for active negotiating rides
+        if (['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(rideData.status)) {
+          try {
+            const offersQuery = query(collection(db, 'rides', rideDoc.id, 'offers'), orderBy('createdAt', 'asc'));
+            const offersSnap = await getDocs(offersQuery);
+            rideData.offers = offersSnap.docs.map(d => ({ id: d.id, ...d.data() } as RideOffer));
+          } catch (err) {
+            console.warn(`Error reading offers for ride ${rideDoc.id}:`, err);
+          }
+        }
+
+        fetchedRides.push(rideData);
+      }
+
+      setRides(fetchedRides);
+    }, (err) => console.warn('Rides snapshot notice:', err.message));
+
+    // 2.3 Subscribe to Real-Time Drivers
+    const driversQuery = query(collection(db, 'drivers'));
+    const unsubDrivers = onSnapshot(driversQuery, (querySnap) => {
+      if (!querySnap.empty) {
+        const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
+          d => ({ id: d.id, ...d.data() } as DriverProfile)
+        );
+        setDrivers(fetchedDrivers);
+      } else {
+        // Seed initial drivers to Firestore so there is real data on first load
+        INITIAL_DRIVERS.forEach(drv => {
+          syncDriverProfile(drv).catch(console.error);
+        });
+      }
+    }, (err) => console.warn('Drivers snapshot notice:', err.message));
+
+    return () => {
+      unsubPricing();
+      unsubRides();
+      unsubDrivers();
+    };
+  }, [currentUser]);
+
+  // Sync active driver/passenger references
   useEffect(() => {
     const foundD = drivers.find(d => d.id === activeDriver.id);
     if (foundD) setActiveDriver(foundD);
-  }, [drivers]);
+  }, [drivers, activeDriver.id]);
 
-  // Local storage persistence
+  // --------------------------------------------------------------------------
+  // 3. REAL GPS TRACKING FOR ACTIVE DRIVER
+  // --------------------------------------------------------------------------
   useEffect(() => {
-    localStorage.setItem(STORAGE_PREFIX + 'role', currentRole);
-  }, [currentRole]);
+    if (activeDriver.isOnline && 'geolocation' in navigator) {
+      geoWatchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, heading, speed } = pos.coords;
+          updateFirestoreDriverLocation(
+            activeDriver.id,
+            latitude,
+            longitude,
+            heading || undefined,
+            speed || undefined
+          ).catch(console.error);
+        },
+        (err) => {
+          console.warn('Geolocation error or permission denied:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+      );
+    } else if (geoWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      geoWatchIdRef.current = null;
+    }
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_PREFIX + 'passengers', JSON.stringify(passengers));
-  }, [passengers]);
+    return () => {
+      if (geoWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(geoWatchIdRef.current);
+      }
+    };
+  }, [activeDriver.isOnline, activeDriver.id]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_PREFIX + 'drivers', JSON.stringify(drivers));
-  }, [drivers]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_PREFIX + 'rides', JSON.stringify(rides));
-  }, [rides]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_PREFIX + 'pricing', JSON.stringify(pricing));
-  }, [pricing]);
-
-  // Derive Current Rides
+  // Derive Current Active Rides
   const currentPassengerRide = rides.find(
     r =>
       r.passengerId === activePassenger.id &&
@@ -173,12 +295,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
   ) || null;
 
-  // Driver incoming requests (status = 'searching' and driver is online & approved)
+  // Driver incoming requests (searching or offers_available and driver is online)
   const pendingDriverRideRequest = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
-    ? rides.find(r => r.status === 'searching') || null
+    ? rides.find(r => (r.status === 'searching' || r.status === 'offers_available')) || null
     : null;
 
-  // Add Notification Helper
+  // Notification Helper
   const addNotification = useCallback((
     recipientId: string,
     recipientRole: UserRole,
@@ -201,14 +323,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => [newNotif, ...prev]);
   }, []);
 
-  // Passenger: Request Ride
+  // --------------------------------------------------------------------------
+  // 4. PASSENGER REAL ACTIONS
+  // --------------------------------------------------------------------------
   const requestRide = async (
     pickup: Coordinates,
     destination: Coordinates,
+    passengerOfferedPrice?: number,
+    passengerNote?: string,
     promoCode?: string
   ): Promise<{ success: boolean; rideId?: string; error?: string }> => {
     if (currentPassengerRide) {
-      return { success: false, error: 'لديك رحلة جارية بالفعل!' };
+      return { success: false, error: 'لديك رحلة جارية أو قيد التفاوض بالفعل!' };
     }
 
     const distanceKm = calculateDistanceKm(pickup, destination);
@@ -222,317 +348,274 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (foundPromo) discountPercent = foundPromo.discountPercent;
     }
 
-    const fare = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
-    const rideId = 'RIDE-DZ-' + Math.floor(1000 + Math.random() * 9000);
+    const recommendedBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
+    const recommendedPrice = recommendedBreakdown.roundedPrice;
 
-    const newRide: Ride = {
-      id: rideId,
-      passengerId: activePassenger.id,
-      passengerName: activePassenger.name,
-      passengerPhone: activePassenger.phone,
-      passengerPhoto: activePassenger.photoUrl,
-      passengerRating: 4.9,
-      status: 'searching',
-      pickup,
-      destination,
-      distanceKm,
-      estimatedDurationMins: estimatedDuration,
-      estimatedPrice: fare.roundedPrice,
-      platformCommission: fare.platformCommission,
-      driverEarning: fare.driverEarning,
-      paymentMethod: 'cash',
-      paymentStatus: 'pending',
-      requestedAt: new Date().toISOString(),
-    };
+    const offeredPrice = passengerOfferedPrice && passengerOfferedPrice > 0
+      ? passengerOfferedPrice
+      : recommendedPrice;
 
-    setRides(prev => [newRide, ...prev]);
+    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing);
+    if (!validation.isValid) {
+      return { success: false, error: validation.error };
+    }
 
-    // Broadcast to online drivers
-    addNotification(
-      'all_drivers',
-      'driver',
-      '🏍️ طلب رحلة جديد قريب!',
-      `من ${pickup.name || 'الموقع المحدد'} إلى ${destination.name || 'الوجهة'} (${fare.roundedPrice} د.ج)`
-    );
+    const commission = Math.round((offeredPrice * pricing.platformCommissionPercent) / 100);
+    const driverEarning = offeredPrice - commission;
 
-    return { success: true, rideId };
+    try {
+      const rideDocId = await createRideInFirestore({
+        passengerId: activePassenger.id,
+        passengerName: activePassenger.name,
+        passengerPhone: activePassenger.phone,
+        passengerPhoto: activePassenger.photoUrl,
+        passengerRating: activePassenger.rating || 4.9,
+        passengerNote: passengerNote?.trim() || undefined,
+        status: 'searching',
+        pickup,
+        destination,
+        distanceKm,
+        estimatedDurationMins: estimatedDuration,
+        recommendedPrice,
+        passengerOfferedPrice: offeredPrice,
+        estimatedPrice: offeredPrice,
+        platformCommission: commission,
+        driverEarning,
+        paymentMethod: 'cash',
+        paymentStatus: 'pending',
+        requestedAt: new Date().toISOString(),
+      });
+
+      addNotification(
+        'all_drivers',
+        'driver',
+        '🏍️ طلب رحلة جديد بالتفاوض!',
+        `من ${pickup.name || 'الموقع المحدد'} إلى ${destination.name || 'الوجهة'} • عرض الراكب: ${offeredPrice} د.ج`
+      );
+
+      return { success: true, rideId: rideDocId };
+    } catch (err: any) {
+      console.error('Error creating ride in Firestore:', err);
+      return { success: false, error: err.message || 'تعذر إرسال طلب الرحلة' };
+    }
   };
 
-  // Driver: Toggle Online/Offline
-  const toggleDriverOnline = (driverId: string, isOnline: boolean): { success: boolean; error?: string } => {
+  const acceptDriverOffer = async (
+    rideId: string,
+    offerId: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const ride = rides.find(r => r.id === rideId);
+    if (!ride) return { success: false, error: 'الرحلة غير موجودة' };
+
+    const offer = (ride.offers || []).find(o => o.id === offerId);
+    if (!offer) return { success: false, error: 'عرض السائق غير متوفر أو منتهي' };
+
+    const driver = drivers.find(d => d.id === offer.driverId);
+    if (!driver) return { success: false, error: 'بيانات السائق غير موجودة' };
+
+    // Atomically lock driver selection via Firestore Transaction
+    const result = await acceptDriverOfferTransaction(
+      rideId,
+      offerId,
+      driver,
+      offer.offeredPrice,
+      pricing.platformCommissionPercent
+    );
+
+    if (result.success) {
+      addNotification(
+        driver.id,
+        'driver',
+        '🎉 تم قبول عرضك!',
+        `الراكب ${ride.passengerName} قبل عرضك بقيمة ${offer.offeredPrice} د.ج. توجه لموقع الانطلاق.`
+      );
+    }
+
+    return result;
+  };
+
+  const declineDriverOffer = (rideId: string, offerId: string) => {
+    // Declining is reflected directly in local state and filtered
+    setRides(prev =>
+      prev.map(r => {
+        if (r.id !== rideId) return r;
+        const updatedOffers = (r.offers || []).map(o =>
+          o.id === offerId ? { ...o, status: 'declined' as const } : o
+        );
+        return { ...r, offers: updatedOffers };
+      })
+    );
+  };
+
+  const updatePassengerOffer = async (
+    rideId: string,
+    newOfferedPrice: number
+  ): Promise<{ success: boolean; error?: string }> => {
+    const targetRide = rides.find(r => r.id === rideId);
+    if (!targetRide || !['searching', 'offers_available'].includes(targetRide.status)) {
+      return { success: false, error: 'لا يمكن تعديل السعر في هذه المرحلة' };
+    }
+
+    const validation = validateOfferedPrice(newOfferedPrice, targetRide.recommendedPrice, pricing);
+    if (!validation.isValid) {
+      return { success: false, error: validation.error || 'السعر غير صالح' };
+    }
+
+    try {
+      await updatePassengerOfferInFirestore(rideId, newOfferedPrice);
+      addNotification(
+        'all_drivers',
+        'driver',
+        '⚡ الراكب رفع السعر المقترح!',
+        `تم تحديث السعر المقترح للرحلة #${rideId} إلى ${newOfferedPrice} د.ج.`
+      );
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'تعذر تحديث السعر' };
+    }
+  };
+
+  const cancelRide = async (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
+    try {
+      await cancelRideInFirestore(rideId, reason, cancelledBy);
+    } catch (e) {
+      console.error('Error cancelling ride in Firestore:', e);
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 5. DRIVER REAL ACTIONS
+  // --------------------------------------------------------------------------
+  const submitDriverOffer = async (
+    rideId: string,
+    driverId: string,
+    offeredPrice: number
+  ): Promise<{ success: boolean; error?: string }> => {
+    const driver = drivers.find(d => d.id === driverId);
+    if (!driver) return { success: false, error: 'السائق غير مسجل' };
+    if (driver.status !== 'approved') return { success: false, error: 'حساب السائق غير معتمد' };
+    if (!driver.isOnline) return { success: false, error: 'يجب أن تكون في وضع Online لتقديم العروض' };
+
+    const targetRide = rides.find(r => r.id === rideId);
+    if (!targetRide || !['searching', 'offers_available'].includes(targetRide.status)) {
+      return { success: false, error: 'الرحلة لم تعد متاحة لتقديم العروض' };
+    }
+
+    const distToPickup = calculateDistanceKm(driver.location, targetRide.pickup);
+    const etaMins = Math.max(1, Math.round(distToPickup * 2.2));
+    const isCounter = offeredPrice !== targetRide.passengerOfferedPrice;
+    const diff = offeredPrice - targetRide.passengerOfferedPrice;
+
+    try {
+      await submitDriverOfferInFirestore(rideId, {
+        rideId,
+        driverId: driver.id,
+        driverName: driver.name,
+        driverPhone: driver.phone,
+        driverPhoto: driver.photoUrl,
+        driverRating: driver.rating,
+        driverTripsCount: driver.totalTrips,
+        driverMotorcycle: driver.motorcycle,
+        driverLocation: driver.location,
+        distanceToPickupKm: distToPickup,
+        etaMinutes: etaMins,
+        offeredPrice,
+        isCounterOffer: isCounter,
+        passengerOfferedPrice: targetRide.passengerOfferedPrice,
+        priceDifference: diff,
+        status: 'pending',
+        expiresAt: new Date(Date.now() + (pricing.offerTimeoutSeconds || 30) * 1000).toISOString(),
+      });
+
+      addNotification(
+        targetRide.passengerId,
+        'passenger',
+        '🏍️ عرض جديد من سائق دراجة!',
+        `${driver.name} يقترح ${offeredPrice} د.ج على دراجة ${driver.motorcycle.brand}`
+      );
+
+      return { success: true };
+    } catch (err: any) {
+      console.error('Error submitting driver offer in Firestore:', err);
+      return { success: false, error: err.message || 'تعذر إرسال العرض' };
+    }
+  };
+
+  const acceptRide = async (rideId: string, driverId: string): Promise<{ success: boolean; error?: string }> => {
+    const ride = rides.find(r => r.id === rideId);
+    if (!ride) return { success: false, error: 'الرحلة غير موجودة' };
+    return submitDriverOffer(rideId, driverId, ride.passengerOfferedPrice || ride.estimatedPrice);
+  };
+
+  const toggleDriverOnline = async (driverId: string, isOnline: boolean): Promise<{ success: boolean; error?: string }> => {
     const driver = drivers.find(d => d.id === driverId);
     if (!driver) return { success: false, error: 'السائق غير موجود' };
 
     if (isOnline && driver.status !== 'approved') {
       return {
         success: false,
-        error: 'لا يمكنك استقبال الرحلات حتى تتم مراجعة وثائقك والموافقة على حسابك من قبل الإدارة.',
+        error: 'لا يمكنك تفعيل وضع Online حتى تتم مراجعة وثائقك واعتماد حسابك من الإدارة.',
       };
     }
 
-    setDrivers(prev =>
-      prev.map(d => (d.id === driverId ? { ...d, isOnline, isAvailable: isOnline } : d))
-    );
-
-    return { success: true };
+    try {
+      await updateFirestoreDriverOnlineStatus(driverId, isOnline, isOnline);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'تعذر تغيير حالة الاتصال' };
+    }
   };
 
-  // Driver / Simulator: Transactional Accept Ride
-  const acceptRide = async (rideId: string, driverId: string): Promise<{ success: boolean; error?: string }> => {
-    const driver = drivers.find(d => d.id === driverId);
-    if (!driver) return { success: false, error: 'السائق غير مسجل' };
-    if (driver.status !== 'approved') return { success: false, error: 'حساب السائق غير معتمد' };
-
-    let accepted = false;
-
-    setRides(prev => {
-      const targetRide = prev.find(r => r.id === rideId);
-      // Concurrency check: If status is not 'searching', another driver accepted first!
-      if (!targetRide || targetRide.status !== 'searching') {
-        return prev;
-      }
-
-      accepted = true;
-      return prev.map(r => {
-        if (r.id === rideId) {
-          return {
-            ...r,
-            status: 'accepted',
-            driverId: driver.id,
-            driverName: driver.name,
-            driverPhone: driver.phone,
-            driverPhoto: driver.photoUrl,
-            driverRating: driver.rating,
-            driverMotorcycle: driver.motorcycle,
-            driverLocation: driver.location,
-            acceptedAt: new Date().toISOString(),
-          };
-        }
-        return r;
-      });
-    });
-
-    if (!accepted) {
-      return { success: false, error: 'عذراً! تم قبول هذا الطلب من قبل سائق آخر.' };
-    }
-
-    // Update driver status
-    setDrivers(prev =>
-      prev.map(d => (d.id === driverId ? { ...d, currentRideId: rideId, isAvailable: false } : d))
-    );
-
-    // Notify passenger
-    const ride = rides.find(r => r.id === rideId);
-    if (ride) {
-      addNotification(
-        ride.passengerId,
-        'passenger',
-        '✅ تم قبول رحلتك!',
-        `السائق ${driver.name} يقود دراجة ${driver.motorcycle.brand} في الطريق إليك.`
-      );
-    }
-
-    return { success: true };
-  };
-
-  // Driver: Reject Ride Request
   const rejectRide = (rideId: string, driverId: string) => {
-    // For MVP simulator: just dismiss from this driver's screen
-    addNotification(driverId, 'driver', 'تم رفض الطلب', 'تم إلغاء التنبيه للرحلة');
+    addNotification(driverId, 'driver', 'تم التخطي', 'تم تخطي هذا الطلب');
   };
 
-  // Advance Ride Status (Driver moves the flow or automated)
-  const advanceRideStatus = (rideId: string) => {
-    setRides(prev => {
-      return prev.map(r => {
-        if (r.id !== rideId) return r;
-
-        let nextStatus: RideStatus = r.status;
-        const updates: Partial<Ride> = {};
-
-        if (r.status === 'accepted') {
-          nextStatus = 'driver_arriving';
-          updates.driverLocation = r.driverLocation;
-        } else if (r.status === 'driver_arriving') {
-          nextStatus = 'driver_arrived';
-          updates.arrivedAt = new Date().toISOString();
-        } else if (r.status === 'driver_arrived') {
-          nextStatus = 'trip_started';
-          updates.startedAt = new Date().toISOString();
-        } else if (r.status === 'trip_started') {
-          nextStatus = 'completed';
-          updates.completedAt = new Date().toISOString();
-          updates.paymentStatus = 'paid';
-          updates.actualDurationMins = r.estimatedDurationMins;
-          updates.finalPrice = r.estimatedPrice;
-        }
-
-        const updatedRide = { ...r, ...updates, status: nextStatus };
-
-        // Send notifications on milestones
-        if (nextStatus === 'driver_arrived') {
-          addNotification(r.passengerId, 'passenger', '📍 السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
-        } else if (nextStatus === 'trip_started') {
-          addNotification(r.passengerId, 'passenger', '🏍️ انطلقت الرحلة', 'نتمنى لك رحلة آمنة ومريحة مع MotoDZ.');
-        } else if (nextStatus === 'completed') {
-          addNotification(
-            r.passengerId,
-            'passenger',
-            '🎉 تم الوصول بنجاح',
-            `المبلغ المستحق نقدًا: ${r.estimatedPrice} د.ج. يرجى تقييم السائق.`
-          );
-        }
-
-        return updatedRide;
-      });
-    });
-
-    // If completed, update driver stats and release driver
+  const advanceRideStatus = async (rideId: string) => {
     const targetRide = rides.find(r => r.id === rideId);
-    if (targetRide && targetRide.status === 'trip_started') {
-      setDrivers(prev =>
-        prev.map(d => {
-          if (d.id === targetRide.driverId) {
-            return {
-              ...d,
-              totalTrips: d.totalTrips + 1,
-              currentRideId: null,
-              isAvailable: true,
-            };
-          }
-          return d;
-        })
+    if (!targetRide) return;
+
+    let nextStatus: RideStatus = targetRide.status;
+    const extraData: Partial<Ride> = {};
+
+    if (targetRide.status === 'accepted') {
+      nextStatus = 'driver_arriving';
+    } else if (targetRide.status === 'driver_arriving') {
+      nextStatus = 'driver_arrived';
+      extraData.arrivedAt = new Date().toISOString();
+      addNotification(targetRide.passengerId, 'passenger', '📍 السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
+    } else if (targetRide.status === 'driver_arrived') {
+      nextStatus = 'trip_started';
+      extraData.startedAt = new Date().toISOString();
+      addNotification(targetRide.passengerId, 'passenger', '🏍️ انطلقت الرحلة', 'نتمنى لك رحلة آمنة ومريحة مع MotoDZ.');
+    } else if (targetRide.status === 'trip_started') {
+      nextStatus = 'completed';
+      extraData.completedAt = new Date().toISOString();
+      extraData.paymentStatus = 'paid';
+      extraData.finalPrice = targetRide.finalPrice || targetRide.estimatedPrice;
+      addNotification(
+        targetRide.passengerId,
+        'passenger',
+        '🎉 تم الوصول بنجاح',
+        `المبلغ المستحق نقدًا: ${targetRide.finalPrice || targetRide.estimatedPrice} د.ج. يرجى تقييم السائق.`
       );
+    }
+
+    try {
+      await advanceRideStatusInFirestore(rideId, nextStatus, extraData);
+    } catch (e) {
+      console.error('Error advancing ride status in Firestore:', e);
     }
   };
 
-  // Cancel Ride
-  const cancelRide = (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
-    setRides(prev =>
-      prev.map(r => {
-        if (r.id === rideId) {
-          const status: RideStatus =
-            cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver';
-          return {
-            ...r,
-            status,
-            cancelledBy,
-            cancellationReason: reason,
-            cancelledAt: new Date().toISOString(),
-          };
-        }
-        return r;
-      })
-    );
-
-    // Free driver if assigned
-    const ride = rides.find(r => r.id === rideId);
-    if (ride?.driverId) {
-      setDrivers(prev =>
-        prev.map(d =>
-          d.id === ride.driverId ? { ...d, currentRideId: null, isAvailable: true } : d
-        )
-      );
-    }
-
-    if (cancelledBy === 'passenger') {
-      setPassengers(prev =>
-        prev.map(p =>
-          p.id === activePassenger.id
-            ? { ...p, cancellationCount: p.cancellationCount + 1 }
-            : p
-        )
-      );
-    }
-  };
-
-  // Update Driver Location & Live Bearing
   const updateDriverLocation = (driverId: string, location: Coordinates, heading?: number) => {
-    setDrivers(prev =>
-      prev.map(d =>
-        d.id === driverId
-          ? {
-              ...d,
-              location,
-              heading: heading !== undefined ? heading : d.heading,
-              updatedAt: new Date().toISOString(),
-            }
-          : d
-      )
-    );
-
-    // Also update in any active ride
-    setRides(prev =>
-      prev.map(r => (r.driverId === driverId ? { ...r, driverLocation: location } : r))
-    );
+    updateFirestoreDriverLocation(driverId, location.lat, location.lng, heading).catch(console.error);
   };
 
-  // Submit Rating
-  const submitRating = (rideId: string, stars: number, tags: string[], comment?: string) => {
-    const ride = rides.find(r => r.id === rideId);
-    if (!ride || !ride.driverId) return;
-
-    const newRating: Rating = {
-      id: 'RAT-' + Math.random().toString(36).substring(2, 9),
-      rideId,
-      passengerId: ride.passengerId,
-      driverId: ride.driverId,
-      rating: stars,
-      tags,
-      comment,
-      createdAt: new Date().toISOString(),
-    };
-
-    setRatings(prev => [newRating, ...prev]);
-
-    // Recalculate driver average rating
-    setDrivers(prev =>
-      prev.map(d => {
-        if (d.id === ride.driverId) {
-          const newCount = d.ratingCount + 1;
-          const newRatingVal = Math.round(((d.rating * d.ratingCount + stars) / newCount) * 100) / 100;
-          return {
-            ...d,
-            rating: newRatingVal,
-            ratingCount: newCount,
-          };
-        }
-        return d;
-      })
-    );
-  };
-
-  // Submit Complaint
-  const submitComplaint = (
-    rideId: string | undefined,
-    reason: string,
-    description: string,
-    targetUserId?: string
-  ) => {
-    const isPassenger = currentRole === 'passenger';
-    const newComplaint: Complaint = {
-      id: 'CMP-' + Math.floor(100 + Math.random() * 900),
-      rideId,
-      submittedBy: isPassenger ? 'passenger' : 'driver',
-      userId: isPassenger ? activePassenger.id : activeDriver.id,
-      userName: isPassenger ? activePassenger.name : activeDriver.name,
-      targetUserId,
-      reason,
-      description,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-
-    setComplaints(prev => [newComplaint, ...prev]);
-    addNotification('admin', 'admin', '⚠️ شكوى جديدة واردة', `${newComplaint.userName}: ${reason}`);
-  };
-
-  // Driver Self-Registration
-  const registerDriver = (driverData: Partial<DriverProfile>): { success: boolean; driverId: string } => {
+  const registerDriver = async (driverData: Partial<DriverProfile>): Promise<{ success: boolean; driverId: string }> => {
     const newDriverId = 'driver-' + Math.random().toString(36).substring(2, 8);
     const newDriver: DriverProfile = {
       id: newDriverId,
-      userId: 'user-' + newDriverId,
+      userId: currentUser?.uid || ('user-' + newDriverId),
       name: driverData.name || 'سائق جديد',
       phone: driverData.phone || '',
       email: driverData.email,
@@ -540,7 +623,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       wilaya: driverData.wilaya || 'الجزائر العاصمة',
       municipality: driverData.municipality || 'الجزائر',
       birthDate: driverData.birthDate,
-      status: 'pending', // Requires admin review
+      status: 'pending',
       isOnline: false,
       isAvailable: false,
       motorcycle: driverData.motorcycle || {
@@ -564,31 +647,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
 
-    setDrivers(prev => [newDriver, ...prev]);
+    await syncDriverProfile(newDriver);
     setActiveDriver(newDriver);
     addNotification('admin', 'admin', '📋 تسجيل سائق جديد', `السائق ${newDriver.name} ينتظر مراجعة الوثائق.`);
     return { success: true, driverId: newDriverId };
   };
 
-  // Admin Actions
-  const approveDriver = (driverId: string) => {
-    setDrivers(prev =>
-      prev.map(d => {
-        if (d.id === driverId) {
-          return {
-            ...d,
-            status: 'approved',
-            documents: {
-              ...d.documents,
-              status: 'approved',
-              reviewedBy: 'Admin MotoDZ',
-              reviewedAt: new Date().toISOString(),
-            },
-          };
-        }
-        return d;
-      })
-    );
+  // --------------------------------------------------------------------------
+  // 6. RATINGS & COMPLAINTS
+  // --------------------------------------------------------------------------
+  const submitRating = async (rideId: string, stars: number, tags: string[], comment?: string) => {
+    const ride = rides.find(r => r.id === rideId);
+    if (!ride || !ride.driverId) return;
+
+    await submitRatingToFirestore({
+      rideId,
+      passengerId: ride.passengerId,
+      driverId: ride.driverId,
+      rating: stars,
+      tags,
+      comment,
+    });
+  };
+
+  const submitComplaint = async (
+    rideId: string | undefined,
+    reason: string,
+    description: string,
+    targetUserId?: string
+  ) => {
+    const isPassenger = currentRole === 'passenger';
+    await submitComplaintToFirestore({
+      rideId,
+      submittedBy: isPassenger ? 'passenger' : 'driver',
+      userId: isPassenger ? activePassenger.id : activeDriver.id,
+      userName: isPassenger ? activePassenger.name : activeDriver.name,
+      targetUserId,
+      reason,
+      description,
+      status: 'pending',
+    });
+    addNotification('admin', 'admin', '⚠️ شكوى جديدة واردة', `${reason}: ${description}`);
+  };
+
+  // --------------------------------------------------------------------------
+  // 7. ADMIN ACTIONS
+  // --------------------------------------------------------------------------
+  const approveDriver = async (driverId: string) => {
+    const drv = drivers.find(d => d.id === driverId);
+    if (!drv) return;
+    await syncDriverProfile({ ...drv, status: 'approved' });
     addNotification(
       driverId,
       'driver',
@@ -597,41 +705,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const rejectDriver = (driverId: string, reason: string) => {
-    setDrivers(prev =>
-      prev.map(d => {
-        if (d.id === driverId) {
-          return {
-            ...d,
-            status: 'rejected',
-            rejectionReason: reason,
-            documents: {
-              ...d.documents,
-              status: 'rejected',
-              rejectionReason: reason,
-              reviewedBy: 'Admin MotoDZ',
-              reviewedAt: new Date().toISOString(),
-            },
-          };
-        }
-        return d;
-      })
-    );
+  const rejectDriver = async (driverId: string, reason: string) => {
+    const drv = drivers.find(d => d.id === driverId);
+    if (!drv) return;
+    await syncDriverProfile({ ...drv, status: 'rejected', rejectionReason: reason });
     addNotification(driverId, 'driver', '❌ لم يتم قبول الحساب', `سبب الرفض: ${reason}`);
   };
 
-  const suspendDriver = (driverId: string) => {
-    setDrivers(prev =>
-      prev.map(d => (d.id === driverId ? { ...d, status: 'suspended', isOnline: false } : d))
-    );
+  const suspendDriver = async (driverId: string) => {
+    const drv = drivers.find(d => d.id === driverId);
+    if (!drv) return;
+    await syncDriverProfile({ ...drv, status: 'suspended', isOnline: false, isAvailable: false });
   };
 
-  const updatePricing = (newPricing: PricingSettings) => {
+  const updatePricing = async (newPricing: PricingSettings) => {
     setPricing(newPricing);
-    addNotification('admin', 'admin', '⚙️ تم تحديث الأسعار', 'تم حفظ إعدادات التسعير والعمولة الجديدة.');
+    const pricingDocRef = doc(db, 'system_config', 'pricing');
+    await setDoc(pricingDocRef, { ...newPricing, updatedAt: serverTimestamp() }, { merge: true });
+    addNotification('admin', 'admin', '⚙️ تم تحديث الأسعار', 'تم حفظ إعدادات التسعير والعمولة في Firebase.');
   };
 
-  const resolveComplaint = (complaintId: string, notes: string) => {
+  const resolveComplaint = async (complaintId: string, notes: string) => {
     setComplaints(prev =>
       prev.map(c =>
         c.id === complaintId
@@ -650,63 +744,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification('all', targetRole || 'passenger', title, body, 'system');
   };
 
-  // -------------------------------------------------------------
-  // Automatic Simulation Loop for Live Driver Movement & Ride Flow
-  // -------------------------------------------------------------
-  const animationRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    // 1. Auto Accept if in Passenger Mode and simulation enabled
-    if (isAutoDriverSimulation && currentRole === 'passenger') {
-      const searchingRide = rides.find(r => r.status === 'searching');
-      if (searchingRide) {
-        const timer = setTimeout(() => {
-          // Find first available approved driver
-          const availableDriver = drivers.find(d => d.status === 'approved' && d.isOnline);
-          if (availableDriver) {
-            acceptRide(searchingRide.id, availableDriver.id);
-          }
-        }, 3500);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [rides, isAutoDriverSimulation, currentRole, drivers]);
-
-  // 2. Smooth live GPS interpolation for active ride
-  useEffect(() => {
-    const activeRide = rides.find(
-      r => r.status === 'driver_arriving' || r.status === 'trip_started'
-    );
-
-    if (!activeRide || !activeRide.driverId) return;
-
-    const driver = drivers.find(d => d.id === activeRide.driverId);
-    if (!driver) return;
-
-    // Route target: if arriving -> pickup, if started -> destination
-    const target = activeRide.status === 'driver_arriving' ? activeRide.pickup : activeRide.destination;
-    const startLoc = driver.location;
-
-    // Generate small route path
-    const routePoints = interpolateRoute(startLoc, target, 12);
-    let step = 0;
-
-    const interval = setInterval(() => {
-      if (step < routePoints.length) {
-        const nextCoord = routePoints[step];
-        const prevCoord = step > 0 ? routePoints[step - 1] : startLoc;
-        const bearing = calculateBearing(prevCoord, nextCoord);
-
-        updateDriverLocation(activeRide.driverId!, nextCoord, bearing);
-        step++;
-      } else {
-        clearInterval(interval);
-      }
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, [rides.map(r => r.status).join(',')]);
-
   return (
     <AppContext.Provider
       value={{
@@ -724,9 +761,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         complaints,
         notifications,
         ratings,
+        isFirebaseConnected,
+        currentUser,
 
         currentPassengerRide,
         requestRide,
+        acceptDriverOffer,
+        declineDriverOffer,
+        updatePassengerOffer,
         cancelRide,
         submitRating,
         submitComplaint,
@@ -734,6 +776,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentDriverRide,
         pendingDriverRideRequest,
         toggleDriverOnline,
+        submitDriverOffer,
         acceptRide,
         rejectRide,
         advanceRideStatus,
