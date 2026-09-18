@@ -29,7 +29,7 @@ jobs:
       - name: Install Capacitor & Android platform
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init BarberDZ com.barberdz.app --web-dir dist
+          npx cap init MotoDrive com.motodrive.app --web-dir dist
           npx cap add android
 
       - name: Fix Kotlin Version Conflict
