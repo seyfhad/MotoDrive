@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { BookRideModal } from './BookRideModal';
@@ -6,7 +6,7 @@ import { ActiveRideView } from './ActiveRideView';
 import { ALGERIA_LOCATIONS } from '../../utils/geo';
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw } from 'lucide-react';
 
 export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers } = useApp();
@@ -14,6 +14,40 @@ export const PassengerHome: React.FC = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>(ALGERIA_LOCATIONS[2].coords);
   const [selectedDestination, setSelectedDestination] = useState<Coordinates | null>(ALGERIA_LOCATIONS[4].coords);
+  const [isLocating, setIsLocating] = useState(false);
+
+  // جلب موقع الـ GPS الحقيقي للهاتف
+  const handleGetRealGPSLocation = () => {
+    if (!navigator.geolocation) {
+      alert('خاصية تحديد الموقع غير متوفرة في متصفحك');
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const realCoords: Coordinates = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          name: 'موقعي الحالي (GPS الحقيقي)',
+          address: 'موقعي الحالي عبر الهاتف'
+        };
+        setSelectedPickup(realCoords);
+        setIsLocating(false);
+      },
+      (error) => {
+        console.error('Error getting GPS location:', error);
+        alert('تعذر تحديد موقعك الحالي. تأكد من تفعيل الـ GPS وصلاحيات الموقع للمتصفح.');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
+
+  // محاولة أخذ الموقع الحقيقي تلقائياً عند فتح الصفحة
+  useEffect(() => {
+    handleGetRealGPSLocation();
+  }, []);
 
   // Recent trips completed by this passenger
   const pastTrips = rides
@@ -30,8 +64,8 @@ export const PassengerHome: React.FC = () => {
       {/* Interactive Map Header / Background */}
       <div className="h-72 sm:h-96 w-full relative">
         <LeafletMap
-          center={[36.7538, 3.0588]}
-          zoom={13}
+          center={selectedPickup ? [selectedPickup.lat, selectedPickup.lng] : [36.7538, 3.0588]}
+          zoom={14}
           pickup={currentPassengerRide?.pickup || selectedPickup}
           destination={currentPassengerRide?.destination || selectedDestination}
           drivers={drivers}
@@ -43,7 +77,7 @@ export const PassengerHome: React.FC = () => {
         {/* Floating Map Overlay Badges */}
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-800 text-xs text-slate-300">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>{drivers.filter(d => d.isOnline).length} سائق دراجة متاح في منطقتك</span>
+          <span>{drivers.filter(d => d.isOnline).length} سائق دراجة متاح</span>
         </div>
       </div>
 
@@ -54,7 +88,7 @@ export const PassengerHome: React.FC = () => {
           <ActiveRideView ride={currentPassengerRide} />
         ) : (
           <>
-            {/* Booking Card - Faithful to Prompt Section 6 */}
+            {/* Booking Card */}
             <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 shadow-2xl space-y-4">
               {/* Greeting */}
               <div className="flex items-center justify-between">
@@ -71,20 +105,32 @@ export const PassengerHome: React.FC = () => {
 
               {/* Pickup & Destination Interactive Fields */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
-                <button
-                  onClick={() => setShowBookingModal(true)}
-                  className="w-full flex items-center gap-3 text-right hover:opacity-90 transition-opacity"
-                >
-                  <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500 text-emerald-400 flex items-center justify-center text-xs shrink-0">
-                    📍
-                  </div>
-                  <div className="truncate flex-1">
-                    <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق</div>
-                    <div className="text-xs font-bold text-slate-200 truncate">
-                      {selectedPickup?.name || selectedPickup?.address || 'موقعي الحالي عبر GPS'}
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setShowBookingModal(true)}
+                    className="flex-1 flex items-center gap-3 text-right hover:opacity-90 transition-opacity truncate"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500 text-emerald-400 flex items-center justify-center text-xs shrink-0">
+                      📍
                     </div>
-                  </div>
-                </button>
+                    <div className="truncate flex-1">
+                      <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق (GPS)</div>
+                      <div className="text-xs font-bold text-slate-200 truncate">
+                        {selectedPickup?.name || selectedPickup?.address || 'موقعي الحالي'}
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={handleGetRealGPSLocation}
+                    disabled={isLocating}
+                    className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-amber-400 text-xs flex items-center gap-1 transition-all shrink-0"
+                    title="تحديث موقعي عبر الـ GPS"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? 'animate-spin' : ''}`} />
+                    <span className="text-[10px]">تحديث</span>
+                  </button>
+                </div>
 
                 <div className="h-px bg-slate-800/80 mx-2"></div>
 
@@ -115,7 +161,7 @@ export const PassengerHome: React.FC = () => {
               </button>
             </div>
 
-            {/* Quick Destinations / Hotspots in Algeria */}
+            {/* Quick Destinations */}
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs px-1 text-slate-400 font-semibold">
                 <span>وجهات شائعة وسريعة</span>
@@ -137,7 +183,7 @@ export const PassengerHome: React.FC = () => {
               </div>
             </div>
 
-            {/* Recent Trips Section - Prompt Section 6 */}
+            {/* Recent Trips Section */}
             <div className="bg-slate-900/90 border border-slate-800/80 rounded-3xl p-4 space-y-3">
               <div className="flex items-center justify-between text-xs text-slate-300 font-bold px-1">
                 <div className="flex items-center gap-1.5">
@@ -183,16 +229,6 @@ export const PassengerHome: React.FC = () => {
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Safety & Helmet Assurance Banner */}
-            <div className="p-3.5 bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-2xl flex items-center gap-3 text-xs text-slate-300">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 text-base">
-                🪖
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                <strong className="text-white">أمان وسلامة أولاً:</strong> يلتزم جميع سائقي MotoDZ بتوفير خوذة معقمة للراكب والتقيد بالسرعات القانونية.
-              </p>
             </div>
           </>
         )}
