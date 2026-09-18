@@ -36,11 +36,13 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
 
-  // Render Passenger Tabs
+  // Render Passenger Tabs (محدث لدعم تبويب الخريطة والأزرار السفلية بالكامل)
   const renderPassengerView = () => {
     switch (activeTab) {
       case 'home':
         return <PassengerHome />;
+      case 'map':
+        return <PassengerHome />; // توجيه تبويب الخريطة للرئيسية أو شاشة الخريطة المخصصة
       case 'trips':
         return <PassengerTrips />;
       case 'profile':
@@ -92,7 +94,7 @@ const AppContent: React.FC = () => {
       <Header onOpenSOS={() => setIsSOSOpen(true)} />
 
       {/* Main View Area */}
-      <main className="flex-1">
+      <main className="flex-1 pb-20">
         {currentRole === 'passenger' && renderPassengerView()}
         {currentRole === 'driver' && renderDriverView()}
         {currentRole === 'admin' && <AdminPanel />}
@@ -123,5 +125,3 @@ export default function App() {
     </APIProvider>
   );
 }
-
-
