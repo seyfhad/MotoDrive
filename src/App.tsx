@@ -19,12 +19,12 @@ import { DriverProfile } from './pages/driver/DriverProfile';
 // Admin Views
 import { AdminPanel } from './pages/admin/AdminPanel';
 
-// استيراد شاشة اختيار الدور التي أنشأناها سابقاً
+// استيراد شاشة اختيار الدور ومصادقة الفايربيز
 import RoleSelection from './RoleSelection';
 import { auth } from './firebaseConfig';
 
 const AppContent: React.FC = () => {
-  const { currentRole, setRole } = useApp(); // افترضنا أن setRole موجودة لتحديث الدور، أو سنعدلها حسب الكونتكست
+  const { currentRole, setRole } = useApp();
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
 
@@ -35,9 +35,8 @@ const AppContent: React.FC = () => {
       <RoleSelection 
         user={currentUser} 
         onComplete={(role: string) => {
-          // إذا كانت دالة تحديث الدور متوفرة في الكونتكست، نقوم بتحديثها
           if (setRole) setRole(role);
-          window.location.reload(); // إعادة تحميل خفيفة لضمان تحديث الواجهة
+          window.location.reload();
         }} 
       />
     );
