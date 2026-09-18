@@ -30,19 +30,38 @@ const AppContent: React.FC = () => {
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
+  // 🌍 طلب إذن الوصول إلى الموقع الجغرافي تلقائياً عند فتح التطبيق
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log("تم السماح بالموقع بنجاح:", position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+          console.warn("تم رفض إذن الموقع أو حدث خطأ:", error.message);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+  }, []);
+
   useEffect(() => {
     const handleQuotaExceeded = () => setQuotaExceeded(true);
     window.addEventListener('gmp-quota-exceeded', handleQuotaExceeded);
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
 
-  // Render Passenger Tabs (محدث لدعم تبويب الخريطة والأزرار السفلية بالكامل)
+  // Render Passenger Tabs
   const renderPassengerView = () => {
     switch (activeTab) {
       case 'home':
         return <PassengerHome />;
       case 'map':
-        return <PassengerHome />; // توجيه تبويب الخريطة للرئيسية أو شاشة الخريطة المخصصة
+        return <PassengerHome />;
       case 'trips':
         return <PassengerTrips />;
       case 'profile':
