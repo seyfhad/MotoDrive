@@ -3,12 +3,12 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyForBuild123456789",
-  authDomain: "barberdz-39883.firebaseapp.com",
-  projectId: "barberdz-39883",
-  storageBucket: "barberdz-39883.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456789"
+  apiKey: "AIzaSyDXOuP2N_qYYtSlt-25qgT86miaHf2hRYg",
+  authDomain: "moto24-ccc5b.firebaseapp.com",
+  projectId: "moto24-ccc5b",
+  storageBucket: "moto24-ccc5b.firebasestorage.app",
+  messagingSenderId: "491913533758",
+  appId: "1:491913533758:web:ccdcb1e950ba391795b46f"
 };
 
 export const app = initializeApp(firebaseConfig);
