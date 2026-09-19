@@ -1,5 +1,5 @@
 {
-  "name": "MotoDrive - موتو درايف",
+  "name": "MotoDrive",
   "description": "تطبيق ومنصة MotoDrive لحجز ونقل الأشخاص بالدراجات النارية في الجزائر - تطبيق الراكب، السائق، والتفاوض المباشر على الأجرة",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

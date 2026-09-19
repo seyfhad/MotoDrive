@@ -1,12 +1,12 @@
 {
-  "projectId": "booming-palace-1xctm",
-  "appId": "1:310442289440:web:31ad650dd8f911b9e14f45",
-  "apiKey": "AIzaSyAiQKNC8smEw3KmKmZ49SDHg51yNibVBTs",
-  "authDomain": "booming-palace-1xctm.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-motodz-1f253ffb-a6b7-4f53-8d97-17f7c2134467",
-  "storageBucket": "booming-palace-1xctm.firebasestorage.app",
-  "messagingSenderId": "310442289440",
+  "projectId": "moto24-ccc5b",
+  "appId": "1:491913533758:web:ccdcb1e950ba391795b46f",
+  "apiKey": "AIzaSyDXOuP2N_qYYtSlt-25qgT86miaHf2hRYg",
+  "authDomain": "moto24-ccc5b.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "moto24-ccc5b.firebasestorage.app",
+  "messagingSenderId": "491913533758",
   "measurementId": "",
-  "oAuthClientId": "310442289440-nmukre13v85dr792bnre2q16vicujrj8.apps.googleusercontent.com",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

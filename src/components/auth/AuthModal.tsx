@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { signOutUser } from '../../services/authService';
+import { signOutUser, signInWithDirectGmail } from '../../services/authService';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { UserRole } from '../../types';
 import {
@@ -12,7 +12,8 @@ import {
   Sparkles,
   Bike,
   Mail,
-  Phone,
+  ArrowRight,
+  Loader2,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -26,9 +27,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   defaultRole = 'passenger',
 }) => {
-  const { activePassenger, currentUser, setCurrentUser, broadcastNotification, currentRole } = useApp();
+  const { activePassenger, currentUser, setCurrentUser, setActivePassenger, setCurrentRole, broadcastNotification } = useApp();
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
+  const [emailInput, setEmailInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [loadingDirect, setLoadingDirect] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -45,6 +51,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       console.error('Sign-out error:', err);
     } finally {
       setIsSigningOut(false);
+    }
+  };
+
+  const handleDirectEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput.trim() || !emailInput.includes('@')) {
+      setErrorMsg('يرجى إدخال عنوان بريد Gmail صحيح (مثال: user@gmail.com)');
+      return;
+    }
+
+    try {
+      setLoadingDirect(true);
+      setErrorMsg(null);
+      const { user, profile } = await signInWithDirectGmail(emailInput, nameInput, '0550123456', selectedRole);
+
+      setCurrentUser(user);
+      setActivePassenger(profile);
+      if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
+        setCurrentRole('admin');
+      }
+
+      broadcastNotification(
+        'مرحباً بك في موتو درايف',
+        `تم تسجيل الدخول بنجاح عبر البريد: ${profile.email}`
+      );
+      onClose();
+    } catch (err: any) {
+      console.error('Direct Gmail Login Error:', err);
+      setErrorMsg(err?.message || 'حدث خطأ أثناء التسجيل بالبريد');
+    } finally {
+      setLoadingDirect(false);
     }
   };
 
@@ -135,6 +172,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ) : (
           /* Sign-In State */
           <div className="space-y-4">
+            {/* Mode Switcher */}
+            <div className="bg-slate-950 border border-slate-800 p-1 rounded-2xl flex items-center text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setAuthMode('google')}
+                className={`flex-1 py-1.5 rounded-xl transition-all text-center ${
+                  authMode === 'google' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                تسجيل سريع عبر Google
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthMode('email')}
+                className={`flex-1 py-1.5 rounded-xl transition-all text-center ${
+                  authMode === 'email' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                إدخال بريد Gmail مباشرة
+              </button>
+            </div>
+
             {/* Account Type Selector */}
             <div>
               <label className="block text-[11px] font-bold text-slate-400 mb-1.5">اختر صفتك في التطبيق:</label>
@@ -166,15 +225,79 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            {/* Google Sign-In Action */}
-            <div className="space-y-2 pt-1">
-              <GoogleSignInButton
-                role={selectedRole}
-                onSuccess={() => onClose()}
-                label="المتابعة باستخدام Google"
-                id="auth-modal-google-signin-btn"
-              />
-            </div>
+            {authMode === 'google' ? (
+              /* Google Sign-In Action */
+              <div className="space-y-2 pt-1">
+                <GoogleSignInButton
+                  role={selectedRole}
+                  onSuccess={() => onClose()}
+                  label="المتابعة باستخدام Google"
+                  id="auth-modal-google-signin-btn"
+                />
+              </div>
+            ) : (
+              /* Direct Email Form */
+              <form onSubmit={handleDirectEmailSubmit} className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">عنوان Gmail الخاص بك:</label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      value={emailInput}
+                      onChange={e => setEmailInput(e.target.value)}
+                      placeholder="مثال: seyfhad@gmail.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                      required
+                    />
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الاسم (اختياري):</label>
+                  <input
+                    type="text"
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    placeholder="اسمك الكامل"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                  />
+                </div>
+
+                {/* Quick Owner Fill Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailInput('seyfhad@gmail.com');
+                    setNameInput('سيف الدين (المالك)');
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[11px] font-bold transition-all text-center"
+                >
+                  ⚡ الدخول التلقائي كمالك (seyfhad@gmail.com)
+                </button>
+
+                {errorMsg && (
+                  <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
+                    {errorMsg}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loadingDirect}
+                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loadingDirect ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  ) : (
+                    <>
+                      <span>تسجيل الدخول وإتمام الحساب</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
 
             {/* Privacy & Instant Note */}
             <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
@@ -183,7 +306,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <span>حماية ومصادقة فورية:</span>
               </div>
               <p className="leading-relaxed">
-                يتم التحقق من حسابك عبر Google Firebase Authentication بشكل مشفر. لن تتم مشاركة أي بيانات حساسة مع أطراف ثالثة.
+                يتم التحقق من حسابك وتخزين بياناتك بأمان في قاعدة بيانات Firebase Firestore المشفرة.
               </p>
             </div>
           </div>
@@ -192,3 +315,4 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
+

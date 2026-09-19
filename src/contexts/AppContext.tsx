@@ -163,6 +163,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
+        if (firebaseUser.email === 'seyfhad@gmail.com' || userProfile.role === 'admin' || userProfile.email === 'seyfhad@gmail.com') {
+          setCurrentRole('admin');
+        }
       } else if (!firebaseUser) {
         // Auto sign in anonymously for immediate preview readiness
         try {

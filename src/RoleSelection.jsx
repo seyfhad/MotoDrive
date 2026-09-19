@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 // تأكد من استيراد متغير db الخاص بقاعدة بيانات فايرستور من ملف إعدادات فيرباس لديك
-import { db } from './firebaseConfig'; 
+import { db } from './lib/firebase'; 
 
 export default function RoleSelection({ user, onComplete }) {
   const [loading, setLoading] = useState(false);

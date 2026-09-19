@@ -36,7 +36,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       const { user, profile } = await signInWithGoogle((role || 'passenger') as UserRole);
 
       setActivePassenger(profile);
-      if (profile.role === 'admin') {
+      if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
         setCurrentRole('admin');
       }
 

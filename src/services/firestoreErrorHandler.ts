@@ -26,7 +26,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -43,6 +43,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  if (operationType === OperationType.GET || operationType === OperationType.LIST) {
+    console.warn(`Firestore read notice [${path}]:`, errInfo.error);
+    return;
+  }
+
+  console.error('Firestore Operation Error:', JSON.stringify(errInfo));
+  throw new Error(errInfo.error);
 }

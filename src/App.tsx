@@ -30,6 +30,21 @@ const AppContent: React.FC = () => {
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
+  // Request geolocation permission on app start
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          console.log('Location permission granted:', pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Geolocation prompt response:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  }, []);
+
   // Reset tab when switching roles
   useEffect(() => {
     setActiveTab('home');
