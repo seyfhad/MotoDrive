@@ -31,26 +31,40 @@ export const subscribeToAuth = (
       } else {
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'مستخدم موتو درايف',
+          name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
           phone: firebaseUser.phoneNumber || '0550123456',
           email: firebaseUser.email || undefined,
-          role: 'passenger',
+          role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
           status: 'active',
           cancellationCount: 0,
           createdAt: new Date().toISOString(),
         };
 
-        await setDoc(userDocRef, {
-          ...initialProfile,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        try {
+          await setDoc(userDocRef, {
+            ...initialProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (setErr) {
+          console.warn('Unable to write initial profile to Firestore (offline fallback active):', setErr);
+        }
 
         callback(firebaseUser, initialProfile);
       }
-    } catch (err) {
-      console.error('Error fetching user profile in auth subscriber:', err);
-      callback(firebaseUser, null);
+    } catch (err: any) {
+      console.warn('Auth subscriber profile fetch warning (using offline fallback profile):', err?.message || err);
+      const fallbackProfile: UserProfile = {
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
+        phone: firebaseUser.phoneNumber || '0550123456',
+        email: firebaseUser.email || undefined,
+        role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
+        status: 'active',
+        cancellationCount: 0,
+        createdAt: new Date().toISOString(),
+      };
+      callback(firebaseUser, fallbackProfile);
     }
   });
 };
@@ -147,14 +161,31 @@ export const signInWithDirectGmail = async (email: string, name?: string, phone?
   return { user, profile };
 };
 
+let cachedAccessToken: string | null = null;
+
+export const getGmailAccessToken = (): string | null => {
+  return cachedAccessToken;
+};
+
+export const setGmailAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+};
+
 export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
+  provider.addScope('https://www.googleapis.com/auth/gmail.send');
+  provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+  provider.addScope('https://www.googleapis.com/auth/gmail.compose');
   
   let user: FirebaseUser;
   try {
     const cred = await signInWithPopup(auth, provider);
     user = cred.user;
+    const credential = GoogleAuthProvider.credentialFromResult(cred);
+    if (credential?.accessToken) {
+      cachedAccessToken = credential.accessToken;
+    }
   } catch (err: any) {
     console.warn('Google Popup SignIn notice:', err?.code || err?.message);
     if (auth.currentUser) {

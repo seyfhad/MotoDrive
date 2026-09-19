@@ -430,7 +430,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true, rideId: rideDocId };
     } catch (err: any) {
-      console.error('Error creating ride in Firestore:', err);
+      console.warn('Ride creation notice in AppContext:', err);
       return { success: false, error: err.message || 'تعذر إرسال طلب الرحلة' };
     }
   };

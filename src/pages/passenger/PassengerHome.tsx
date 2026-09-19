@@ -3,7 +3,7 @@ import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { BookRideModal } from './BookRideModal';
 import { ActiveRideView } from './ActiveRideView';
-import { ALGERIA_LOCATIONS, reverseGeocodeCoords } from '../../utils/geo';
+import { ALGERIA_LOCATIONS, reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -20,56 +20,22 @@ export const PassengerHome: React.FC = () => {
   const [mapNotice, setMapNotice] = useState<string | null>(null);
 
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
-  const handleGetRealGPSLocation = () => {
+  const handleGetRealGPSLocation = async () => {
     setIsLocating(true);
     setGpsStatusMessage(null);
 
-    if (!navigator.geolocation) {
-      setGpsStatusMessage('خاصية تحديد المواقع (GPS) غير مدعومة في جهازك أو متصفحك.');
+    try {
+      const res = await getRobustUserLocation();
+      setSelectedPickup(res.coords);
+      if (res.message) {
+        setGpsStatusMessage(res.message);
+      }
+    } catch (e) {
+      setGpsStatusMessage('تعذر جلب موقعك. يمكنك النقر على الخريطة مباشرة لتحديد المكان.');
+    } finally {
       setIsLocating(false);
-      return;
+      setTimeout(() => setGpsStatusMessage(null), 6000);
     }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const address = await reverseGeocodeCoords(latitude, longitude);
-          const realCoords: Coordinates = {
-            lat: latitude,
-            lng: longitude,
-            name: address || 'موقعي الفعلي (GPS)',
-            address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-          };
-          setSelectedPickup(realCoords);
-          setGpsStatusMessage(`تم تحديد موقعك بدقة: ${address}`);
-        } catch (e) {
-          const fallbackCoords: Coordinates = {
-            lat: latitude,
-            lng: longitude,
-            name: 'موقعي الفعلي (GPS)',
-            address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-          };
-          setSelectedPickup(fallbackCoords);
-          setGpsStatusMessage('تم تحديد إحداثيات موقعك عبر الأقمار الصناعية بنجاح.');
-        } finally {
-          setIsLocating(false);
-          // Clear message after 4s
-          setTimeout(() => setGpsStatusMessage(null), 5000);
-        }
-      },
-      (error) => {
-        setIsLocating(false);
-        if (error.code === 1) {
-          setGpsStatusMessage('⚠️ يرجى السماح للتطبيق بالوصول إلى موقعك الجغرافي من إعدادات المتصفح أو أيقونة القفل أعلى الصفحة.');
-        } else if (error.code === 2) {
-          setGpsStatusMessage('⚠️ تعذر التقاط إشارة GPS. تأكد من تفعيل خدمة الموقع في جهازك.');
-        } else {
-          setGpsStatusMessage('⚠️ استغرق تحديد الموقع وقتاً طويلاً. يمكنك النقر مباشرة على الخريطة لتحديد مكانك.');
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
   };
 
   // محاولة أخذ الموقع عند التشغيل

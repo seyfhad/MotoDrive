@@ -6,7 +6,7 @@ import { DriverActiveRide } from './DriverActiveRide';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw, Bike } from 'lucide-react';
 import { updateFirestoreDriverLocation } from '../../services/firestoreService';
-import { reverseGeocodeCoords } from '../../utils/geo';
+import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
 export const DriverHome: React.FC = () => {
@@ -26,42 +26,25 @@ export const DriverHome: React.FC = () => {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   // جلب موقع GPS الحقيقي للسائق وتحديثه فوراً في السحابة
-  const handleRefreshDriverGPS = () => {
+  const handleRefreshDriverGPS = async () => {
     setIsUpdatingLocation(true);
     setLocationSuccessMsg(null);
 
-    if (!navigator.geolocation) {
-      setOnlineError('خاصية GPS غير مدعومة في جهازك.');
+    try {
+      const res = await getRobustUserLocation();
+      const { lat, lng } = res.coords;
+      await updateFirestoreDriverLocation(activeDriver.id, lat, lng);
+      setActiveDriver({
+        ...activeDriver,
+        location: res.coords,
+      });
+      setLocationSuccessMsg(res.message || '📍 تم تحديث موقعك الحقيقي بنجاح.');
+      setTimeout(() => setLocationSuccessMsg(null), 5000);
+    } catch (e) {
+      console.warn('Driver location notice:', e);
+    } finally {
       setIsUpdatingLocation(false);
-      return;
     }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude, heading, speed } = pos.coords;
-        try {
-          await updateFirestoreDriverLocation(
-            activeDriver.id,
-            latitude,
-            longitude,
-            heading || undefined,
-            speed || undefined
-          );
-          const address = await reverseGeocodeCoords(latitude, longitude);
-          setLocationSuccessMsg(`📍 تم تحديد وتحديث موقعك: ${address || 'بالقرب من موقعك الفعلي'}`);
-          setTimeout(() => setLocationSuccessMsg(null), 5000);
-        } catch (e) {
-          console.warn('Driver location update notice:', e);
-        } finally {
-          setIsUpdatingLocation(false);
-        }
-      },
-      (err) => {
-        setIsUpdatingLocation(false);
-        setOnlineError('يرجى السماح للتطبيق بالوصول لموقع GPS في جهازك.');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
   };
 
   // Today's trips by this driver

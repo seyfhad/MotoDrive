@@ -22,7 +22,7 @@ import { AdminPanel } from './pages/admin/AdminPanel';
 
 const GOOGLE_MAPS_API_KEY =
   (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) ||
-  'AIzaSyDuDN99dHL1RK2H6pTn3oLaQM8JmQgkA4o';
+  'AIzaSyBqJIpB6lQZNXKY_N6ptrBVV5_R84FpRWM';
 
 const AppContent: React.FC = () => {
   const { currentRole } = useApp();

@@ -9,6 +9,7 @@ import {
   MapMouseEvent,
 } from '@vis.gl/react-google-maps';
 import { Coordinates, DriverProfile } from '../../types';
+import { getRobustUserLocation } from '../../utils/geo';
 
 export interface GoogleMapViewProps {
   center?: [number, number];
@@ -172,44 +173,25 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
   );
 
   // دالة طلب إذن وتحديد الموقع الجغرافي للـ GPS وتوجيه الخريطة نحوه
-  const requestUserLocation = () => {
-    if (!navigator.geolocation) {
-      alert("المتصفح لا يدعم تحديد الموقع الجغرافي");
-      return;
-    }
-
+  const requestUserLocation = async () => {
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const userCoords: Coordinates = {
-          lat: Math.round(position.coords.latitude * 100000) / 100000,
-          lng: Math.round(position.coords.longitude * 100000) / 100000,
-          name: "موقعي الحالي"
-        };
-        setIsLocating(false);
+    try {
+      const res = await getRobustUserLocation();
+      const userCoords = res.coords;
 
-        // تحريك الخريطة إلى الموقع الحالي للمستخدم
-        if (mapInstance) {
-          mapInstance.panTo({ lat: userCoords.lat, lng: userCoords.lng });
-          mapInstance.setZoom(16);
-        }
-
-        // إرسال الإحداثيات لموقع الانطلاق إذا كان مطلوباً
-        if (onMapClick) {
-          onMapClick(userCoords);
-        }
-      },
-      (error) => {
-        setIsLocating(false);
-        console.error("فشل جلب الموقع:", error);
-        alert("يرجى السماح بالتطبيق بالوصول إلى الموقع الجغرافي من إعدادات المتصفح أو الهاتف.");
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
+      if (mapInstance) {
+        mapInstance.panTo({ lat: userCoords.lat, lng: userCoords.lng });
+        mapInstance.setZoom(16);
       }
-    );
+
+      if (onMapClick) {
+        onMapClick(userCoords);
+      }
+    } catch (err) {
+      console.warn("Location request notice:", err);
+    } finally {
+      setIsLocating(false);
+    }
   };
 
   return (

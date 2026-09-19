@@ -70,6 +70,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setActivePassenger(profile);
       if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
         setCurrentRole('admin');
+      } else {
+        setCurrentRole(selectedRole);
       }
 
       broadcastNotification(

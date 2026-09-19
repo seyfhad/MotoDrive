@@ -231,3 +231,78 @@ export async function searchAlgeriaPlaces(
 
   return [];
 }
+
+export interface RobustLocationResult {
+  coords: Coordinates;
+  isFallback: boolean;
+  message?: string;
+}
+
+/**
+ * High-reliability geolocation getter for browser, webview, mobile, and iframe environments
+ */
+export async function getRobustUserLocation(): Promise<RobustLocationResult> {
+  const defaultCoords: Coordinates = {
+    lat: 36.7538,
+    lng: 3.0588,
+    name: 'وسط الجزائر العاصمة',
+    address: 'ساحة البريد المركزي، الجزائر العاصمة',
+  };
+
+  if (!navigator || !navigator.geolocation) {
+    return {
+      coords: defaultCoords,
+      isFallback: true,
+      message: 'خاصية تحديد الموقع غير مدعومة في متصفحك. تم وضع الخريطة في وسط الجزائر العاصمة.',
+    };
+  }
+
+  const tryPosition = (options: PositionOptions): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  };
+
+  try {
+    // Attempt 1: High accuracy GPS with short 7s timeout
+    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 });
+    const { latitude, longitude } = pos.coords;
+    const address = await reverseGeocodeCoords(latitude, longitude);
+    return {
+      coords: {
+        lat: latitude,
+        lng: longitude,
+        name: address || 'موقعي الحالي (GPS)',
+        address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      },
+      isFallback: false,
+      message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
+    };
+  } catch (err1) {
+    // Attempt 2: Low accuracy (WiFi/Cellular/IP) with 10s timeout
+    try {
+      const pos = await tryPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 });
+      const { latitude, longitude } = pos.coords;
+      const address = await reverseGeocodeCoords(latitude, longitude);
+      return {
+        coords: {
+          lat: latitude,
+          lng: longitude,
+          name: address || 'موقعي الحالي',
+          address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        },
+        isFallback: false,
+        message: 'تم تحديد موقعك التقريبي عبر شبكة الاتصال.',
+      };
+    } catch (err2: any) {
+      const isDenied = err2?.code === 1;
+      return {
+        coords: defaultCoords,
+        isFallback: true,
+        message: isDenied
+          ? '⚠️ تم حظر الوصول إلى GPS. يرجى تفعيل إذن الموقع من إعدادات المتصفح أو الضغط على الخريطة مباشرة لتحديد مكانك.'
+          : '⚠️ تعذر التقاط إشارة GPS. تم وضع الخريطة في وسط الجزائر العاصمة، يمكنك اختيار موقعك يدويًا.',
+      };
+    }
+  }
+}

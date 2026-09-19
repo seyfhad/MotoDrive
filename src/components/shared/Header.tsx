@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, Bike } from 'lucide-react';
+import { Bell, AlertTriangle, User, Bike, Mail } from 'lucide-react';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
 import { AuthModal } from '../auth/AuthModal';
+import { GmailReceiptModal } from './GmailReceiptModal';
 
 export const Header: React.FC = () => {
   const {
@@ -25,6 +26,7 @@ export const Header: React.FC = () => {
   const [showRegisterDriver, setShowRegisterDriver] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGmailModal, setShowGmailModal] = useState(false);
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
   const isTripActive = Boolean(currentPassengerRide || currentDriverRide);
@@ -43,52 +45,33 @@ export const Header: React.FC = () => {
             </div>
           </div>
 
-          {/* Role Switching & Quick Tools */}
+          {/* User Account & Quick Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Quick Profile Edit Button */}
+            {/* Account & Role Badge Button */}
             <button
               id="header-user-profile-btn"
-              onClick={() => setShowUserProfile(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold transition-all max-w-[100px] sm:max-w-[130px]"
-              title="تعديل بيانات الحساب"
+              onClick={() => {
+                if (!currentUser) {
+                  setShowAuthModal(true);
+                } else {
+                  setShowUserProfile(true);
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold transition-all"
+              title="حسابي والصفة في التطبيق"
             >
-              <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="truncate text-[10px] sm:text-xs">{activePassenger.name.split(' ')[0]}</span>
+              {currentRole === 'driver' ? (
+                <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              ) : (
+                <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              )}
+              <span className="truncate text-[10px] sm:text-xs font-bold">
+                {currentUser ? (activePassenger?.name?.split(' ')[0] || 'حسابي') : 'تسجيل الدخول'}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold">
+                {currentRole === 'driver' ? 'سائق' : currentRole === 'admin' ? 'أدمن' : 'راكب'}
+              </span>
             </button>
-
-            {/* Role Toggle Bar (Passengers / Drivers) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-0.5 flex items-center gap-0.5">
-              <button
-                id="role-btn-passenger"
-                onClick={() => setCurrentRole('passenger')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  currentRole === 'passenger'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="وضع الزبائن (الراكب)"
-              >
-                <User className="w-3.5 h-3.5" />
-                <span className="text-[10px] sm:text-xs">الزبائن</span>
-              </button>
-
-              <button
-                id="role-btn-driver"
-                onClick={() => setCurrentRole('driver')}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all relative ${
-                  currentRole === 'driver'
-                    ? 'bg-amber-500 text-slate-950 shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="وضع السواق (السائق)"
-              >
-                <Bike className="w-3.5 h-3.5" />
-                <span className="text-[10px] sm:text-xs">السواق</span>
-                {activeDriver.isOnline && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                )}
-              </button>
-            </div>
 
             {/* Emergency SOS button */}
             <button
@@ -103,6 +86,16 @@ export const Header: React.FC = () => {
             >
               <AlertTriangle className="w-3.5 h-3.5" />
               <span className="text-[10px] font-black hidden sm:inline">SOS</span>
+            </button>
+
+            {/* Gmail Action Button */}
+            <button
+              id="header-gmail-btn"
+              onClick={() => setShowGmailModal(true)}
+              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors"
+              title="إرسال عبر Gmail"
+            >
+              <Mail className="w-3.5 h-3.5 text-amber-400" />
             </button>
 
             {/* Notification Bell */}
@@ -173,6 +166,11 @@ export const Header: React.FC = () => {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
+      />
+      <GmailReceiptModal
+        isOpen={showGmailModal}
+        onClose={() => setShowGmailModal(false)}
+        defaultRecipient={activePassenger.email || ''}
       />
     </>
   );

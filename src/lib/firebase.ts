@@ -9,20 +9,10 @@ const app = initializeApp(firebaseConfigJson);
 
 export const auth = getAuth(app);
 // Use customized database ID if specified in config
-export const db = firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfigJson.firestoreDatabaseId)
+const configAny = firebaseConfigJson as any;
+export const db = configAny.firestoreDatabaseId && configAny.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, configAny.firestoreDatabaseId)
   : getFirestore(app);
 export const storage = getStorage(app);
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
-testConnection();
 
 export default app;

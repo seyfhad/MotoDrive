@@ -38,6 +38,8 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       setActivePassenger(profile);
       if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
         setCurrentRole('admin');
+      } else {
+        setCurrentRole(role);
       }
 
       broadcastNotification(
@@ -51,10 +53,12 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
       let message = 'فشل تسجيل الدخول بواسطة جوجل';
-      if (err.code === 'auth/popup-closed-by-user') {
+      if (err.code === 'auth/unauthorized-domain') {
+        message = '⚠️ نطاق هذا الموقع غير مصرح به في Firebase Auth! يرجى إضافة رابط موقعك (مثل username.github.io) في Firebase Console ⬅️ Authentication ⬅️ Authorized Domains.';
+      } else if (err.code === 'auth/popup-closed-by-user') {
         message = 'تم إغلاق نافذة تسجيل الدخول قبل إتمام العملية.';
       } else if (err.code === 'auth/popup-blocked') {
-        message = 'تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة.';
+        message = 'تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة Pop-ups أو استخدام إدخال بريد Gmail مباشرة.';
       } else if (err.code === 'auth/cancelled-popup-request') {
         message = 'تم إلغاء الطلب المتكرر.';
       } else if (err.message) {

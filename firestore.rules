@@ -1,66 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.admin == true ||
-        request.auth.token.email == 'seyfhad@gmail.com'
-      );
-    }
-
-    // System configuration (Pricing, service areas)
-    match /system_config/{configId} {
-      allow read, write: if true;
-    }
-
-    // User profiles (Passengers, Drivers, Admins)
-    match /users/{userId} {
-      allow read, write: if true;
-    }
-
-    // Driver profiles, status and live telemetry
-    match /drivers/{driverId} {
-      allow read, write: if true;
-    }
-
-    // Rides and Fair Fare Negotiation
-    match /rides/{rideId} {
-      allow read, write: if true;
-
-      // Driver Offers Subcollection
-      match /offers/{offerId} {
-        allow read, write: if true;
-      }
-    }
-
-    // Service Areas (Wilayas / Zones)
-    match /service_areas/{areaId} {
-      allow read, write: if true;
-    }
-
-    match /serviceAreas/{areaId} {
-      allow read, write: if true;
-    }
-
-    // Trip Ratings
-    match /ratings/{ratingId} {
-      allow read, write: if true;
-    }
-
-    // Support & Complaints
-    match /complaints/{complaintId} {
+    match /{document=**} {
       allow read, write: if true;
     }
   }
 }
+

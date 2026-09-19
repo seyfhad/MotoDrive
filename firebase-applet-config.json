@@ -1,12 +1,12 @@
 {
   "projectId": "moto24-ccc5b",
-  "appId": "1:491913533758:web:ccdcb1e950ba391795b46f",
+  "appId": "1:491913533758:web:0994dee66818e98595b46f",
   "apiKey": "AIzaSyDXOuP2N_qYYtSlt-25qgT86miaHf2hRYg",
   "authDomain": "moto24-ccc5b.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
+  "firestoreDatabaseId": "ai-studio-motodrive-1f253ffb-a6b7-4f53-8d97-17f7c2134467",
   "storageBucket": "moto24-ccc5b.firebasestorage.app",
   "messagingSenderId": "491913533758",
   "measurementId": "",
-  "oAuthClientId": "",
+  "oAuthClientId": "491913533758-1he3v1129mqrbprhtm4viepps7s1ijh2.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
