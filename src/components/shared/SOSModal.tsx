@@ -13,8 +13,8 @@ export const SOSModal: React.FC<SOSModalProps> = ({ onClose, activeRide }) => {
 
   const copyRideInfo = () => {
     const text = activeRide
-      ? `معلومات طوارئ رحلة MotoDZ:\nرقم الرحلة: ${activeRide.id}\nالانطلاق: ${activeRide.pickup.name || activeRide.pickup.address}\nالوجهة: ${activeRide.destination.name || activeRide.destination.address}\nالسائق: ${activeRide.driverName || 'قيد البحث'}`
-      : `طلب مساعدة طوارئ من تطبيق MotoDZ`;
+      ? `معلومات طوارئ رحلة MotoDrive:\nرقم الرحلة: ${activeRide.id}\nالانطلاق: ${activeRide.pickup.name || activeRide.pickup.address}\nالوجهة: ${activeRide.destination.name || activeRide.destination.address}\nالسائق: ${activeRide.driverName || 'قيد البحث'}`
+      : `طلب مساعدة طوارئ من تطبيق MotoDrive`;
 
     navigator.clipboard?.writeText(text);
     setCopied(true);

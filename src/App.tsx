@@ -30,24 +30,10 @@ const AppContent: React.FC = () => {
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
-  // 🌍 طلب إذن الوصول إلى الموقع الجغرافي تلقائياً عند فتح التطبيق
+  // Reset tab when switching roles
   useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          console.log("تم السماح بالموقع بنجاح:", position.coords.latitude, position.coords.longitude);
-        },
-        (error) => {
-          console.warn("تم رفض إذن الموقع أو حدث خطأ:", error.message);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        }
-      );
-    }
-  }, []);
+    setActiveTab('home');
+  }, [currentRole]);
 
   useEffect(() => {
     const handleQuotaExceeded = () => setQuotaExceeded(true);
@@ -59,7 +45,6 @@ const AppContent: React.FC = () => {
   const renderPassengerView = () => {
     switch (activeTab) {
       case 'home':
-        return <PassengerHome />;
       case 'map':
         return <PassengerHome />;
       case 'trips':
@@ -75,6 +60,7 @@ const AppContent: React.FC = () => {
   const renderDriverView = () => {
     switch (activeTab) {
       case 'home':
+      case 'requests':
         return <DriverHome />;
       case 'earnings':
         return <DriverEarnings />;
@@ -90,10 +76,10 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950" dir="rtl">
+    <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
       {/* Tier 2 Quota Banner */}
       {quotaExceeded && (
-        <div className="bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
+        <div className="w-full bg-amber-50 border-b border-amber-200 text-amber-900 px-4 py-2.5 text-xs md:text-sm text-center sticky top-0 z-50 shadow-sm">
           <span>
             Google Maps Platform quota reached. If you are the app owner, visit{' '}
             <a
@@ -109,23 +95,30 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Global Application Header */}
-      <Header onOpenSOS={() => setIsSOSOpen(true)} />
+      {/* Main Responsive Mobile Frame (fits mobile 100%, and frames as phone on wide screens) */}
+      <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20">
+        {/* Global Application Header */}
+        <Header onOpenSOS={() => setIsSOSOpen(true)} />
 
-      {/* Main View Area */}
-      <main className="flex-1 pb-20">
-        {currentRole === 'passenger' && renderPassengerView()}
-        {currentRole === 'driver' && renderDriverView()}
-        {currentRole === 'admin' && <AdminPanel />}
-      </main>
+        {/* Main View Area */}
+        <main className="flex-1 w-full">
+          {currentRole === 'passenger' && renderPassengerView()}
+          {currentRole === 'driver' && renderDriverView()}
+          {currentRole === 'admin' && <AdminPanel />}
+        </main>
 
-      {/* Bottom Navigation for Mobile / Handheld View */}
-      {currentRole !== 'admin' && (
-        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-      )}
+        {/* Bottom Navigation for Mobile / Handheld View */}
+        {currentRole !== 'admin' && (
+          <BottomNav
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onTabChange={setActiveTab}
+          />
+        )}
 
-      {/* Algerian Emergency SOS Modal */}
-      {isSOSOpen && <SOSModal onClose={() => setIsSOSOpen(false)} />}
+        {/* Algerian Emergency SOS Modal */}
+        {isSOSOpen && <SOSModal onClose={() => setIsSOSOpen(false)} />}
+      </div>
     </div>
   );
 };
@@ -144,3 +137,5 @@ export default function App() {
     </APIProvider>
   );
 }
+
+

@@ -92,7 +92,7 @@ export const DriverDocumentsUpload: React.FC = () => {
         <p className="text-xs opacity-90 leading-relaxed">
           {activeDriver.status === 'approved'
             ? 'حسابك مفعل وجاهز لاستقبال طلبات الركاب. يرجى دائماً الالتزام بالخوذة الواقية.'
-            : 'لا يمكن للسائق تفعيل وضع Online أو استقبال الرحلات قبل اعتماد الوثائق رسمياً من فريق إدارة MotoDZ.'}
+            : 'لا يمكن للسائق تفعيل وضع Online أو استقبال الرحلات قبل اعتماد الوثائق رسمياً من فريق إدارة MotoDrive.'}
         </p>
       </div>
 

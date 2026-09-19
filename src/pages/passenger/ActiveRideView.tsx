@@ -313,7 +313,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
             ✓
           </div>
           <h3 className="text-lg font-black text-white">وصلت إلى وجهتك بالسلامة!</h3>
-          <p className="text-xs text-slate-400">شكراً لاختيارك منصة MotoDZ</p>
+          <p className="text-xs text-slate-400">شكراً لاختيارك منصة MotoDrive</p>
         </div>
 
         {/* Fare Summary */}

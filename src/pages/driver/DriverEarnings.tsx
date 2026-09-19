@@ -94,7 +94,7 @@ export const DriverEarnings: React.FC = () => {
             <span className="font-bold text-white">{formatCurrencyDZD(stats.gross)}</span>
           </div>
           <div className="flex items-center justify-between text-red-400">
-            <span>عمولة تطبيق MotoDZ ({pricing.platformCommissionPercent}%):</span>
+            <span>عمولة تطبيق MotoDrive ({pricing.platformCommissionPercent}%):</span>
             <span className="font-bold">- {formatCurrencyDZD(stats.commission)}</span>
           </div>
           <div className="pt-2 border-t border-slate-800 flex items-center justify-between font-bold text-emerald-400">
@@ -111,7 +111,7 @@ export const DriverEarnings: React.FC = () => {
           <span>شفافية الحسابات والتحصيل:</span>
         </div>
         <p className="text-[11px]">
-          يقوم السائق بتحصيل المبلغ كاملاً نقدًا (Cash) مباشرة من الراكب عند الوصول. يتم خصم عمولة MotoDZ ({pricing.platformCommissionPercent}%) آلياً من رصيد المحفظة الإلكترونية.
+          يقوم السائق بتحصيل المبلغ كاملاً نقدًا (Cash) مباشرة من الراكب عند الوصول. يتم خصم عمولة MotoDrive ({pricing.platformCommissionPercent}%) آلياً من رصيد المحفظة الإلكترونية.
         </p>
       </div>
     </div>

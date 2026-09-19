@@ -48,6 +48,7 @@ import {
   syncDriverProfile,
   syncUserProfile,
 } from '../services/firestoreService';
+import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest } from '../services/authService';
 
 interface AppContextType {
@@ -182,20 +183,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 2. REAL-TIME FIRESTORE SUBSCRIPTIONS (RIDES, OFFERS, DRIVERS, PRICING)
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (!currentUser) return;
-
     // 2.1 Subscribe to System Pricing
+    const pricingPath = 'system_config/pricing';
     const pricingDocRef = doc(db, 'system_config', 'pricing');
     const unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
       if (docSnap.exists()) {
         setPricing(docSnap.data() as PricingSettings);
       } else {
         // Initialize default pricing in Firestore if missing
-        setDoc(pricingDocRef, { ...DEFAULT_PRICING, updatedAt: serverTimestamp() }).catch(console.error);
+        setDoc(pricingDocRef, { ...DEFAULT_PRICING, updatedAt: serverTimestamp() }).catch(err => {
+          console.warn('Initial pricing set notice:', err);
+        });
       }
-    }, (err) => console.warn('Pricing snapshot notice:', err.message));
+    }, (err) => {
+      console.warn('Pricing snapshot notice:', err.message);
+      try {
+        handleFirestoreError(err, OperationType.GET, pricingPath);
+      } catch (e) {
+        // Logged standardized error
+      }
+    });
 
     // 2.2 Subscribe to Real-Time Rides
+    const ridesPath = 'rides';
     const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'));
     const unsubRides = onSnapshot(ridesQuery, async (querySnap) => {
       const fetchedRides: Ride[] = [];
@@ -218,9 +228,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       setRides(fetchedRides);
-    }, (err) => console.warn('Rides snapshot notice:', err.message));
+    }, (err) => {
+      console.warn('Rides snapshot notice:', err.message);
+      try {
+        handleFirestoreError(err, OperationType.GET, ridesPath);
+      } catch (e) {
+        // Logged standardized error
+      }
+    });
 
     // 2.3 Subscribe to Real-Time Drivers
+    const driversPath = 'drivers';
     const driversQuery = query(collection(db, 'drivers'));
     const unsubDrivers = onSnapshot(driversQuery, (querySnap) => {
       if (!querySnap.empty) {
@@ -234,14 +252,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           syncDriverProfile(drv).catch(console.error);
         });
       }
-    }, (err) => console.warn('Drivers snapshot notice:', err.message));
+    }, (err) => {
+      console.warn('Drivers snapshot notice:', err.message);
+      try {
+        handleFirestoreError(err, OperationType.GET, driversPath);
+      } catch (e) {
+        // Logged standardized error
+      }
+    });
 
     return () => {
       unsubPricing();
       unsubRides();
       unsubDrivers();
     };
-  }, [currentUser]);
+  }, []);
 
   // Sync active driver/passenger references
   useEffect(() => {
@@ -364,13 +389,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const driverEarning = offeredPrice - commission;
 
     try {
-      const rideDocId = await createRideInFirestore({
+      const ridePayload: any = {
         passengerId: activePassenger.id,
         passengerName: activePassenger.name,
         passengerPhone: activePassenger.phone,
-        passengerPhoto: activePassenger.photoUrl,
         passengerRating: activePassenger.rating || 4.9,
-        passengerNote: passengerNote?.trim() || undefined,
         status: 'searching',
         pickup,
         destination,
@@ -384,7 +407,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         paymentMethod: 'cash',
         paymentStatus: 'pending',
         requestedAt: new Date().toISOString(),
-      });
+      };
+
+      if (activePassenger.photoUrl) {
+        ridePayload.passengerPhoto = activePassenger.photoUrl;
+      }
+      if (passengerNote && passengerNote.trim()) {
+        ridePayload.passengerNote = passengerNote.trim();
+      }
+
+      const rideDocId = await createRideInFirestore(ridePayload);
 
       addNotification(
         'all_drivers',
@@ -577,16 +609,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let nextStatus: RideStatus = targetRide.status;
     const extraData: Partial<Ride> = {};
 
-    if (targetRide.status === 'accepted') {
-      nextStatus = 'driver_arriving';
-    } else if (targetRide.status === 'driver_arriving') {
+    if (targetRide.status === 'accepted' || targetRide.status === 'driver_arriving') {
       nextStatus = 'driver_arrived';
       extraData.arrivedAt = new Date().toISOString();
       addNotification(targetRide.passengerId, 'passenger', '📍 السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
     } else if (targetRide.status === 'driver_arrived') {
       nextStatus = 'trip_started';
       extraData.startedAt = new Date().toISOString();
-      addNotification(targetRide.passengerId, 'passenger', '🏍️ انطلقت الرحلة', 'نتمنى لك رحلة آمنة ومريحة مع MotoDZ.');
+      addNotification(targetRide.passengerId, 'passenger', '🏍️ انطلقت الرحلة', 'نتمنى لك رحلة آمنة ومريحة مع MotoDrive.');
     } else if (targetRide.status === 'trip_started') {
       nextStatus = 'completed';
       extraData.completedAt = new Date().toISOString();

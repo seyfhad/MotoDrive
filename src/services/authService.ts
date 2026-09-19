@@ -2,6 +2,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInAnonymously,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut as fbSignOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -29,7 +31,7 @@ export const subscribeToAuth = (
       } else {
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'مستخدم موطو ديزاد',
+          name: firebaseUser.displayName || 'مستخدم موتو درايف',
           phone: firebaseUser.phoneNumber || '0550123456',
           email: firebaseUser.email || undefined,
           role: 'passenger',
@@ -75,6 +77,51 @@ export const signInQuickGuest = async (name: string, phone: string, role: UserRo
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  return { user, profile };
+};
+
+export const signInWithGoogle = async (role: UserRole = 'passenger') => {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const cred = await signInWithPopup(auth, provider);
+  const user = cred.user;
+
+  const userDocRef = doc(db, 'users', user.uid);
+  const userSnap = await getDoc(userDocRef);
+
+  let profile: UserProfile;
+  if (userSnap.exists()) {
+    profile = userSnap.data() as UserProfile;
+    // Update profile with Google details if missing
+    const updates: Partial<UserProfile> = {};
+    if (user.photoURL && !profile.photoUrl) updates.photoUrl = user.photoURL;
+    if (user.displayName && (!profile.name || profile.name.includes('مستخدم'))) updates.name = user.displayName;
+    if (user.email && !profile.email) updates.email = user.email;
+    if (user.email === 'seyfhad@gmail.com') updates.role = 'admin';
+
+    if (Object.keys(updates).length > 0) {
+      await setDoc(userDocRef, { ...updates, updatedAt: serverTimestamp() }, { merge: true });
+      profile = { ...profile, ...updates };
+    }
+  } else {
+    profile = {
+      id: user.uid,
+      name: user.displayName || 'مستخدم موتو درايف',
+      phone: user.phoneNumber || '0550123456',
+      email: user.email || undefined,
+      photoUrl: user.photoURL || undefined,
+      role: user.email === 'seyfhad@gmail.com' ? 'admin' : role,
+      status: 'active',
+      cancellationCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(userDocRef, {
+      ...profile,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
 
   return { user, profile };
 };

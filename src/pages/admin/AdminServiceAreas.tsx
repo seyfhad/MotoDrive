@@ -19,7 +19,7 @@ export const AdminServiceAreas: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
           <h2 className="text-xl font-black text-white">نطاق التغطية والولايات (Service Areas)</h2>
-          <p className="text-xs text-slate-400">تفعيل وتعطيل خدمة MotoDZ في ولايات الجزائر ونصف قطر التغطية</p>
+          <p className="text-xs text-slate-400">تفعيل وتعطيل خدمة MotoDrive في ولايات الجزائر ونصف قطر التغطية</p>
         </div>
       </div>
 

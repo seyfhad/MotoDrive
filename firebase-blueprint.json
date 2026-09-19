@@ -1,0 +1,157 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile representing a passenger or driver in MotoDrive",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["passenger", "driver", "admin"] },
+        "status": { "type": "string", "enum": ["active", "suspended", "pending"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "phone", "role"]
+    },
+    "DriverProfile": {
+      "title": "DriverProfile",
+      "description": "Motorcycle driver profile with vehicle and verification details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "isOnline": { "type": "boolean" },
+        "isAvailable": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "rating": { "type": "number" },
+        "totalTrips": { "type": "number" }
+      },
+      "required": ["id", "userId", "name", "phone", "status"]
+    },
+    "Ride": {
+      "title": "Ride",
+      "description": "Ride order with pickup, destination, fare negotiation and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "passengerId": { "type": "string" },
+        "passengerName": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["searching", "negotiating", "accepted", "driver_arrived", "trip_started", "completed", "cancelled"]
+        },
+        "estimatedPrice": { "type": "number" },
+        "passengerOfferedPrice": { "type": "number" },
+        "finalPrice": { "type": "number" },
+        "driverId": { "type": "string" },
+        "paymentMethod": { "type": "string" }
+      },
+      "required": ["passengerId", "passengerName", "status", "estimatedPrice"]
+    },
+    "RideOffer": {
+      "title": "RideOffer",
+      "description": "Driver counter-offer for a specific ride",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rideId": { "type": "string" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "offeredPrice": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "countered", "expired"] }
+      },
+      "required": ["rideId", "driverId", "driverName", "offeredPrice", "status"]
+    },
+    "PricingSettings": {
+      "title": "PricingSettings",
+      "description": "Global pricing configuration in Algerian Dinars",
+      "type": "object",
+      "properties": {
+        "baseFare": { "type": "number" },
+        "pricePerKm": { "type": "number" },
+        "pricePerMinute": { "type": "number" },
+        "minimumFare": { "type": "number" },
+        "platformCommissionPercent": { "type": "number" }
+      },
+      "required": ["baseFare", "pricePerKm", "minimumFare", "platformCommissionPercent"]
+    },
+    "ServiceArea": {
+      "title": "ServiceArea",
+      "description": "Coverage area and wilaya settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "wilayaName": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "wilayaName", "isActive"]
+    },
+    "Rating": {
+      "title": "Rating",
+      "description": "Trip rating submitted by passenger or driver",
+      "type": "object",
+      "properties": {
+        "rideId": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "toUserId": { "type": "string" },
+        "rating": { "type": "number" }
+      },
+      "required": ["rideId", "fromUserId", "toUserId", "rating"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "Customer support dispute or complaint",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "rideId": { "type": "string" },
+        "complainantId": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "under_review", "resolved", "dismissed"] }
+      },
+      "required": ["id", "complainantId", "reason", "status"]
+    }
+  },
+  "firestore": {
+    "/system_config/{configId}": {
+      "schema": { "$ref": "#/entities/PricingSettings" },
+      "description": "Platform pricing configurations and rules"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Registered passenger and driver profiles"
+    },
+    "/drivers/{driverId}": {
+      "schema": { "$ref": "#/entities/DriverProfile" },
+      "description": "Driver profiles and live status"
+    },
+    "/rides/{rideId}": {
+      "schema": { "$ref": "#/entities/Ride" },
+      "description": "Active and completed motorcycle rides"
+    },
+    "/rides/{rideId}/offers/{offerId}": {
+      "schema": { "$ref": "#/entities/RideOffer" },
+      "description": "Driver offers and price negotiation subcollection"
+    },
+    "/service_areas/{areaId}": {
+      "schema": { "$ref": "#/entities/ServiceArea" },
+      "description": "Covered wilayas and zones"
+    },
+    "/serviceAreas/{areaId}": {
+      "schema": { "$ref": "#/entities/ServiceArea" },
+      "description": "Alternate collection for service areas"
+    },
+    "/ratings/{ratingId}": {
+      "schema": { "$ref": "#/entities/Rating" },
+      "description": "Ratings after trips"
+    },
+    "/complaints/{complaintId}": {
+      "schema": { "$ref": "#/entities/Complaint" },
+      "description": "Complaints and support tickets"
+    }
+  }
+}

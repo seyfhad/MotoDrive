@@ -4,11 +4,16 @@ import { LeafletMap } from '../../components/Map/LeafletMap';
 import { DriverIncomingRideModal } from './DriverIncomingRideModal';
 import { DriverActiveRide } from './DriverActiveRide';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock } from 'lucide-react';
+import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw, Bike } from 'lucide-react';
+import { updateFirestoreDriverLocation } from '../../services/firestoreService';
+import { reverseGeocodeCoords } from '../../utils/geo';
+import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
 export const DriverHome: React.FC = () => {
   const {
     activeDriver,
+    setActiveDriver,
+    drivers,
     toggleDriverOnline,
     currentDriverRide,
     pendingDriverRideRequest,
@@ -16,6 +21,48 @@ export const DriverHome: React.FC = () => {
   } = useApp();
 
   const [onlineError, setOnlineError] = useState<string | null>(null);
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  const [locationSuccessMsg, setLocationSuccessMsg] = useState<string | null>(null);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  // جلب موقع GPS الحقيقي للسائق وتحديثه فوراً في السحابة
+  const handleRefreshDriverGPS = () => {
+    setIsUpdatingLocation(true);
+    setLocationSuccessMsg(null);
+
+    if (!navigator.geolocation) {
+      setOnlineError('خاصية GPS غير مدعومة في جهازك.');
+      setIsUpdatingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude, heading, speed } = pos.coords;
+        try {
+          await updateFirestoreDriverLocation(
+            activeDriver.id,
+            latitude,
+            longitude,
+            heading || undefined,
+            speed || undefined
+          );
+          const address = await reverseGeocodeCoords(latitude, longitude);
+          setLocationSuccessMsg(`📍 تم تحديد وتحديث موقعك: ${address || 'بالقرب من موقعك الفعلي'}`);
+          setTimeout(() => setLocationSuccessMsg(null), 5000);
+        } catch (e) {
+          console.warn('Driver location update notice:', e);
+        } finally {
+          setIsUpdatingLocation(false);
+        }
+      },
+      (err) => {
+        setIsUpdatingLocation(false);
+        setOnlineError('يرجى السماح للتطبيق بالوصول لموقع GPS في جهازك.');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  };
 
   // Today's trips by this driver
   const todayTrips = rides.filter(
@@ -31,10 +78,10 @@ export const DriverHome: React.FC = () => {
     0
   );
 
-  const handleToggleOnline = () => {
+  const handleToggleOnline = async () => {
     setOnlineError(null);
     const newStatus = !activeDriver.isOnline;
-    const res = toggleDriverOnline(activeDriver.id, newStatus);
+    const res = await toggleDriverOnline(activeDriver.id, newStatus);
     if (!res.success) {
       setOnlineError(res.error || 'لا يمكن تفعيل الحالة Online');
     }
@@ -66,6 +113,25 @@ export const DriverHome: React.FC = () => {
             {activeDriver.isOnline ? 'وضع الاستقبال نشط (Online)' : 'غير متصل (Offline)'}
           </span>
         </div>
+
+        {/* Driver Floating GPS Refresh Button */}
+        <button
+          onClick={handleRefreshDriverGPS}
+          disabled={isUpdatingLocation}
+          className="absolute bottom-12 left-4 z-20 p-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-amber-500/40 text-amber-400 shadow-xl flex items-center gap-2 text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+          title="تحديث موقعي الحقيقي عبر GPS"
+        >
+          <Navigation className={`w-4 h-4 ${isUpdatingLocation ? 'animate-spin' : ''}`} />
+          <span className="hidden sm:inline">موقعي المباشر (GPS)</span>
+        </button>
+
+        {/* Location Notice Banner */}
+        {locationSuccessMsg && (
+          <div className="absolute top-4 left-4 z-30 bg-slate-900/95 border border-emerald-500/50 rounded-2xl p-3 text-xs text-emerald-300 shadow-2xl backdrop-blur-md flex items-center gap-2 animate-in fade-in">
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{locationSuccessMsg}</span>
+          </div>
+        )}
       </div>
 
       {/* Main Content Card Container */}
@@ -113,11 +179,43 @@ export const DriverHome: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl text-xs font-bold text-amber-400">
-                  <Star className="w-3.5 h-3.5 fill-amber-400" />
-                  <span>{(activeDriver.rating ?? 5.0).toFixed(1)}</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowRegisterModal(true)}
+                    className="p-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-400 text-xs font-bold flex items-center gap-1 transition-all"
+                    title="تسجيل دراجة نارية وسائق إضافي"
+                  >
+                    <Bike className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">إضافة دراجة</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl text-xs font-bold text-amber-400">
+                    <Star className="w-3.5 h-3.5 fill-amber-400" />
+                    <span>{(activeDriver.rating ?? 5.0).toFixed(1)}</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Driver Switcher if multiple drivers exist in Firestore */}
+              {drivers.length > 1 && (
+                <div className="flex items-center gap-2 p-2 bg-slate-950/70 border border-slate-800 rounded-xl text-xs">
+                  <span className="text-slate-400 text-[11px] shrink-0">تبديل حساب السائق:</span>
+                  <select
+                    value={activeDriver.id}
+                    onChange={(e) => {
+                      const sel = drivers.find(d => d.id === e.target.value);
+                      if (sel) setActiveDriver(sel);
+                    }}
+                    className="w-full bg-transparent text-white font-medium text-xs focus:outline-none cursor-pointer"
+                  >
+                    {drivers.map(d => (
+                      <option key={d.id} value={d.id} className="bg-slate-900 text-white">
+                        {d.name} ({d.motorcycle.brand} {d.motorcycle.model})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Big Online / Offline Toggle Button */}
               <button
@@ -204,6 +302,12 @@ export const DriverHome: React.FC = () => {
           onClose={() => {}}
         />
       )}
+
+      {/* Register Driver Modal */}
+      <RegisterDriverModal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+      />
     </div>
   );
 };

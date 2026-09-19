@@ -6,7 +6,7 @@ export const DEFAULT_PRICING: PricingSettings = {
   pricePerMinute: 5, // 5 DA / min
   minimumFare: 150, // 150 DA minimum
   cancellationFee: 100, // 100 DA
-  platformCommissionPercent: 15, // 15% MotoDZ commission
+  platformCommissionPercent: 15, // 15% MotoDrive commission
   nightMultiplier: 1.0,
   peakMultiplier: 1.0,
   isTimeCalculationEnabled: false,
@@ -64,7 +64,7 @@ export function calculateFare(
   // Round to nearest 10 DA for easy cash handling in Algeria (e.g. 356 -> 360 DA)
   const roundedPrice = Math.ceil(totalPrice / 10) * 10;
 
-  // MotoDZ Commission calculation
+  // MotoDrive Commission calculation
   const platformCommission = Math.round(
     (roundedPrice * pricing.platformCommissionPercent) / 100
   );

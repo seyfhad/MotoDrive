@@ -1,15 +1,33 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { User, Phone, Mail, Shield, AlertTriangle, MessageSquare, LogOut, Check, ChevronLeft } from 'lucide-react';
+import { User, Phone, Mail, Shield, AlertTriangle, MessageSquare, LogOut, Check, ChevronLeft, CheckCircle2, Sparkles } from 'lucide-react';
+import { GoogleSignInButton } from '../../components/auth/GoogleSignInButton';
+import { signOutUser } from '../../services/authService';
 
 export const PassengerProfile: React.FC = () => {
-  const { activePassenger, setActivePassenger, passengers, complaints } = useApp();
+  const { activePassenger, setActivePassenger, currentUser, setCurrentUser, passengers, complaints, broadcastNotification } = useApp();
   const [editingEmergency, setEditingEmergency] = useState(false);
   const [emergencyName, setEmergencyName] = useState(activePassenger.emergencyContact?.name || '');
   const [emergencyPhone, setEmergencyPhone] = useState(activePassenger.emergencyContact?.phone || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const passengerComplaints = complaints.filter(c => c.userId === activePassenger.id);
+
+  const isGoogleConnected = Boolean(currentUser && (currentUser.email || currentUser.photoURL));
+
+  const handleSignOut = async () => {
+    try {
+      setIsSigningOut(true);
+      await signOutUser();
+      setCurrentUser(null);
+      broadcastNotification('تسجيل الخروج', 'تم تسجيل الخروج بنجاح.');
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   const handleSaveEmergency = () => {
     activePassenger.emergencyContact = {
@@ -60,6 +78,64 @@ export const PassengerProfile: React.FC = () => {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Google Authentication Status Card */}
+      <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3" id="google-auth-profile-card">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <h4 className="text-sm font-bold text-white">المصادقة وحساب Google</h4>
+          </div>
+          {isGoogleConnected ? (
+            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              <CheckCircle2 className="w-3 h-3" />
+              متصل
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
+              حساب تجريبي / ضيف
+            </span>
+          )}
+        </div>
+
+        {isGoogleConnected ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src={currentUser?.photoURL || activePassenger.photoUrl || ''}
+                  alt="Avatar"
+                  className="w-8 h-8 rounded-full object-cover border border-emerald-500/50"
+                />
+                <div>
+                  <div className="font-bold text-white text-xs">{currentUser?.displayName || activePassenger.name}</div>
+                  <div className="text-[11px] text-slate-400 font-mono" dir="ltr">{currentUser?.email || activePassenger.email}</div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSignOut}
+              disabled={isSigningOut}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-300 text-xs font-bold transition-all disabled:opacity-50"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{isSigningOut ? 'جاري تسجيل الخروج...' : 'تسجيل الخروج من حساب Google'}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              اربط حسابك بحساب Google لمزامنة مشاويرك وعروضك وسجل رحلاتك على أي جهاز بشكل فوري وآمن.
+            </p>
+            <GoogleSignInButton
+              role="passenger"
+              label="تسجيل الدخول وربط الحساب بـ Google"
+              id="profile-google-signin-btn"
+            />
+          </div>
+        )}
       </div>
 
       {/* Emergency Contact Card */}
@@ -125,7 +201,7 @@ export const PassengerProfile: React.FC = () => {
 
       {/* Safety & App Guidelines */}
       <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-4 space-y-2 text-xs">
-        <h4 className="font-bold text-slate-200 mb-2">تعليمات السلامة لركاب MotoDZ:</h4>
+        <h4 className="font-bold text-slate-200 mb-2">تعليمات السلامة لركاب MotoDrive:</h4>
         <div className="space-y-1.5 text-slate-400 text-[11px] leading-relaxed">
           <p>• ارتداء الخوذة الواقية إلزامي طوال مسار الرحلة.</p>
           <p>• التمسك بالمقابض الجانبية أو خصر السائق لتوازن أفضل عند المنعطفات.</p>

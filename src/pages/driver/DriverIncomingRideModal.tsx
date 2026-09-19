@@ -38,7 +38,7 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
   const handleAcceptPassengerPrice = async () => {
     setIsSubmitting(true);
     setErrorMsg(null);
-    const result = await submitDriverOffer(ride.id, passengerPrice);
+    const result = await submitDriverOffer(ride.id, activeDriver.id, passengerPrice);
     setIsSubmitting(false);
 
     if (result.success) {
@@ -51,7 +51,7 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
   const handleSendCounterOffer = async () => {
     setIsSubmitting(true);
     setErrorMsg(null);
-    const result = await submitDriverOffer(ride.id, counterPrice);
+    const result = await submitDriverOffer(ride.id, activeDriver.id, counterPrice);
     setIsSubmitting(false);
 
     if (result.success) {

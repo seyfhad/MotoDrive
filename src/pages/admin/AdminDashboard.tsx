@@ -39,7 +39,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateTab })
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <h2 className="text-2xl font-black text-white flex items-center gap-2">
-            <span>لوحة تحكم إدارة MotoDZ</span>
+            <span>لوحة تحكم إدارة MotoDrive</span>
             <span className="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl">
               Algeria Live System
             </span>

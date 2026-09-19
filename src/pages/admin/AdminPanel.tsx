@@ -39,7 +39,7 @@ export const AdminPanel: React.FC = () => {
       <aside className="w-full md:w-64 bg-slate-900 border-b md:border-b-0 md:border-l border-slate-800 p-4 space-y-2 shrink-0">
         <div className="flex items-center gap-2 px-3 py-2 text-xs font-bold text-slate-400">
           <Shield className="w-4 h-4 text-amber-400" />
-          <span>إدارة منصة MotoDZ</span>
+          <span>إدارة منصة MotoDrive</span>
         </div>
 
         <nav className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0 scrollbar-none">

@@ -48,7 +48,7 @@ export const AdminPricing: React.FC = () => {
         <div>
           <h2 className="text-xl font-black text-white">إعدادات التسعير والعمولة (Pricing & Commission)</h2>
           <p className="text-xs text-slate-400">
-            تعديل معادلة احتساب تسعيرة النقل بالدراجة النارية وعمولة منصة MotoDZ في الجزائر
+            تعديل معادلة احتساب تسعيرة النقل بالدراجة النارية وعمولة منصة MotoDrive في الجزائر
           </p>
         </div>
       </div>
@@ -126,7 +126,7 @@ export const AdminPricing: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1 font-semibold">نسبة عمولة المنصة (MotoDZ Commission %):</label>
+              <label className="block text-slate-400 mb-1 font-semibold">نسبة عمولة المنصة (MotoDrive Commission %):</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
@@ -192,7 +192,7 @@ export const AdminPricing: React.FC = () => {
               </div>
 
               <div className="flex items-center justify-between text-red-400 font-semibold pt-1">
-                <span>عمولة MotoDZ ({platformCommissionPercent}%):</span>
+                <span>عمولة MotoDrive ({platformCommissionPercent}%):</span>
                 <span>- {formatCurrencyDZD(testCommission)}</span>
               </div>
 
@@ -203,7 +203,7 @@ export const AdminPricing: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              تساعد دراجات MotoDZ الركاب في توفير ما يصل إلى 50% من زمن الرحلة في أوقات الذروة وازدحام شوارع الجزائر العاصمة، مع تقديم تسعيرة اقتصادية ومجزية للسائق.
+              تساعد دراجات MotoDrive الركاب في توفير ما يصل إلى 50% من زمن الرحلة في أوقات الذروة وازدحام شوارع الجزائر العاصمة، مع تقديم تسعيرة اقتصادية ومجزية للسائق.
             </p>
           </div>
         </div>

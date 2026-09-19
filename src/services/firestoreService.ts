@@ -19,6 +19,23 @@ import {
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
 import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile } from '../types';
+import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
+
+// Helper to recursively remove all undefined properties to prevent Firestore crashes
+export const sanitizeFirestoreData = <T extends Record<string, any>>(obj: T): T => {
+  const result: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Timestamp) && !(value instanceof Date)) {
+      result[key] = sanitizeFirestoreData(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+};
 
 // ============================================================================
 // SYSTEM PRICING & CONFIGURATION SERVICE
@@ -40,7 +57,7 @@ export const getSystemPricing = async (): Promise<PricingSettings | null> => {
 
 export const saveSystemPricing = async (pricing: PricingSettings): Promise<void> => {
   const docRef = doc(db, 'system_config', 'pricing');
-  await setDoc(docRef, { ...pricing, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(docRef, sanitizeFirestoreData({ ...pricing, updatedAt: serverTimestamp() }), { merge: true });
 };
 
 // ============================================================================
@@ -49,10 +66,10 @@ export const saveSystemPricing = async (pricing: PricingSettings): Promise<void>
 
 export const syncUserProfile = async (user: Partial<UserProfile> & { id: string }): Promise<void> => {
   const userRef = doc(db, 'users', user.id);
-  await setDoc(userRef, {
+  await setDoc(userRef, sanitizeFirestoreData({
     ...user,
     updatedAt: serverTimestamp(),
-  }, { merge: true });
+  }), { merge: true });
 };
 
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
@@ -69,11 +86,11 @@ export const syncDriverProfile = async (driver: DriverProfile): Promise<void> =>
   const driverRef = doc(db, 'drivers', driver.id);
   const gh = geohashForLocation([driver.location.lat, driver.location.lng]);
 
-  await setDoc(driverRef, {
+  await setDoc(driverRef, sanitizeFirestoreData({
     ...driver,
     geohash: gh,
     updatedAt: serverTimestamp(),
-  }, { merge: true });
+  }), { merge: true });
 };
 
 export const updateDriverLocation = async (
@@ -95,6 +112,8 @@ export const updateDriverLocation = async (
     lastLocationUpdate: serverTimestamp(),
   });
 };
+
+export const updateFirestoreDriverLocation = updateDriverLocation;
 
 export const updateDriverOnlineStatus = async (
   driverId: string,
@@ -151,20 +170,26 @@ export const getNearbyDrivers = async (
 export const createRideInFirestore = async (
   rideData: Omit<Ride, 'id' | 'createdAt'>
 ): Promise<string> => {
-  const ridesCol = collection(db, 'rides');
-  const pickupGh = geohashForLocation([rideData.pickup.lat, rideData.pickup.lng]);
-  const destGh = geohashForLocation([rideData.destination.lat, rideData.destination.lng]);
+  const path = 'rides';
+  try {
+    const ridesCol = collection(db, path);
+    const pickupGh = geohashForLocation([rideData.pickup.lat, rideData.pickup.lng]);
+    const destGh = geohashForLocation([rideData.destination.lat, rideData.destination.lng]);
 
-  const docRef = await addDoc(ridesCol, {
-    ...rideData,
-    pickupGeohash: pickupGh,
-    destinationGeohash: destGh,
-    status: 'searching',
-    createdAt: serverTimestamp(),
-    expiresAt: Timestamp.fromMillis(Date.now() + 5 * 60 * 1000), // 5 mins expiration
-  });
+    const cleanPayload = sanitizeFirestoreData({
+      ...rideData,
+      pickupGeohash: pickupGh,
+      destinationGeohash: destGh,
+      status: 'searching',
+      createdAt: serverTimestamp(),
+      expiresAt: Timestamp.fromMillis(Date.now() + 5 * 60 * 1000), // 5 mins expiration
+    });
 
-  return docRef.id;
+    const docRef = await addDoc(ridesCol, cleanPayload);
+    return docRef.id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
 };
 
 export const updatePassengerOfferInFirestore = async (
@@ -172,11 +197,11 @@ export const updatePassengerOfferInFirestore = async (
   newPrice: number
 ): Promise<void> => {
   const rideRef = doc(db, 'rides', rideId);
-  await updateDoc(rideRef, {
+  await updateDoc(rideRef, sanitizeFirestoreData({
     passengerOfferedPrice: newPrice,
     estimatedPrice: newPrice,
     updatedAt: serverTimestamp(),
-  });
+  }));
 };
 
 export const cancelRideInFirestore = async (
@@ -185,11 +210,11 @@ export const cancelRideInFirestore = async (
   cancelledBy: 'passenger' | 'driver' | 'system'
 ): Promise<void> => {
   const rideRef = doc(db, 'rides', rideId);
-  await updateDoc(rideRef, {
+  await updateDoc(rideRef, sanitizeFirestoreData({
     status: cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver',
     cancellationReason: reason,
     cancelledAt: serverTimestamp(),
-  });
+  }));
 };
 
 // ============================================================================
@@ -201,11 +226,12 @@ export const submitDriverOfferInFirestore = async (
   offer: Omit<RideOffer, 'id' | 'createdAt'>
 ): Promise<string> => {
   const offersCol = collection(db, 'rides', rideId, 'offers');
-  const docRef = await addDoc(offersCol, {
+  const cleanOffer = sanitizeFirestoreData({
     ...offer,
     status: 'pending',
     createdAt: serverTimestamp(),
   });
+  const docRef = await addDoc(offersCol, cleanOffer);
 
   // Also update ride status to indicate offers are available
   const rideRef = doc(db, 'rides', rideId);
@@ -244,20 +270,21 @@ export const acceptDriverOfferTransaction = async (
       const driverEarning = offeredPrice - commission;
 
       // 1. Lock ride to the winning driver
-      transaction.update(rideRef, {
+      const rideUpdatePayload = sanitizeFirestoreData({
         status: 'accepted',
         selectedDriverId: driver.id,
         driverId: driver.id,
         driverName: driver.name,
         driverPhone: driver.phone,
-        driverPhoto: driver.photoUrl,
-        driverRating: driver.rating,
+        driverPhoto: driver.photoUrl || null,
+        driverRating: driver.rating ?? 5.0,
         driverMotorcycle: driver.motorcycle,
         finalPrice: offeredPrice,
         platformCommission: commission,
         driverEarning: driverEarning,
         acceptedAt: serverTimestamp(),
       });
+      transaction.update(rideRef, rideUpdatePayload);
 
       // 2. Mark this specific offer as accepted
       transaction.update(offerRef, {
@@ -286,11 +313,11 @@ export const advanceRideStatusInFirestore = async (
   extraData?: Partial<Ride>
 ): Promise<void> => {
   const rideRef = doc(db, 'rides', rideId);
-  const updates: Record<string, any> = {
+  const updates: Record<string, any> = sanitizeFirestoreData({
     status: newStatus,
     updatedAt: serverTimestamp(),
     ...(extraData || {}),
-  };
+  });
 
   if (newStatus === 'trip_started') updates.startedAt = serverTimestamp();
   if (newStatus === 'completed') updates.completedAt = serverTimestamp();
@@ -306,10 +333,11 @@ export const submitRatingToFirestore = async (
   rating: Omit<Rating, 'id' | 'createdAt'>
 ): Promise<string> => {
   const ratingCol = collection(db, 'ratings');
-  const docRef = await addDoc(ratingCol, {
+  const cleanRating = sanitizeFirestoreData({
     ...rating,
     createdAt: serverTimestamp(),
   });
+  const docRef = await addDoc(ratingCol, cleanRating);
   return docRef.id;
 };
 
@@ -317,11 +345,12 @@ export const submitComplaintToFirestore = async (
   complaint: Omit<Complaint, 'id' | 'createdAt'>
 ): Promise<string> => {
   const compCol = collection(db, 'complaints');
-  const docRef = await addDoc(compCol, {
+  const cleanComplaint = sanitizeFirestoreData({
     ...complaint,
     status: 'pending',
     createdAt: serverTimestamp(),
   });
+  const docRef = await addDoc(compCol, cleanComplaint);
   return docRef.id;
 };
 

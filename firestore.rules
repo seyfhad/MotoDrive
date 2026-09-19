@@ -21,60 +21,46 @@ service cloud.firestore {
 
     // System configuration (Pricing, service areas)
     match /system_config/{configId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read, write: if true;
     }
 
-    // User profiles
+    // User profiles (Passengers, Drivers, Admins)
     match /users/{userId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Driver profiles and live telemetry
+    // Driver profiles, status and live telemetry
     match /drivers/{driverId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Rides and Negotiation
+    // Rides and Fair Fare Negotiation
     match /rides/{rideId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAdmin();
+      allow read, write: if true;
 
       // Driver Offers Subcollection
       match /offers/{offerId} {
-        allow read: if true;
-        allow create: if isAuthenticated();
-        allow update: if isAuthenticated();
-        allow delete: if isAuthenticated();
+        allow read, write: if true;
       }
     }
 
     // Service Areas (Wilayas / Zones)
     match /service_areas/{areaId} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read, write: if true;
     }
 
-    // Ratings collection
+    match /serviceAreas/{areaId} {
+      allow read, write: if true;
+    }
+
+    // Trip Ratings
     match /ratings/{ratingId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    // Complaints & Support
+    // Support & Complaints
     match /complaints/{complaintId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

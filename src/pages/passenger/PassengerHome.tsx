@@ -3,10 +3,10 @@ import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { BookRideModal } from './BookRideModal';
 import { ActiveRideView } from './ActiveRideView';
-import { ALGERIA_LOCATIONS } from '../../utils/geo';
+import { ALGERIA_LOCATIONS, reverseGeocodeCoords } from '../../utils/geo';
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers } = useApp();
@@ -15,39 +15,94 @@ export const PassengerHome: React.FC = () => {
   const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>(ALGERIA_LOCATIONS[2].coords);
   const [selectedDestination, setSelectedDestination] = useState<Coordinates | null>(ALGERIA_LOCATIONS[4].coords);
   const [isLocating, setIsLocating] = useState(false);
+  const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
+  const [mapSelectionMode, setMapSelectionMode] = useState<'pickup' | 'destination' | null>(null);
+  const [mapNotice, setMapNotice] = useState<string | null>(null);
 
-  // جلب موقع الـ GPS الحقيقي للهاتف مع تخطي الأخطاء بسلاسة ودون إزعاج
+  // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
   const handleGetRealGPSLocation = () => {
     setIsLocating(true);
-    
+    setGpsStatusMessage(null);
+
     if (!navigator.geolocation) {
+      setGpsStatusMessage('خاصية تحديد المواقع (GPS) غير مدعومة في جهازك أو متصفحك.');
       setIsLocating(false);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const realCoords: Coordinates = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          name: 'موقعي الحالي (GPS)',
-          address: 'موقعي الحالي عبر الهاتف'
-        };
-        setSelectedPickup(realCoords);
-        setIsLocating(false);
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const address = await reverseGeocodeCoords(latitude, longitude);
+          const realCoords: Coordinates = {
+            lat: latitude,
+            lng: longitude,
+            name: address || 'موقعي الفعلي (GPS)',
+            address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          };
+          setSelectedPickup(realCoords);
+          setGpsStatusMessage(`تم تحديد موقعك بدقة: ${address}`);
+        } catch (e) {
+          const fallbackCoords: Coordinates = {
+            lat: latitude,
+            lng: longitude,
+            name: 'موقعي الفعلي (GPS)',
+            address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          };
+          setSelectedPickup(fallbackCoords);
+          setGpsStatusMessage('تم تحديد إحداثيات موقعك عبر الأقمار الصناعية بنجاح.');
+        } finally {
+          setIsLocating(false);
+          // Clear message after 4s
+          setTimeout(() => setGpsStatusMessage(null), 5000);
+        }
       },
       (error) => {
-        console.log('GPS skipped or blocked, using default location:', error);
         setIsLocating(false);
+        if (error.code === 1) {
+          setGpsStatusMessage('⚠️ يرجى السماح للتطبيق بالوصول إلى موقعك الجغرافي من إعدادات المتصفح أو أيقونة القفل أعلى الصفحة.');
+        } else if (error.code === 2) {
+          setGpsStatusMessage('⚠️ تعذر التقاط إشارة GPS. تأكد من تفعيل خدمة الموقع في جهازك.');
+        } else {
+          setGpsStatusMessage('⚠️ استغرق تحديد الموقع وقتاً طويلاً. يمكنك النقر مباشرة على الخريطة لتحديد مكانك.');
+        }
       },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
-  // محاولة أخذ الموقع تلقائياً عند فتح الصفحة بصمت
+  // محاولة أخذ الموقع عند التشغيل
   useEffect(() => {
     handleGetRealGPSLocation();
   }, []);
+
+  // النقر المباشر على الخريطة لتحديد موقع الانطلاق أو الوجهة
+  const handleMapClick = async (coords: Coordinates) => {
+    try {
+      const address = await reverseGeocodeCoords(coords.lat, coords.lng);
+      const newPlace: Coordinates = {
+        lat: coords.lat,
+        lng: coords.lng,
+        name: address || 'مكان محدد على الخريطة',
+        address: address || `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+      };
+
+      if (mapSelectionMode === 'pickup') {
+        setSelectedPickup(newPlace);
+        setMapNotice(`📍 تم تعيين موقع الانطلاق: ${address}`);
+        setMapSelectionMode(null);
+      } else {
+        setSelectedDestination(newPlace);
+        setMapNotice(`🏁 تم تعيين الوجهة: ${address}`);
+        setMapSelectionMode(null);
+      }
+
+      setTimeout(() => setMapNotice(null), 4000);
+    } catch (e) {
+      console.warn('Map click geocode failed:', e);
+    }
+  };
 
   // Recent trips completed by this passenger
   const pastTrips = rides
@@ -71,6 +126,8 @@ export const PassengerHome: React.FC = () => {
           drivers={drivers}
           activeDriverLocation={currentPassengerRide?.driverLocation}
           showRadar={currentPassengerRide?.status === 'searching'}
+          interactive={true}
+          onMapClick={handleMapClick}
           className="h-full w-full rounded-none"
         />
 
@@ -79,6 +136,40 @@ export const PassengerHome: React.FC = () => {
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
           <span>{drivers.filter(d => d.isOnline).length} سائق دراجة متاح</span>
         </div>
+
+        {/* Floating GPS Button & Map Pinning Controls */}
+        <div className="absolute bottom-12 left-4 z-20 flex flex-col gap-2">
+          <button
+            id="gps-floating-locate-btn"
+            onClick={handleGetRealGPSLocation}
+            disabled={isLocating}
+            className="p-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-amber-500/40 text-amber-400 shadow-xl flex items-center gap-2 text-xs font-bold transition-transform active:scale-95 disabled:opacity-50"
+            title="تحديد موقعي الفعلي عبر GPS"
+          >
+            <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">موقعي الفعلي (GPS)</span>
+          </button>
+
+          <button
+            onClick={() => setMapSelectionMode(mapSelectionMode === 'destination' ? null : 'destination')}
+            className={`p-2.5 rounded-2xl border text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all ${
+              mapSelectionMode === 'destination'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 animate-pulse'
+                : 'bg-slate-900/90 text-slate-200 border-slate-700 hover:bg-slate-800'
+            }`}
+          >
+            <span>🏁</span>
+            <span className="text-[11px]">{mapSelectionMode === 'destination' ? 'انقر على الخريطة الآن...' : 'حدد وجهة بالخريطة'}</span>
+          </button>
+        </div>
+
+        {/* Live GPS / Map Click Banner */}
+        {(gpsStatusMessage || mapNotice) && (
+          <div className="absolute top-4 left-4 right-4 sm:left-auto sm:right-40 z-30 bg-slate-900/95 border border-amber-500/50 rounded-2xl p-3 text-xs text-amber-300 shadow-2xl backdrop-blur-md flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="flex-1">{gpsStatusMessage || mapNotice}</span>
+          </div>
+        )}
       </div>
 
       {/* Main Content Container */}

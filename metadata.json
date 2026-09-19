@@ -1,6 +1,6 @@
 {
-  "name": "MotoDZ - موطو ديزاد",
-  "description": "منصة وتطبيق حجز ونقل الأشخاص بالدراجات النارية في الجزائر - تطبيق الراكب، تطبيق السائق، ولوحة تحكم الإدارة",
+  "name": "MotoDrive - موتو درايف",
+  "description": "تطبيق ومنصة MotoDrive لحجز ونقل الأشخاص بالدراجات النارية في الجزائر - تطبيق الراكب، السائق، والتفاوض المباشر على الأجرة",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -146,3 +146,88 @@ export function calculateBearing(start: Coordinates, end: Coordinates): number {
   let brng = (Math.atan2(y, x) * 180) / Math.PI;
   return (brng + 360) % 360;
 }
+
+// Reverse Geocode coordinates to human-readable address in Algeria (Arabic/French)
+export async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
+  // 1. Try Google Maps Geocoder if loaded in window
+  try {
+    const gmaps = (window as any).google?.maps;
+    if (gmaps?.Geocoder) {
+      const geocoder = new gmaps.Geocoder();
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results?.[0]) {
+        return response.results[0].formatted_address;
+      }
+    }
+  } catch (err) {
+    // Continue to fallback
+  }
+
+  // 2. High-accuracy OpenStreetMap reverse geocoding with Arabic priority
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=ar,fr`,
+      {
+        headers: {
+          'Accept-Language': 'ar,fr;q=0.9,en;q=0.8',
+        },
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const road = data.address?.road || data.address?.suburb || data.address?.neighbourhood || data.address?.quarter || '';
+      const city = data.address?.city || data.address?.town || data.address?.county || data.address?.state || '';
+      if (road && city) return `${road}، ${city}`;
+      if (data.display_name) {
+        // Take first 2 parts of display name for clean reading
+        const parts = data.display_name.split(',');
+        return parts.slice(0, 2).join('،').trim();
+      }
+    }
+  } catch (err) {
+    // Fallback if offline or network blocked
+  }
+
+  return `موقع إحداثيات: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
+// Real place search for Algeria using OpenStreetMap API
+export async function searchAlgeriaPlaces(
+  queryText: string
+): Promise<{ name: string; wilaya: string; coords: Coordinates }[]> {
+  if (!queryText || queryText.trim().length < 2) return [];
+
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        queryText
+      )}&countrycodes=dz&limit=7&addressdetails=1&accept-language=ar,fr`,
+      {
+        headers: {
+          'Accept-Language': 'ar,fr;q=0.9,en;q=0.8',
+        },
+      }
+    );
+    if (res.ok) {
+      const results = await res.json();
+      return results.map((item: any) => {
+        const wilaya = item.address?.state || item.address?.county || 'الجزائر';
+        const name = item.display_name.split(',')[0] || item.name || queryText;
+        return {
+          name,
+          wilaya,
+          coords: {
+            lat: parseFloat(item.lat),
+            lng: parseFloat(item.lon),
+            name,
+            address: item.display_name,
+          },
+        };
+      });
+    }
+  } catch (err) {
+    console.warn('Place search notice:', err);
+  }
+
+  return [];
+}

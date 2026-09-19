@@ -187,7 +187,7 @@ export const AdminRides: React.FC = () => {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-400">عمولة MotoDZ (15%):</span>
+                <span className="text-slate-400">عمولة MotoDrive (15%):</span>
                 <span className="font-bold text-emerald-400">
                   {formatCurrencyDZD(selectedRide.platformCommission || 0)}
                 </span>

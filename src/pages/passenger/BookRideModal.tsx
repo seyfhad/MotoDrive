@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Coordinates } from '../../types';
-import { ALGERIA_LOCATIONS, calculateDistanceKm, estimateDurationMinutes } from '../../utils/geo';
+import {
+  ALGERIA_LOCATIONS,
+  calculateDistanceKm,
+  estimateDurationMinutes,
+  reverseGeocodeCoords,
+  searchAlgeriaPlaces,
+} from '../../utils/geo';
 import { calculateFare, formatCurrencyDZD, getQuickFareChips, validateOfferedPrice } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare, Loader2, RefreshCw } from 'lucide-react';
 
 interface BookRideModalProps {
   onClose: () => void;
@@ -36,12 +42,90 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ name: string; wilaya: string; coords: Coordinates }[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isGpsLoading, setIsGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [promoCode, setPromoCode] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   const [customNote, setCustomNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Debounced real place search
+  React.useEffect(() => {
+    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      const results = await searchAlgeriaPlaces(searchQuery.trim());
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Real GPS Geolocation with reverse geocoding
+  const handleUseRealGPS = () => {
+    if (!navigator.geolocation) {
+      setGpsError('تحديد المواقع الجغرافي غير مدعوم في متصفحك.');
+      return;
+    }
+
+    setIsGpsLoading(true);
+    setGpsError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        try {
+          const address = await reverseGeocodeCoords(latitude, longitude);
+          const realLoc: Coordinates = {
+            lat: latitude,
+            lng: longitude,
+            name: address || 'موقعي الحالي (GPS)',
+            address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          };
+
+          if (searchType === 'pickup') {
+            setPickup(realLoc);
+          } else {
+            setDestination(realLoc);
+          }
+          setSearchType(null);
+        } catch (e) {
+          const fallbackLoc: Coordinates = {
+            lat: latitude,
+            lng: longitude,
+            name: 'موقعي الحالي (GPS)',
+            address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          };
+          if (searchType === 'pickup') setPickup(fallbackLoc);
+          else setDestination(fallbackLoc);
+          setSearchType(null);
+        } finally {
+          setIsGpsLoading(false);
+        }
+      },
+      (err) => {
+        setIsGpsLoading(false);
+        if (err.code === 1) {
+          setGpsError('تم رفض إذن الوصول إلى الموقع. يرجى تفعيل إذن الموقع من شريط المتصفح.');
+        } else if (err.code === 2) {
+          setGpsError('تعذر الحصول على إشارة GPS، يرجى المحاولة لاحقاً أو اختيار مكان من القائمة.');
+        } else {
+          setGpsError('انتهت مهلة تحديد الموقع.');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+    );
+  };
 
   const distanceKm = calculateDistanceKm(pickup, destination);
   const estimatedDuration = estimateDurationMinutes(distanceKm);
@@ -161,23 +245,69 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Current GPS option */}
+            {/* Current Real GPS option */}
             <button
-              onClick={() => {
-                const currentLoc = ALGERIA_LOCATIONS[0].coords;
-                if (searchType === 'pickup') setPickup(currentLoc);
-                else setDestination(currentLoc);
-                setSearchType(null);
-              }}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-colors"
+              onClick={handleUseRealGPS}
+              disabled={isGpsLoading}
+              className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all disabled:opacity-50"
             >
-              <Navigation className="w-4 h-4" />
-              <span>استخدام موقعي الحالي عبر GPS</span>
+              {isGpsLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>جاري تحديد موقعك الفعلي عبر الأقمار الصناعية (GPS)...</span>
+                </>
+              ) : (
+                <>
+                  <Navigation className="w-4 h-4 text-amber-400" />
+                  <span>استخدام موقعي الفعلي الحالي عبر GPS</span>
+                </>
+              )}
             </button>
+
+            {gpsError && (
+              <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-[11px] text-red-300">
+                {gpsError}
+              </div>
+            )}
+
+            {/* Real Search Results (if user searched) */}
+            {searchQuery.trim().length >= 2 && (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                <div className="text-[11px] text-amber-400 font-semibold px-1 flex items-center justify-between">
+                  <span>نتائج البحث الحية في الجزائر:</span>
+                  {isSearching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                </div>
+
+                {searchResults.length > 0 ? (
+                  searchResults.map((loc, idx) => (
+                    <button
+                      key={`search-${idx}`}
+                      onClick={() => {
+                        if (searchType === 'pickup') setPickup(loc.coords);
+                        else setDestination(loc.coords);
+                        setSearchType(null);
+                        setSearchQuery('');
+                      }}
+                      className="w-full text-right p-3 rounded-xl bg-slate-950/80 hover:bg-slate-800/90 border border-amber-500/30 transition-all flex items-center justify-between group"
+                    >
+                      <div className="truncate flex-1">
+                        <div className="text-xs font-bold text-white group-hover:text-amber-400 truncate">{loc.name}</div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 truncate">{loc.coords.address || loc.wilaya}</div>
+                      </div>
+                      <MapPin className="w-4 h-4 text-amber-400 shrink-0 mr-2" />
+                    </button>
+                  ))
+                ) : !isSearching ? (
+                  <div className="p-3 text-center text-xs text-slate-500 bg-slate-950/40 rounded-xl">
+                    لم يتم العثور على أماكن مطابقة لـ "{searchQuery}". يمكنك الاختيار من القائمة أدناه أو استخدام GPS.
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             {/* Hotspot Locations List */}
             <div className="space-y-1.5 max-h-60 overflow-y-auto">
-              <div className="text-[11px] text-slate-400 font-semibold px-1">أماكن شهيرة ومحطات في الجزائر:</div>
+              <div className="text-[11px] text-slate-400 font-semibold px-1">أماكن ومحطات شهيرة سريعة:</div>
               {filteredLocations.map((loc, idx) => (
                 <button
                   key={idx}
