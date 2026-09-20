@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Shield, FileText, X, CheckCircle2, Lock, Smartphone, MapPin, AlertCircle, Copy, Check, Globe, Sparkles } from 'lucide-react';
 
 interface LegalModalProps {
@@ -14,6 +14,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'privacy' | 'terms' | 'gcp-guide'>(defaultTab);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   if (!isOpen) return null;
 
@@ -102,7 +106,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>حل تنبيه: "Votre branding n'est pas visible par les utilisateurs"</span>
                 </div>
                 <p className="text-slate-200 text-xs leading-relaxed">
-                  تظهر هذه الرسالة في وحدة تحكم <strong>Google Cloud Console (OAuth Consent Screen)</strong> لأن حالة نشر التطبيق ما زالت في وضع التجربة <span className="text-amber-300 font-bold">(En cours de test)</span> أو تنقصه الروابط الرسمية. لحلها نهائياً وجعل علامتك التجارية مرئية للجميع:
+                  تظهر هذه الرسالة في وحدة تحكم <strong>Google Cloud Console (OAuth Consent Screen)</strong> لأن حالة نشر التطبيق ما زالت في وضع الاختبار.
                 </p>
               </div>
 
@@ -114,7 +118,6 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                 </h4>
 
                 <div className="space-y-2">
-                  {/* Home Page */}
                   <div className="flex items-center justify-between p-2.5 bg-slate-900 rounded-xl border border-slate-800">
                     <div className="truncate flex-1 pl-2">
                       <div className="text-[10px] text-slate-400">Page d'accueil de l'application (الصفحة الرئيسية):</div>
@@ -129,7 +132,6 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Privacy Policy */}
                   <div className="flex items-center justify-between p-2.5 bg-slate-900 rounded-xl border border-slate-800">
                     <div className="truncate flex-1 pl-2">
                       <div className="text-[10px] text-slate-400">Règles de confidentialité (رابط سياسة الخصوصية):</div>
@@ -144,7 +146,6 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Terms */}
                   <div className="flex items-center justify-between p-2.5 bg-slate-900 rounded-xl border border-slate-800">
                     <div className="truncate flex-1 pl-2">
                       <div className="text-[10px] text-slate-400">Conditions d'utilisation (رابط شروط الاستخدام):</div>
@@ -161,7 +162,6 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                 </div>
               </div>
 
-              {/* Step 2: Publishing the app */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2.5">
                 <h4 className="text-xs font-bold text-white flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -169,23 +169,19 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                 </h4>
                 <ol className="list-decimal list-inside space-y-1.5 text-slate-300 pr-1">
                   <li>افتح <strong className="text-amber-400">Google Cloud Console</strong> &gt; <strong>APIs &amp; Services</strong> &gt; <strong>OAuth consent screen</strong>.</li>
-                  <li>في قسم <span className="font-bold text-white">État de publication (Publishing Status)</span> ستجد عبارة: <em className="text-amber-300">En cours de test</em> وبجانبها زر أزرق: <strong className="text-white bg-blue-600 px-2 py-0.5 rounded text-[11px]">PUBLIER L'APPLICATION (Publish App)</strong>.</li>
-                  <li>انقر على زر <strong className="text-white">PUBLIER L'APPLICATION</strong> ثم أكّد العملية بالضغط على <strong className="text-white">Confirmer</strong>.</li>
-                  <li>بمجرد النشر، يتحول التطبيق إلى <strong className="text-emerald-400">En production</strong> ويختفي تنبيه "Votre branding n'est pas visible par les utilisateurs" ويظهر اسم وشعار التطبيق لجميع المستخدمين بدون أي تحذير.</li>
+                  <li>في قسم <span className="font-bold text-white">État de publication (Publishing Status)</span> ستجد عبارة: <em className="text-amber-300">En cours de test</em> وبجانبها زر أزرق.</li>
+                  <li>انقر على زر <strong className="text-white">PUBLIER L'APPLICATION</strong> ثم أكد العملية.</li>
+                  <li>بمجرد النشر، يتحول التطبيق إلى <strong className="text-emerald-400">En production</strong> ويختفي تنبيه branding.</li>
                 </ol>
               </div>
 
-              {/* Geocoding Billing Note */}
               <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
                 <h4 className="text-xs font-bold text-white flex items-center gap-2">
                   <span>🗺️</span>
                   <span>3. حل خطأ Geocoding Billing (الفوترة للخرائط):</span>
                 </h4>
                 <p className="text-slate-300 text-xs">
-                  تطلب Google Cloud تفعيل الفوترة لخدمة Geocoding API، ولكن في تطبيقنا تم دمج <strong className="text-emerald-400">محرك بحث هجين واحتياطي محلي مجاني 100%</strong> (OpenStreetMap + الجزائر أوفلاين) يعمل فورياً (0ms) بدون حاجة لربط أي بطاقة بنكية.
-                </p>
-                <p className="text-slate-400 text-[11px]">
-                  إذا كنت ترغب بربط خرائط جوجل المدفوعة اختيارياً، يمكنك تفعيل الفوترة من الرابط الرسمي: <a href="https://console.cloud.google.com/project/_/billing/enable" target="_blank" rel="noreferrer" className="text-amber-400 underline font-mono">console.cloud.google.com/project/_/billing/enable</a> مع الاستفادة من 200 دولار رصيد مجاني شهرياً من جوجل.
+                  تطلب Google Cloud تفعيل الفوترة لخدمة Geocoding API، ولكن في تطبيقنا تم دمج محرك بحث هجين في الواجهة الخلفية.
                 </p>
               </div>
             </div>
@@ -197,7 +193,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>التزام MotoDrive بحماية خصوصية المستخدمين في الجزائر</span>
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  تلتزم منصة MotoDrive بالمعايير الصارمة لحماية المعطيات ذات الطابع الشخصي وفقاً للقانون الجزائري رقم 18-07 المؤرخ في 10 يونيو 2018، ومتطلبات الأمان والشفافية لشركة Google Cloud Platform.
+                  تلتزم منصة MotoDrive بالمعايير الصارمة لحماية المعطيات ذات الطابع الشخصي وفقاً للقانون الجزائري.
                 </p>
               </div>
 
@@ -207,9 +203,9 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>1. البيانات التي نجمعها وكيفية استخدامها</span>
                 </h4>
                 <ul className="list-disc list-inside space-y-1 text-slate-300 pr-2">
-                  <li><strong>بيانات الموقع الجغرافي (Geolocation):</strong> نستخدم إحداثيات GPS بدقة حصرياً لحساب المسافات، رسم مسار الدراجة، واقتراح أقرب السائقين إليك في الوقت الحقيقي. لا يتم بيع أو مشاركة موقعك مع أطراف إعلانية خارجية.</li>
-                  <li><strong>معلومات الحساب:</strong> الاسم، رقم الهاتف، والبريد الإلكتروني للتحقق من هوية الركاب والسائقين وتأمين الرحلات.</li>
-                  <li><strong>بيانات الرحلة والتفاوض:</strong> الأسعار المعروضة، نقطة الانطلاق، والوجهة لتمكين التفاوض الحي المباشر (P2P Negotiation).</li>
+                  <li><strong>بيانات الموقع الجغرافي:</strong> نستخدم إحداثيات GPS بدقة حصرياً لحساب المسافات وتحديد الرحلة.</li>
+                  <li><strong>معلومات الحساب:</strong> الاسم، رقم الهاتف، والبريد الإلكتروني للتحقق من هوية المستخدمين.</li>
+                  <li><strong>بيانات الرحلة والتفاوض:</strong> الأسعار المعروضة ونقطة الانطلاق والوجهة.</li>
                 </ul>
               </div>
 
@@ -219,8 +215,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>2. حماية وتشفير البيانات</span>
                 </h4>
                 <p>
-                  يتم تخزين جميع السجلات ومعاملات الرحلات عبر قاعدة بيانات سحابية مشفرة ببروتوكولات SSL/TLS ومعايير Google Cloud الأمنية، مع صلاحيات وصول مقيدة بدقة عبر قواعد أمان Firebase Firestore الصارمة.
-                </p>
+                  يتم تخزين جميع السجلات ومعاملات الرحلات عبر قاعدة بيانات سحابية مشفرة ببروتوكولات SSL/TLS ومعايير Google Cloud.</p>
               </div>
 
               <div>
@@ -229,7 +224,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>3. حقوق المستخدم وحذف البيانات</span>
                 </h4>
                 <p>
-                  يحق لكل مستخدم في أي وقت طلب تعديل أو حذف حسابه وبياناته المسجلة عبر التواصل مع الدعم الفني للمنصة على البريد الإلكتروني المعتمد: <strong className="text-amber-400">seyfhad@gmail.com</strong>.
+                  يحق لكل مستخدم في أي وقت طلب تعديل أو حذف حسابه وبياناته المسجلة عبر التواصل مع الدعم الفني.
                 </p>
               </div>
             </div>
@@ -241,7 +236,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>شروط وقواعد استخدام منصة MotoDrive</span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  تحدد هذه الاتفاقية حقوق والتزامات كل من الركاب وسائقي الدراجات النارية في الجمهورية الجزائرية الديمقراطية الشعبية.
+                  تحدد هذه الاتفاقية حقوق والتزامات كل من الركاب وسائقي الدراجات النارية في الجمهورية الجزائرية.
                 </p>
               </div>
 
@@ -250,9 +245,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>🏍️</span>
                   <span>1. قواعد الأمان وارتداء الخوذة</span>
                 </h4>
-                <p>
-                  السلامة هي أولويتنا القصوى: يُلزم كل سائق بتوفير خوذة أمان معتمدة للراكب، ويُمنع صعود الراكب دون ارتداء الخوذة وربطها بإحكام طوال مسار الرحلة وفقاً لقانون المرور الجزائري.
-                </p>
+                <p>السلامة هي أولويتنا القصوى: يُلزم كل سائق بتوفير خوذة أمان معتمدة للراكب.</p>
               </div>
 
               <div>
@@ -260,9 +253,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>📏</span>
                   <span>2. حد المسافة الأقصى (70 كم)</span>
                 </h4>
-                <p>
-                  تقتصر رحلات الدراجات النارية في منصة MotoDrive على مسافة أقصاها <strong className="text-amber-400">70 كم</strong> لكل رحلة. يمنع النظام آلياً حجز أو قبول رحلات تتجاوز هذا الحد تفادياً للإجهاد ولضمان السلامة الميكانيكية والبدنية.
-                </p>
+                <p>تقتصر رحلات الدراجات النارية في منصة MotoDrive على مسافة أقصاها 70 كم لكل رحلة.</p>
               </div>
 
               <div>
@@ -270,9 +261,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>💰</span>
                   <span>3. نموذج التسعير والتفاوض الحر</span>
                 </h4>
-                <p>
-                  تبدأ التسعيرة بالمنصة من <strong>120 د.ج</strong> (الحد الأدنى للخدمة)، ويتم احتساب السعر التقديري استناداً إلى سلم المسافات المعتمد (20 كم = 400 د.ج، 40 كم = 750 د.ج، 60 كم = 1500 د.ج). يحق للراكب والسائق الاتفاق الحر على السعر النهائي قبل بدء الرحلة.
-                </p>
+                <p>تبدأ التسعيرة بالمنصة من 120 د.ج، ويتم احتساب السعر التقديري استناداً إلى المسافة والطلب.</p>
               </div>
 
               <div>
@@ -280,15 +269,12 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <AlertCircle className="w-4 h-4 text-amber-400" />
                   <span>4. الدعم والتواصل الرسمي</span>
                 </h4>
-                <p>
-                  لأي استفسار أو شكوى تتعلق بالخدمة، يرجى التواصل المباشر مع فريق إدارة المنصة عبر البريد: <span className="text-amber-400 font-bold">seyfhad@gmail.com</span>.
-                </p>
+                <p>لأي استفسار أو شكوى تتعلق بالخدمة، يرجى التواصل المباشر مع فريق إدارة المنصة عبر البريد الرسمي.</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
           <div className="text-[11px] text-slate-500">
             MotoDrive Algérie • إصدار الإنتاج الرسمي 2026
