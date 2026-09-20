@@ -103,14 +103,14 @@
         <div class="links" aria-label="الوثائق القانونية">
             <button
                 type="button"
-                onclick="window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))"
+                onclick="document.getElementById('welcome-card').remove(); window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))"
             >
                 سياسة الخصوصية
             </button>
             <span aria-hidden="true">|</span>
             <button
                 type="button"
-                onclick="window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))"
+                onclick="document.getElementById('welcome-card').remove(); window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))"
             >
                 شروط الاستخدام
             </button>
