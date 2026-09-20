@@ -15,6 +15,7 @@ import {
   UserRole,
   UserProfile,
   DriverProfile,
+  DriverApprovalStatus,
   Ride,
   RideStatus,
   RideOffer,
@@ -31,6 +32,8 @@ import {
   INITIAL_SERVICE_AREAS,
   INITIAL_COMPLAINTS,
   INITIAL_PROMO_CODES,
+  GUEST_PASSENGER,
+  DEFAULT_PENDING_DRIVER,
 } from '../data/mockData';
 import { DEFAULT_PRICING, calculateFare, validateOfferedPrice } from '../utils/pricing';
 import { calculateDistanceKm, estimateDurationMinutes, calculateBearing } from '../utils/geo';
@@ -47,9 +50,10 @@ import {
   updateDriverOnlineStatus as updateFirestoreDriverOnlineStatus,
   syncDriverProfile,
   syncUserProfile,
+  clearAllTestDataFromFirestore,
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
-import { subscribeToAuth, signInQuickGuest } from '../services/authService';
+import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
 
 interface AppContextType {
   currentRole: UserRole;
@@ -71,6 +75,7 @@ interface AppContextType {
   // Firebase Realtime State
   isFirebaseConnected: boolean;
   currentUser: any;
+  logout: () => Promise<void>;
 
   // Passenger actions
   currentPassengerRide: Ride | null;
@@ -112,9 +117,11 @@ interface AppContextType {
   approveDriver: (driverId: string) => Promise<void>;
   rejectDriver: (driverId: string, reason: string) => Promise<void>;
   suspendDriver: (driverId: string) => Promise<void>;
+  updateDriverStatus: (driverId: string, status: DriverApprovalStatus, reason?: string) => Promise<void>;
   updatePricing: (newPricing: PricingSettings) => Promise<void>;
   resolveComplaint: (complaintId: string, notes: string) => Promise<void>;
   broadcastNotification: (title: string, body: string, targetRole?: UserRole) => void;
+  purgeAllTestData: () => Promise<{ deletedCount: number }>;
 
   // Simulator controls
   isAutoDriverSimulation: boolean;
@@ -147,12 +154,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Simulation switch (default to false for real Firebase mode, toggleable in UI)
   const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
 
-  // Active profiles
-  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => INITIAL_PASSENGERS[0]);
-  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => INITIAL_DRIVERS[0]);
+  // Active profiles (fresh guest state by default)
+  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => GUEST_PASSENGER);
+  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => DEFAULT_PENDING_DRIVER);
 
   // Track GPS location watcher
   const geoWatchIdRef = useRef<number | null>(null);
+
+  // Auto-purge initial lingering test documents in Firestore as requested by user
+  useEffect(() => {
+    clearAllTestDataFromFirestore().then(() => {
+      setRides([]);
+      setDrivers([]);
+      setPassengers([]);
+      setComplaints([]);
+      setRatings([]);
+    }).catch(err => {
+      console.warn('Auto purge initial test data notice:', err);
+    });
+  }, []);
 
   // --------------------------------------------------------------------------
   // 1. FIREBASE AUTH & USER PROFILE INITIALIZATION
@@ -163,19 +183,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
-        if (firebaseUser.email === 'seyfhad@gmail.com' || userProfile.role === 'admin' || userProfile.email === 'seyfhad@gmail.com') {
+        // Direct admin redirect if user is seyfhad@gmail.com
+        if (
+          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+          userProfile.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+          userProfile.role === 'admin'
+        ) {
           setCurrentRole('admin');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
+        } else if (userProfile.role === 'driver') {
+          setCurrentRole('driver');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
+        } else {
+          setCurrentRole('passenger');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
         }
-      } else if (!firebaseUser) {
-        // Auto sign in anonymously for immediate preview readiness
-        try {
-          const { user, profile } = await signInQuickGuest('سيف الدين (الراكب)', '0550123456', 'passenger');
-          setCurrentUser(user);
-          setIsFirebaseConnected(true);
-          setActivePassenger(profile);
-        } catch (e) {
-          console.warn('Firebase anonymous auth fallback:', e);
-        }
+      } else {
+        setCurrentUser(null);
+        setActivePassenger(GUEST_PASSENGER);
       }
     });
 
@@ -191,10 +216,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const pricingDocRef = doc(db, 'system_config', 'pricing');
     const unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
       if (docSnap.exists()) {
-        setPricing(docSnap.data() as PricingSettings);
+        const rawData = docSnap.data() as Partial<PricingSettings>;
+        // Guarantee baseFare and minimumFare are at standard 120 DZD (not legacy 150 DZD)
+        const sanitized: PricingSettings = {
+          ...DEFAULT_PRICING,
+          ...rawData,
+          baseFare: 120,
+          minimumFare: 120,
+        };
+        setPricing(sanitized);
+
+        // If Firestore had stale 150 DZD, automatically update it to 120 DZD
+        if (rawData.minimumFare !== 120 || rawData.baseFare !== 120) {
+          setDoc(pricingDocRef, { ...sanitized, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+        }
       } else {
         // Initialize default pricing in Firestore if missing
-        setDoc(pricingDocRef, { ...DEFAULT_PRICING, updatedAt: serverTimestamp() }).catch(err => {
+        setDoc(pricingDocRef, { ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120, updatedAt: serverTimestamp() }).catch(err => {
           console.warn('Initial pricing set notice:', err);
         });
       }
@@ -244,17 +282,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const driversPath = 'drivers';
     const driversQuery = query(collection(db, 'drivers'));
     const unsubDrivers = onSnapshot(driversQuery, (querySnap) => {
-      if (!querySnap.empty) {
-        const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
-          d => ({ id: d.id, ...d.data() } as DriverProfile)
-        );
-        setDrivers(fetchedDrivers);
-      } else {
-        // Seed initial drivers to Firestore so there is real data on first load
-        INITIAL_DRIVERS.forEach(drv => {
-          syncDriverProfile(drv).catch(console.error);
-        });
-      }
+      const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
+        d => ({ id: d.id, ...d.data() } as DriverProfile)
+      );
+      setDrivers(fetchedDrivers);
     }, (err) => {
       console.warn('Drivers snapshot notice:', err.message);
       try {
@@ -366,6 +397,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const distanceKm = calculateDistanceKm(pickup, destination);
+    if (distanceKm > 70) {
+      return { success: false, error: 'أقصى مسافة مسموحة للرحلة بالدراجة النارية هي 70 كم حفاظاً على السلامة.' };
+    }
     const estimatedDuration = estimateDurationMinutes(distanceKm);
 
     let discountPercent = 0;
@@ -383,7 +417,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? passengerOfferedPrice
       : recommendedPrice;
 
-    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing);
+    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing, distanceKm);
     if (!validation.isValid) {
       return { success: false, error: validation.error };
     }
@@ -751,6 +785,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await syncDriverProfile({ ...drv, status: 'suspended', isOnline: false, isAvailable: false });
   };
 
+  const updateDriverStatus = async (driverId: string, status: DriverApprovalStatus, reason?: string) => {
+    if (status === 'approved') {
+      await approveDriver(driverId);
+    } else if (status === 'rejected') {
+      await rejectDriver(driverId, reason || 'الوثائق غير مقبولة');
+    } else if (status === 'suspended') {
+      await suspendDriver(driverId);
+    } else {
+      const drv = drivers.find(d => d.id === driverId);
+      if (drv) {
+        await syncDriverProfile({ ...drv, status });
+      }
+    }
+    setDrivers(prev => prev.map(d => d.id === driverId ? { ...d, status, rejectionReason: reason } : d));
+    if (activeDriver.id === driverId) {
+      setActiveDriver(prev => ({ ...prev, status, rejectionReason: reason }));
+    }
+  };
+
   const updatePricing = async (newPricing: PricingSettings) => {
     setPricing(newPricing);
     const pricingDocRef = doc(db, 'system_config', 'pricing');
@@ -777,6 +830,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification('all', targetRole || 'passenger', title, body, 'system');
   };
 
+  const logout = async () => {
+    try {
+      await signOutUser();
+    } catch (e) {
+      console.warn('Error during sign out:', e);
+    }
+    setCurrentUser(null);
+    setActivePassenger(GUEST_PASSENGER);
+    setActiveDriver(DEFAULT_PENDING_DRIVER);
+    setCurrentRole('passenger');
+    localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
+  };
+
+  const purgeAllTestData = async (): Promise<{ deletedCount: number }> => {
+    const result = await clearAllTestDataFromFirestore();
+    setRides([]);
+    setDrivers([]);
+    setPassengers([]);
+    setComplaints([]);
+    setRatings([]);
+    return result;
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -796,6 +872,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ratings,
         isFirebaseConnected,
         currentUser,
+        logout,
 
         currentPassengerRide,
         requestRide,
@@ -819,9 +896,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveDriver,
         rejectDriver,
         suspendDriver,
+        updateDriverStatus,
         updatePricing,
         resolveComplaint,
         broadcastNotification,
+        purgeAllTestData,
 
         isAutoDriverSimulation,
         setIsAutoDriverSimulation,

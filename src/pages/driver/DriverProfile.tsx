@@ -78,6 +78,31 @@ export const DriverProfile: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Driver Legal & Policies */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-2.5 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="font-bold text-white flex items-center gap-1.5">
+            <span>⚖️</span>
+            <span>الميثاق القانوني والخصوصية</span>
+          </div>
+          <span className="text-[10px] text-amber-400 font-mono">MotoDrive Algérie</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            سياسة الخصوصية
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            شروط وقواعد السائق
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

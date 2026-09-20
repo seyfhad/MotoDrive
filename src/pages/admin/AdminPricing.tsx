@@ -6,10 +6,10 @@ import { DollarSign, Save, RefreshCw, CheckCircle2, ShieldAlert, Sparkles, Perce
 export const AdminPricing: React.FC = () => {
   const { pricing, updatePricing } = useApp();
 
-  const [baseFare, setBaseFare] = useState(pricing.baseFare);
+  const [baseFare, setBaseFare] = useState(pricing.baseFare || 120);
   const [pricePerKm, setPricePerKm] = useState(pricing.pricePerKm);
   const [pricePerMinute, setPricePerMinute] = useState(pricing.pricePerMinute);
-  const [minimumFare, setMinimumFare] = useState(pricing.minimumFare);
+  const [minimumFare, setMinimumFare] = useState(pricing.minimumFare || 120);
   const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee);
   const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent);
   const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier);
@@ -166,44 +166,69 @@ export const AdminPricing: React.FC = () => {
 
         {/* Live Simulation & Live Calculator Card */}
         <div className="space-y-4">
+          {/* Approved Tiered Scale Card */}
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-5 space-y-3 shadow-xl">
+            <h3 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+              <span>🏍️</span>
+              <span>سلم التسعيرة والمسافات المعتمد (Algeria Moto Scale)</span>
+            </h3>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-slate-300">الحد الأدنى والانطلاق (0 - 5 كم):</span>
+                <span className="font-black text-amber-400">120 د.ج</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-slate-300">مسافة 20 كم:</span>
+                <span className="font-black text-amber-400">400 د.ج</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-slate-300">مسافة 40 كم:</span>
+                <span className="font-black text-amber-400">750 د.ج</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-slate-300">مسافة 60 كم:</span>
+                <span className="font-black text-amber-400">1,500 د.ج</span>
+              </div>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-950/30 border border-rose-500/40 text-rose-300">
+                <span className="font-bold">أقصى مسافة مسموحة للرحلة:</span>
+                <span className="font-black text-rose-400">70 كم (ممنوع تجاوزها)</span>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-emerald-400" />
-              <span>محاكاة تجريبية لحساب رحلة (مثال: 6 كم / 12 دقيقة)</span>
+              <span>محاكاة تجريبية لحساب رحلة</span>
             </h3>
 
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2 text-xs">
               <div className="flex items-center justify-between text-slate-400">
-                <span>سعر الانطلاق:</span>
+                <span>الحد الأدنى والانطلاق:</span>
                 <span className="text-white font-semibold">{baseFare} د.ج</span>
               </div>
               <div className="flex items-center justify-between text-slate-400">
-                <span>المسافة (6 كم × {pricePerKm} د.ج):</span>
-                <span className="text-white font-semibold">{6 * pricePerKm} د.ج</span>
+                <span>مثال 20 كم:</span>
+                <span className="text-amber-400 font-bold">400 د.ج</span>
               </div>
               <div className="flex items-center justify-between text-slate-400">
-                <span>الوقت (12 دقيقة × {pricePerMinute} د.ج):</span>
-                <span className="text-white font-semibold">{12 * pricePerMinute} د.ج</span>
+                <span>مثال 40 كم:</span>
+                <span className="text-amber-400 font-bold">750 د.ج</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-400">
+                <span>مثال 60 كم:</span>
+                <span className="text-amber-400 font-bold">1,500 د.ج</span>
               </div>
 
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-sm font-black text-amber-400">
-                <span>إجمالي سعر الراكب:</span>
-                <span>{formatCurrencyDZD(testTotal)}</span>
-              </div>
-
-              <div className="flex items-center justify-between text-red-400 font-semibold pt-1">
-                <span>عمولة MotoDrive ({platformCommissionPercent}%):</span>
-                <span>- {formatCurrencyDZD(testCommission)}</span>
-              </div>
-
-              <div className="flex items-center justify-between text-emerald-400 font-bold pt-1 border-t border-slate-800/80">
-                <span>صافي ربح السائق:</span>
-                <span>{formatCurrencyDZD(testDriverNet)}</span>
+                <span>عمولة المنصة ({platformCommissionPercent}%):</span>
+                <span>تلقائية عند إنهاء كل رحلة</span>
               </div>
             </div>
 
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              تساعد دراجات MotoDrive الركاب في توفير ما يصل إلى 50% من زمن الرحلة في أوقات الذروة وازدحام شوارع الجزائر العاصمة، مع تقديم تسعيرة اقتصادية ومجزية للسائق.
+              تساعد دراجات MotoDrive الركاب في توفير ما يصل إلى 50% من زمن الرحلة في أوقات الزحام، مع حماية السائق والراكب بتحديد سقف المسافة بـ 70 كم كحد أقصى.
             </p>
           </div>
         </div>

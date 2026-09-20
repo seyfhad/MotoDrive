@@ -1,48 +1,69 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { FileText, CheckCircle2, Clock, AlertTriangle, UploadCloud, Bike, User, ShieldCheck } from 'lucide-react';
+import {
+  FileText,
+  CheckCircle2,
+  Clock,
+  AlertTriangle,
+  UploadCloud,
+  Bike,
+  User,
+  ShieldCheck,
+  Camera,
+  X,
+  Plus,
+} from 'lucide-react';
+import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
 export const DriverDocumentsUpload: React.FC = () => {
-  const { activeDriver, registerDriver } = useApp();
-
-  const [isRegisteringNew, setIsRegisteringNew] = useState(false);
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [wilaya, setWilaya] = useState('الجزائر العاصمة');
-  const [municipality, setMunicipality] = useState('سيدي امحمد');
-  const [bikeBrand, setBikeBrand] = useState('Honda');
-  const [bikeModel, setBikeModel] = useState('SH 150i');
-  const [bikeYear, setBikeYear] = useState('2023');
-  const [bikePlate, setBikePlate] = useState('116-123-16');
-  const [submitted, setSubmitted] = useState(false);
+  const { activeDriver } = useApp();
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
 
   const docs = [
-    { title: 'بطاقة التعريف الوطنية (ID Card)', status: 'مرفوعة', required: true, icon: '🪪' },
-    { title: 'رخصة السياقة صنف (أ / A)', status: 'مرفوعة', required: true, icon: '📜' },
-    { title: 'البطاقة الرمادية للدراجة (Carte Grise)', status: 'مرفوعة', required: true, icon: '📄' },
-    { title: 'شهادة التأمين السارية (Assurance)', status: 'مرفوعة', required: true, icon: '🛡️' },
-    { title: 'صورة شخصية للسائق', status: 'مرفوعة', required: true, icon: '👤' },
-    { title: 'صور الدراجة مع لوحة الترقيم', status: 'مرفوعة', required: true, icon: '🏍️' },
+    {
+      title: '1. صورة شخصية واضحة (سيلفي)',
+      sub: 'صورة للوجه واضحة بدون نظارات',
+      url: activeDriver.documents?.selfieUrl || activeDriver.photoUrl,
+      icon: '👤',
+    },
+    {
+      title: '2. الدراجة النارية (من الأمام)',
+      sub: 'صورة كاملة لواجهة الدراجة',
+      url: activeDriver.documents?.motorcycleFrontUrl || activeDriver.documents?.motorcyclePhotosUrls?.[0],
+      icon: '🏍️',
+    },
+    {
+      title: '3. الدراجة النارية (من الخلف)',
+      sub: 'صورة تظهر لوحة الترقيم بوضوح',
+      url: activeDriver.documents?.motorcycleBackUrl || activeDriver.documents?.motorcyclePhotosUrls?.[1],
+      icon: '🛵',
+    },
+    {
+      title: '4. رخصة السياقة (الوجه الأمامي)',
+      sub: 'صنف A سارية المفعول',
+      url: activeDriver.documents?.licenseFrontUrl || activeDriver.documents?.licenseUrl,
+      icon: '📜',
+    },
+    {
+      title: '5. رخصة السياقة (الوجه الخلفي)',
+      sub: 'الظهر الخلفي لرخصة السياقة',
+      url: activeDriver.documents?.licenseBackUrl,
+      icon: '📜',
+    },
+    {
+      title: '6. وثيقة الدراجة (البطاقة الرمادية - أمامي)',
+      sub: 'Carte Grise الوجه الأمامي',
+      url: activeDriver.documents?.vehicleDocFrontUrl || activeDriver.documents?.vehicleRegistrationUrl,
+      icon: '📄',
+    },
+    {
+      title: '7. وثيقة الدراجة (البطاقة الرمادية - خلفي)',
+      sub: 'Carte Grise الوجه الخلفي',
+      url: activeDriver.documents?.vehicleDocBackUrl,
+      icon: '📄',
+    },
   ];
-
-  const handleRegister = (e: React.FormEvent) => {
-    e.preventDefault();
-    registerDriver({
-      name,
-      phone,
-      wilaya,
-      municipality,
-      motorcycle: {
-        brand: bikeBrand,
-        model: bikeModel,
-        year: parseInt(bikeYear) || 2023,
-        color: 'أسود',
-        plateNumber: bikePlate,
-      },
-    });
-    setSubmitted(true);
-    setIsRegisteringNew(false);
-  };
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-4 pb-24" id="driver-documents-screen">
@@ -50,14 +71,14 @@ export const DriverDocumentsUpload: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-white">وثائق وملف السائق</h2>
-          <p className="text-xs text-slate-400">التحقق الأمني ورخصة سياقة الدراجة النارية</p>
+          <p className="text-xs text-slate-400">التحقق الأمني واعتماد الدراجة النارية</p>
         </div>
         <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
           <ShieldCheck className="w-5 h-5" />
         </div>
       </div>
 
-      {/* Account Verification Status Card - Prompt Section 5 */}
+      {/* Account Verification Status Card */}
       <div
         className={`border rounded-3xl p-5 shadow-xl space-y-3 ${
           activeDriver.status === 'approved'
@@ -74,10 +95,10 @@ export const DriverDocumentsUpload: React.FC = () => {
             {activeDriver.status === 'rejected' && '❌'}
           </div>
           <div>
-            <div className="text-[11px] font-semibold opacity-80">حالة اعتماد الحساب:</div>
+            <div className="text-[11px] font-semibold opacity-80">حالة ملف السائق:</div>
             <div className="text-base font-black">
-              {activeDriver.status === 'approved' && 'تم قبول الحساب والموافقة عليه'}
-              {activeDriver.status === 'pending' && 'قيد المراجعة والتدقيق الأمني'}
+              {activeDriver.status === 'approved' && 'تم قبول الحساب والموافقة عليه رسميًا'}
+              {activeDriver.status === 'pending' && 'قيد المراجعة والتدقيق من قِبل الأدمن'}
               {activeDriver.status === 'rejected' && 'تم رفض ملف التسجيل'}
             </div>
           </div>
@@ -92,29 +113,69 @@ export const DriverDocumentsUpload: React.FC = () => {
         <p className="text-xs opacity-90 leading-relaxed">
           {activeDriver.status === 'approved'
             ? 'حسابك مفعل وجاهز لاستقبال طلبات الركاب. يرجى دائماً الالتزام بالخوذة الواقية.'
-            : 'لا يمكن للسائق تفعيل وضع Online أو استقبال الرحلات قبل اعتماد الوثائق رسمياً من فريق إدارة MotoDrive.'}
+            : 'بناءً على طلبك، تم إرسال ملفك ووثائقك إلى لوحة الإدارة. يرجى الانتظار حتى يقوم الأدمن بمراجعتها وقبولها لتتمكن من تفعيل وضع (Online) واستقبال رحلات الركاب.'}
         </p>
+
+        {activeDriver.status !== 'approved' && (
+          <button
+            onClick={() => setShowRegisterModal(true)}
+            className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>تعديل أو إعادة رفع الوثائق المطلوبة</span>
+          </button>
+        )}
       </div>
 
       {/* Uploaded Documents List */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
-        <h3 className="text-sm font-bold text-white mb-2">قائمة الوثائق الرسمية المطلوبة:</h3>
-        <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-white">الوثائق السبع المطلوبة (7 صور):</h3>
+          <span className="text-[10px] text-amber-400 font-semibold">مطلوبة للاعتماد</span>
+        </div>
+
+        <div className="space-y-2.5">
           {docs.map((doc, idx) => (
             <div
               key={idx}
-              className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-2xl flex items-center justify-between text-xs"
+              className="p-3 bg-slate-950/80 border border-slate-800 rounded-2xl flex items-center justify-between text-xs gap-3"
             >
-              <div className="flex items-center gap-2.5">
-                <span className="text-base">{doc.icon}</span>
-                <div>
-                  <div className="font-bold text-slate-200">{doc.title}</div>
-                  <div className="text-[10px] text-slate-500">مطلوبة وفق قانون النقل بالجزائر</div>
+              <div className="flex items-center gap-3 truncate">
+                {doc.url ? (
+                  <div
+                    className="relative w-12 h-12 rounded-xl overflow-hidden border border-amber-500/50 shrink-0 cursor-pointer bg-slate-900"
+                    onClick={() => setZoomedImageUrl(doc.url || null)}
+                  >
+                    <img src={doc.url} alt={doc.title} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 right-0 bg-emerald-500 text-slate-950 text-[8px] font-black px-1 rounded-tl">
+                      ✓
+                    </span>
+                  </div>
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 shrink-0">
+                    <Camera className="w-5 h-5" />
+                  </div>
+                )}
+                <div className="truncate">
+                  <div className="font-bold text-slate-200 truncate">{doc.title}</div>
+                  <div className="text-[10px] text-slate-500 truncate">{doc.sub}</div>
                 </div>
               </div>
-              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
-                ✓ تم الرفع
-              </span>
+
+              <div className="shrink-0">
+                {doc.url ? (
+                  <button
+                    onClick={() => setZoomedImageUrl(doc.url || null)}
+                    className="text-[11px] font-bold text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-colors"
+                  >
+                    معاينة 🔍
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-slate-500 bg-slate-900 px-2 py-1 rounded-lg">
+                    غير مرفوعة
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -126,7 +187,9 @@ export const DriverDocumentsUpload: React.FC = () => {
         <div className="grid grid-cols-2 gap-2 text-slate-300">
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
             <span className="text-slate-500 text-[10px] block">الشركة والموديل:</span>
-            <span className="font-bold text-white text-xs">{activeDriver.motorcycle.brand} {activeDriver.motorcycle.model}</span>
+            <span className="font-bold text-white text-xs">
+              {activeDriver.motorcycle.brand} {activeDriver.motorcycle.model}
+            </span>
           </div>
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
             <span className="text-slate-500 text-[10px] block">سنة الصنع:</span>
@@ -138,10 +201,45 @@ export const DriverDocumentsUpload: React.FC = () => {
           </div>
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800">
             <span className="text-slate-500 text-[10px] block">رقم لوحة الترقيم:</span>
-            <span className="font-mono font-bold text-amber-400 text-xs">{activeDriver.motorcycle.plateNumber}</span>
+            <span className="font-mono font-bold text-amber-400 text-xs">
+              {activeDriver.motorcycle.plateNumber}
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Zoom Modal */}
+      {zoomedImageUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in"
+          onClick={() => setZoomedImageUrl(null)}
+        >
+          <div
+            className="relative max-w-2xl w-full bg-slate-900 border border-slate-700 rounded-3xl p-3 shadow-2xl space-y-3"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-bold text-slate-300">معاينة الوثيقة مكبّرة 🔍</span>
+              <button
+                onClick={() => setZoomedImageUrl(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="max-h-[75vh] overflow-auto flex items-center justify-center bg-black/50 rounded-2xl p-2">
+              <img
+                src={zoomedImageUrl}
+                alt="Document preview"
+                className="max-h-[70vh] w-auto max-w-full object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit/Re-upload Modal */}
+      <RegisterDriverModal isOpen={showRegisterModal} onClose={() => setShowRegisterModal(false)} />
     </div>
   );
 };

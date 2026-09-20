@@ -205,7 +205,33 @@ export const PassengerProfile: React.FC = () => {
         <div className="space-y-1.5 text-slate-400 text-[11px] leading-relaxed">
           <p>• ارتداء الخوذة الواقية إلزامي طوال مسار الرحلة.</p>
           <p>• التمسك بالمقابض الجانبية أو خصر السائق لتوازن أفضل عند المنعطفات.</p>
-          <p>• الدفع نقدًا بالسعر المحدد مسبقًا في التطبيق دون أي زيادة.</p>
+          <p>• أقصى مسافة مسموحة للرحلة هي 70 كم كحد أقصى للحفاظ على سلامتك.</p>
+          <p>• السعر المعتمد يبدأ من 120 د.ج ويتم التفاوض عليه بشفافية تامة.</p>
+        </div>
+      </div>
+
+      {/* Legal, Privacy & Compliance */}
+      <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-4 space-y-2.5 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="font-bold text-white flex items-center gap-1.5">
+            <span>⚖️</span>
+            <span>الامتثال القانوني والخصوصية</span>
+          </div>
+          <span className="text-[10px] text-amber-400 font-mono">v1.2.0 Production</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            سياسة الخصوصية
+          </button>
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            شروط الاستخدام
+          </button>
         </div>
       </div>
     </div>

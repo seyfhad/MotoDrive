@@ -266,18 +266,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </div>
 
-                {/* Quick Owner Fill Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmailInput('seyfhad@gmail.com');
-                    setNameInput('سيف الدين (المالك)');
-                  }}
-                  className="w-full py-1.5 px-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[11px] font-bold transition-all text-center"
-                >
-                  ⚡ الدخول التلقائي كمالك (seyfhad@gmail.com)
-                </button>
-
                 {errorMsg && (
                   <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
                     {errorMsg}
@@ -302,13 +290,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             )}
 
             {/* Privacy & Instant Note */}
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1">
+            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1.5">
               <div className="flex items-center gap-1.5 text-amber-400 font-bold">
                 <ShieldCheck className="w-3.5 h-3.5" />
                 <span>حماية ومصادقة فورية:</span>
               </div>
-              <p className="leading-relaxed">
-                يتم التحقق من حسابك وتخزين بياناتك بأمان في قاعدة بيانات Firebase Firestore المشفرة.
+              <p className="leading-relaxed text-[10px]">
+                يتم التحقق من حسابك وتخزين بياناتك بأمان في قاعدة بيانات سحابية مشفرة. بالاستمرار، فإنك توافق على{' '}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
+                  className="text-amber-400 underline hover:text-amber-300 font-bold"
+                >
+                  شروط الاستخدام
+                </button>{' '}
+                و{' '}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
+                  className="text-amber-400 underline hover:text-amber-300 font-bold"
+                >
+                  سياسة الخصوصية
+                </button>.
               </p>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '../../contexts/AppContext';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminDrivers } from './AdminDrivers';
 import { AdminRides } from './AdminRides';
@@ -17,9 +18,11 @@ import {
   Users,
   Map,
   Shield,
+  LogOut,
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
+  const { logout } = useApp();
   const [activeAdminTab, setActiveAdminTab] = useState<string>('dashboard');
 
   const navItems = [
@@ -61,6 +64,16 @@ export const AdminPanel: React.FC = () => {
               </button>
             );
           })}
+
+          <div className="pt-4 mt-2 border-t border-slate-800 hidden md:block">
+            <button
+              onClick={logout}
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-xs font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all text-right w-full"
+            >
+              <LogOut className="w-4 h-4 shrink-0" />
+              <span>تسجيل الخروج من الإدارة</span>
+            </button>
+          </div>
         </nav>
       </aside>
 

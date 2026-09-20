@@ -7,6 +7,7 @@ import {
   setDoc,
   updateDoc,
   addDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -367,4 +368,80 @@ export const uploadDriverDocument = async (
   const storageRef = ref(storage, `driver_documents/${driverId}/${docType}_${Date.now()}_${file.name}`);
   const snap = await uploadBytes(storageRef, file);
   return getDownloadURL(snap.ref);
+};
+
+// ============================================================================
+// PURGE / CLEAR ALL TEST DATA (ADMIN TOOL)
+// ============================================================================
+
+export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: number }> => {
+  let deletedCount = 0;
+
+  // 1. Delete all rides and subcollection offers
+  try {
+    const ridesSnap = await getDocs(collection(db, 'rides'));
+    for (const rideDoc of ridesSnap.docs) {
+      try {
+        const offersSnap = await getDocs(collection(db, 'rides', rideDoc.id, 'offers'));
+        for (const offerDoc of offersSnap.docs) {
+          await deleteDoc(offerDoc.ref);
+        }
+      } catch (e) {
+        // ignore subcollection errors
+      }
+      await deleteDoc(rideDoc.ref);
+      deletedCount++;
+    }
+  } catch (e) {
+    console.warn('Error purging rides:', e);
+  }
+
+  // 2. Delete all drivers
+  try {
+    const driversSnap = await getDocs(collection(db, 'drivers'));
+    for (const driverDoc of driversSnap.docs) {
+      await deleteDoc(driverDoc.ref);
+      deletedCount++;
+    }
+  } catch (e) {
+    console.warn('Error purging drivers:', e);
+  }
+
+  // 3. Delete non-admin users (preserve seyfhad@gmail.com)
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const userDoc of usersSnap.docs) {
+      const data = userDoc.data();
+      if (data?.email?.toLowerCase() !== 'seyfhad@gmail.com' && data?.role !== 'admin') {
+        await deleteDoc(userDoc.ref);
+        deletedCount++;
+      }
+    }
+  } catch (e) {
+    console.warn('Error purging users:', e);
+  }
+
+  // 4. Delete complaints
+  try {
+    const complaintsSnap = await getDocs(collection(db, 'complaints'));
+    for (const cDoc of complaintsSnap.docs) {
+      await deleteDoc(cDoc.ref);
+      deletedCount++;
+    }
+  } catch (e) {
+    console.warn('Error purging complaints:', e);
+  }
+
+  // 5. Delete ratings
+  try {
+    const ratingsSnap = await getDocs(collection(db, 'ratings'));
+    for (const rDoc of ratingsSnap.docs) {
+      await deleteDoc(rDoc.ref);
+      deletedCount++;
+    }
+  } catch (e) {
+    console.warn('Error purging ratings:', e);
+  }
+
+  return { deletedCount };
 };

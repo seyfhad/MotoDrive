@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, Bike, Mail } from 'lucide-react';
+import { Bell, AlertTriangle, User, Bike, Mail, Shield, LogOut } from 'lucide-react';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
@@ -14,6 +14,7 @@ export const Header: React.FC = () => {
     activePassenger,
     activeDriver,
     currentUser,
+    logout,
     drivers,
     passengers,
     notifications,
@@ -47,7 +48,7 @@ export const Header: React.FC = () => {
 
           {/* User Account & Quick Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Account & Role Badge Button */}
+            {/* Account & Login Button */}
             <button
               id="header-user-profile-btn"
               onClick={() => {
@@ -57,21 +58,46 @@ export const Header: React.FC = () => {
                   setShowUserProfile(true);
                 }
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold transition-all"
-              title="حسابي والصفة في التطبيق"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                !currentUser
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
+              }`}
+              title={!currentUser ? 'تسجيل الدخول' : 'حسابي والصفة في التطبيق'}
             >
-              {currentRole === 'driver' ? (
-                <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              {!currentUser ? (
+                <>
+                  <User className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-xs font-black">تسجيل الدخول</span>
+                </>
               ) : (
-                <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <>
+                  {currentRole === 'driver' ? (
+                    <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  ) : (
+                    <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  )}
+                  <span className="truncate text-[10px] sm:text-xs font-bold max-w-[80px] sm:max-w-none">
+                    {currentUser.displayName || activePassenger?.name?.split(' ')[0] || 'حسابي'}
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold">
+                    {currentRole === 'admin' ? 'الإدارة' : currentRole === 'driver' ? 'سائق' : 'راكب'}
+                  </span>
+                </>
               )}
-              <span className="truncate text-[10px] sm:text-xs font-bold">
-                {currentUser ? (activePassenger?.name?.split(' ')[0] || 'حسابي') : 'تسجيل الدخول'}
-              </span>
-              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold">
-                {currentRole === 'driver' ? 'سائق' : currentRole === 'admin' ? 'أدمن' : 'راكب'}
-              </span>
             </button>
+
+            {/* Quick Logout Button */}
+            {currentUser && (
+              <button
+                id="header-logout-btn"
+                onClick={logout}
+                className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all"
+                title="تسجيل الخروج"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            )}
 
             {/* Emergency SOS button */}
             <button
@@ -96,6 +122,18 @@ export const Header: React.FC = () => {
               title="إرسال عبر Gmail"
             >
               <Mail className="w-3.5 h-3.5 text-amber-400" />
+            </button>
+
+            {/* Google Cloud & Verification Guide Button */}
+            <button
+              id="header-gcp-guide-btn"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'gcp-guide' } }));
+              }}
+              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors"
+              title="دليل نشر التطبيق وإعدادات Google Cloud"
+            >
+              <Shield className="w-3.5 h-3.5 text-amber-400" />
             </button>
 
             {/* Notification Bell */}

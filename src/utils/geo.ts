@@ -1,83 +1,22 @@
 import { Coordinates } from '../types';
+import {
+  COMPREHENSIVE_ALGERIA_LOCATIONS,
+  searchLocalLocations,
+  normalizeSearchString,
+  FEATURED_WILAYAS,
+  AlgeriaLocationItem
+} from '../data/algeriaLocations';
 
-// Famous Algerian Landmarks & Hotspots for Quick Selection and Geocoding
-export const ALGERIA_LOCATIONS: { name: string; wilaya: string; coords: Coordinates }[] = [
-  {
-    name: 'ساحة أول ماي (Place du 1er Mai)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7561, lng: 3.0543, address: 'ساحة أول ماي، الجزائر العاصمة' },
-  },
-  {
-    name: 'جامعة هواري بومدين للعلوم والتكنولوجيا (USTHB)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7118, lng: 3.1813, address: 'باب الزوار، الجزائر العاصمة' },
-  },
-  {
-    name: 'حي 5 جويلية (Bab Ezzouar)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7215, lng: 3.1874, address: 'حي 5 جويلية، باب الزوار، الجزائر' },
-  },
-  {
-    name: 'مطار الجزائر الدولي - هواري بومدين',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.6974, lng: 3.2185, address: 'مطار هواري بومدين الدولي، الدار البيضاء' },
-  },
-  {
-    name: 'البريد المركزي (Grande Poste)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7725, lng: 3.0592, address: 'شارع زيغود يوسف، وسط الجزائر العاصمة' },
-  },
-  {
-    name: 'شارع ديدوش مراد (Didouche Mourad)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7648, lng: 3.0526, address: 'شارع ديدوش مراد، سيدي امحمد' },
-  },
-  {
-    name: 'حي حيدرة الدبلوماسي (Hydra)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7441, lng: 3.0298, address: 'ساحة القدس، حيدرة، الجزائر' },
-  },
-  {
-    name: 'الأبيار (El Biar)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7687, lng: 3.0315, address: 'شارع بوقرة، الأبيار، الجزائر' },
-  },
-  {
-    name: 'حي القبة (Kouba)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7256, lng: 3.0851, address: 'وسط القبة، الجزائر العاصمة' },
-  },
-  {
-    name: 'المركز التجاري باب الزوار (Centre Commercial)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7176, lng: 3.1952, address: 'حي الأعمال، باب الزوار' },
-  },
-  {
-    name: 'مقام الشهيد (Makam Echahid)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7458, lng: 3.0697, address: 'رياض الفتح، المدنية، الجزائر' },
-  },
-  {
-    name: 'محطة القطار آغا (Gare de l\'Agha)',
-    wilaya: 'الجزائر العاصمة',
-    coords: { lat: 36.7645, lng: 3.0588, address: 'شارع حسيبة بن بوعلي، الجزائر' },
-  },
-  {
-    name: 'وسط مدينة البليدة (Bab Dzair - Blida)',
-    wilaya: 'البليدة',
-    coords: { lat: 36.4702, lng: 2.8288, address: 'باب الدزاير، البليدة' },
-  },
-  {
-    name: 'ساحة أول نوفمبر (Place 1er Novembre - Oran)',
-    wilaya: 'وهران',
-    coords: { lat: 35.7003, lng: -0.6417, address: 'وسط مدينة وهران' },
-  },
-  {
-    name: 'جسر سيدي راشد (Constantine)',
-    wilaya: 'قسنطينة',
-    coords: { lat: 36.3650, lng: 6.6147, address: 'وسط مدينة قسنطينة' },
-  }
-];
+export {
+  COMPREHENSIVE_ALGERIA_LOCATIONS,
+  searchLocalLocations,
+  normalizeSearchString,
+  FEATURED_WILAYAS
+};
+export type { AlgeriaLocationItem };
+
+// Comprehensive Algerian Landmarks, Municipalities & Hotspots (Guelma, Algiers, Oran, Constantine, etc.)
+export const ALGERIA_LOCATIONS = COMPREHENSIVE_ALGERIA_LOCATIONS;
 
 // Default center: Algiers Center
 export const DEFAULT_MAP_CENTER: [number, number] = [36.7538, 3.0588];
@@ -148,22 +87,9 @@ export function calculateBearing(start: Coordinates, end: Coordinates): number {
 }
 
 // Reverse Geocode coordinates to human-readable address in Algeria (Arabic/French)
+// Uses Nominatim and offline Algerian landmark matching (100% free, zero billing requirement)
 export async function reverseGeocodeCoords(lat: number, lng: number): Promise<string> {
-  // 1. Try Google Maps Geocoder if loaded in window
-  try {
-    const gmaps = (window as any).google?.maps;
-    if (gmaps?.Geocoder) {
-      const geocoder = new gmaps.Geocoder();
-      const response = await geocoder.geocode({ location: { lat, lng } });
-      if (response.results?.[0]) {
-        return response.results[0].formatted_address;
-      }
-    }
-  } catch (err) {
-    // Continue to fallback
-  }
-
-  // 2. High-accuracy OpenStreetMap reverse geocoding with Arabic priority
+  // 1. High-accuracy OpenStreetMap reverse geocoding with Arabic priority (No billing required)
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=ar,fr`,
@@ -188,31 +114,74 @@ export async function reverseGeocodeCoords(lat: number, lng: number): Promise<st
     // Fallback if offline or network blocked
   }
 
+  // 2. Find nearest known Algerian location landmark
+  try {
+    let nearestLoc: { name: string; wilaya: string; dist: number } | null = null;
+    for (const loc of ALGERIA_LOCATIONS) {
+      const d = calculateDistanceKm({ lat, lng }, loc.coords);
+      if (!nearestLoc || d < nearestLoc.dist) {
+        nearestLoc = { name: loc.name, wilaya: loc.wilaya, dist: d };
+      }
+    }
+
+    if (nearestLoc && nearestLoc.dist <= 1.5) {
+      return `${nearestLoc.name}`;
+    } else if (nearestLoc && nearestLoc.dist <= 15) {
+      return `قرب ${nearestLoc.name} (${nearestLoc.wilaya})`;
+    }
+  } catch {
+    // Ignore distance calculation errors
+  }
+
   return `موقع إحداثيات: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
-// Real place search for Algeria using OpenStreetMap API
+// Real place search for Algeria with instant local index and live Nominatim enrichment
 export async function searchAlgeriaPlaces(
-  queryText: string
+  queryText: string,
+  wilayaFilter: string = 'الكل'
 ): Promise<{ name: string; wilaya: string; coords: Coordinates }[]> {
-  if (!queryText || queryText.trim().length < 2) return [];
+  const trimmed = queryText ? queryText.trim() : '';
 
+  // 1. Instant local results (supports any single letter or term e.g. "ق", "قالمة", "عقبي", "حمام")
+  const localMatches = searchLocalLocations(trimmed, wilayaFilter).map(item => ({
+    name: item.name,
+    wilaya: item.wilaya,
+    coords: item.coords,
+  }));
+
+  // If query is empty or less than 3 characters, instant local dataset provides perfect results
+  if (trimmed.length < 3) {
+    return localMatches.slice(0, 20);
+  }
+
+  // 2. For queries 3+ chars, also query Nominatim in background with timeout
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1800);
+
+    const queryWithContext = wilayaFilter && wilayaFilter !== 'الكل'
+      ? `${trimmed} ${wilayaFilter} Algeria`
+      : `${trimmed} Algeria`;
+
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-        queryText
-      )}&countrycodes=dz&limit=7&addressdetails=1&accept-language=ar,fr`,
+        queryWithContext
+      )}&countrycodes=dz&limit=10&addressdetails=1&accept-language=ar,fr`,
       {
+        signal: controller.signal,
         headers: {
           'Accept-Language': 'ar,fr;q=0.9,en;q=0.8',
         },
       }
     );
+    clearTimeout(timeoutId);
+
     if (res.ok) {
       const results = await res.json();
-      return results.map((item: any) => {
+      const onlineResults = results.map((item: any) => {
         const wilaya = item.address?.state || item.address?.county || 'الجزائر';
-        const name = item.display_name.split(',')[0] || item.name || queryText;
+        const name = item.display_name.split(',')[0] || item.name || trimmed;
         return {
           name,
           wilaya,
@@ -224,12 +193,26 @@ export async function searchAlgeriaPlaces(
           },
         };
       });
+
+      // Merge results without coordinate collisions
+      const merged = [...localMatches];
+      for (const online of onlineResults) {
+        const isDuplicate = merged.some(
+          m =>
+            Math.abs(m.coords.lat - online.coords.lat) < 0.005 &&
+            Math.abs(m.coords.lng - online.coords.lng) < 0.005
+        );
+        if (!isDuplicate) {
+          merged.push(online);
+        }
+      }
+      return merged.slice(0, 25);
     }
-  } catch (err) {
-    console.warn('Place search notice:', err);
+  } catch {
+    // Return instant local matches on network timeout or failure
   }
 
-  return [];
+  return localMatches.slice(0, 25);
 }
 
 export interface RobustLocationResult {

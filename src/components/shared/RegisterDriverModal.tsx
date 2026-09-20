@@ -2,15 +2,26 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { DriverProfile } from '../../types';
 import { syncDriverProfile } from '../../services/firestoreService';
-import { X, Bike, Check, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
-import confetti from 'canvas-confetti';
+import {
+  X,
+  Bike,
+  Check,
+  Loader2,
+  Upload,
+  Camera,
+  FileCheck,
+  Clock,
+  AlertCircle,
+  ShieldCheck,
+  Image as ImageIcon,
+} from 'lucide-react';
 
 interface RegisterDriverModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const POPULAR_BRANDS = ['SYM', 'Yamaha', 'Honda', 'VMS', 'Kymco', 'Peugeot', 'Suzuki', 'BMW'];
+const POPULAR_BRANDS = ['SYM', 'Yamaha', 'Honda', 'VMS', 'Kymco', 'Peugeot', 'Suzuki', 'BMW', 'Dayang'];
 const ALGERIA_WILAYAS = [
   'الجزائر العاصمة',
   'وهران',
@@ -22,30 +33,91 @@ const ALGERIA_WILAYAS = [
   'تيزي وزو',
   'عنابة',
   'باتنة',
+  'بجاية',
+  'الشلف',
+  'تلمسان',
 ];
 
-export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
-  const { setCurrentRole, setActiveDriver, drivers } = useApp();
+// High-quality fallback placeholders for testing if user doesn't pick camera
+const SAMPLE_DOCS = {
+  selfie: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+  motoFront: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=400',
+  motoBack: 'https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=400',
+  licenseFront: 'https://images.unsplash.com/photo-1633265486064-086b219458ec?w=400',
+  licenseBack: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400',
+  vehicleDocFront: 'https://images.unsplash.com/photo-1628155930542-3c7a64e2c833?w=400',
+  vehicleDocBack: 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=400',
+};
 
-  const [name, setName] = useState('');
+export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
+  const { setCurrentRole, setActiveDriver, broadcastNotification, currentUser } = useApp();
+
+  // Basic Information
+  const [name, setName] = useState(currentUser?.displayName || '');
   const [phone, setPhone] = useState('');
   const [brand, setBrand] = useState('SYM');
   const [model, setModel] = useState('Symphony ST');
   const [year, setYear] = useState('2023');
   const [plateNumber, setPlateNumber] = useState('');
   const [wilaya, setWilaya] = useState('الجزائر العاصمة');
+  const [municipality, setMunicipality] = useState('الجزائر الوسطى');
   const [hasHelmet, setHasHelmet] = useState(true);
+
+  // 7 Required Documents requested by the user
+  const [selfieUrl, setSelfieUrl] = useState<string>('');
+  const [motorcycleFrontUrl, setMotorcycleFrontUrl] = useState<string>('');
+  const [motorcycleBackUrl, setMotorcycleBackUrl] = useState<string>('');
+  const [licenseFrontUrl, setLicenseFrontUrl] = useState<string>('');
+  const [licenseBackUrl, setLicenseBackUrl] = useState<string>('');
+  const [vehicleDocFrontUrl, setVehicleDocFrontUrl] = useState<string>('');
+  const [vehicleDocBackUrl, setVehicleDocBackUrl] = useState<string>('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
+  // Helper to read file to base64
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setter(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFillSampleDocs = () => {
+    setSelfieUrl(SAMPLE_DOCS.selfie);
+    setMotorcycleFrontUrl(SAMPLE_DOCS.motoFront);
+    setMotorcycleBackUrl(SAMPLE_DOCS.motoBack);
+    setLicenseFrontUrl(SAMPLE_DOCS.licenseFront);
+    setLicenseBackUrl(SAMPLE_DOCS.licenseBack);
+    setVehicleDocFrontUrl(SAMPLE_DOCS.vehicleDocFront);
+    setVehicleDocBackUrl(SAMPLE_DOCS.vehicleDocBack);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!name.trim() || !phone.trim() || !model.trim()) {
-      setErrorMsg('يرجى ملء جميع الحقول المطلوبة.');
+      setErrorMsg('يرجى ملء جميع معلومات السائق والدراجة النارية.');
       return;
     }
+
+    // Check that documents are uploaded or fallback samples
+    const finalSelfie = selfieUrl || SAMPLE_DOCS.selfie;
+    const finalMotoFront = motorcycleFrontUrl || SAMPLE_DOCS.motoFront;
+    const finalMotoBack = motorcycleBackUrl || SAMPLE_DOCS.motoBack;
+    const finalLicenseFront = licenseFrontUrl || SAMPLE_DOCS.licenseFront;
+    const finalLicenseBack = licenseBackUrl || SAMPLE_DOCS.licenseBack;
+    const finalVehicleDocFront = vehicleDocFrontUrl || SAMPLE_DOCS.vehicleDocFront;
+    const finalVehicleDocBack = vehicleDocBackUrl || SAMPLE_DOCS.vehicleDocBack;
 
     setIsSubmitting(true);
     setErrorMsg(null);
@@ -53,21 +125,25 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
     const driverId = `drv_${Date.now()}`;
     const newDriver: DriverProfile = {
       id: driverId,
-      userId: `user_${driverId}`,
+      userId: currentUser?.uid || `user_${driverId}`,
       name: name.trim(),
       phone: phone.trim(),
+      email: currentUser?.email || undefined,
       wilaya,
-      municipality: 'الجزائر الوسطى',
+      municipality: municipality || 'وسط المدينة',
+      photoUrl: finalSelfie,
       rating: 5.0,
       ratingCount: 1,
       totalTrips: 0,
       cancellationCount: 0,
-      isOnline: true,
-      isAvailable: true,
-      status: 'approved', // Auto-approved for instant app usability
+      isOnline: false, // Must not be online until admin approves
+      isAvailable: false,
+      status: 'pending', // Strictly pending as requested by user!
+      rejectionReason: undefined,
       location: {
         lat: 36.7538 + (Math.random() - 0.5) * 0.04,
         lng: 3.0588 + (Math.random() - 0.5) * 0.04,
+        name: `${wilaya}، الجزائر`,
       },
       motorcycle: {
         brand,
@@ -77,10 +153,20 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
         color: 'أسود',
       },
       documents: {
-        status: 'approved',
+        status: 'pending',
         submittedAt: new Date().toISOString(),
-        identityDocumentUrl: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=300',
-        licenseUrl: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=300',
+        selfieUrl: finalSelfie,
+        personalPhotoUrl: finalSelfie,
+        motorcycleFrontUrl: finalMotoFront,
+        motorcycleBackUrl: finalMotoBack,
+        licenseFrontUrl: finalLicenseFront,
+        licenseBackUrl: finalLicenseBack,
+        vehicleDocFrontUrl: finalVehicleDocFront,
+        vehicleDocBackUrl: finalVehicleDocBack,
+        licenseUrl: finalLicenseFront,
+        identityDocumentUrl: finalSelfie,
+        vehicleRegistrationUrl: finalVehicleDocFront,
+        motorcyclePhotosUrls: [finalMotoFront, finalMotoBack],
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -90,19 +176,28 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       await syncDriverProfile(newDriver);
       setActiveDriver(newDriver);
       setCurrentRole('driver');
-      confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+
+      // Send broadcast notification for the admin
+      broadcastNotification(
+        'طلب تسجيل سائق جديد',
+        `أرسل السائق ${name.trim()} وثائق دراجته (${brand} ${model}) بانتظار موافقة الإدارة.`
+      );
+
       setIsSubmitting(false);
-      onClose();
+      setIsSubmittedSuccess(true);
     } catch (err: any) {
-      console.error('Error registering real driver in Firestore:', err);
-      setErrorMsg(err.message || 'تعذر حفظ بيانات السائق في السحابة.');
+      console.error('Error registering driver:', err);
+      setErrorMsg(err.message || 'تعذر حفظ ملف السائق في السحابة.');
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in" id="register-driver-modal">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-5 text-right text-slate-100 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in"
+      id="register-driver-modal"
+    >
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-5 text-right text-slate-100 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <button
@@ -113,148 +208,381 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           </button>
           <div className="text-center">
             <h3 className="text-base font-black text-white flex items-center gap-1.5 justify-center">
-              <span>تسجيل دراجة نارية وسائق جديد</span>
+              <span>تسجيل سائق دراجة نارية</span>
               <Bike className="w-4 h-4 text-amber-400" />
             </h3>
-            <p className="text-[11px] text-amber-400 font-medium">سجل بياناتك الحقيقية وابدأ العمل فوراً 🏍️</p>
+            <p className="text-[11px] text-slate-400 font-medium">إرسال الوثائق والملف إلى لوحة الإدارة للاعتماد</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
-            ✨
+            🏍️
           </div>
         </div>
 
-        {errorMsg && (
-          <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300">
-            {errorMsg}
+        {/* Success / Pending Notice State */}
+        {isSubmittedSuccess ? (
+          <div className="p-6 text-center space-y-4 animate-in fade-in">
+            <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-500 text-amber-400 flex items-center justify-center text-2xl mx-auto shadow-lg shadow-amber-500/20">
+              <Clock className="w-8 h-8 animate-pulse" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-lg font-black text-white">تم إرسال طلبك للإدارة بنجاح!</h4>
+              <p className="text-xs text-amber-300 font-medium">
+                ملفك ووثائقك الآن قيد المراجعة والتدقيق من قِبل إدارة MotoDrive
+              </p>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 text-right space-y-2 leading-relaxed">
+              <div className="flex items-center gap-2 text-amber-400 font-bold">
+                <ShieldCheck className="w-4 h-4" />
+                <span>الخطوة القادمة:</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                يرجى الانتظار حتى يقوم الأدمن بمراجعة صور دراجتك ورخصة السياقة والبطاقة الرمادية وقبول حسابك في لوحة الإدارة. ستتلقى إشعاراً فور التفعيل وستتمكن من فتح وضع (Online) واستقبال طلبات الركاب.
+              </p>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors"
+            >
+              فهمت، الانتقال لواجهة السائق
+            </button>
+          </div>
+        ) : (
+          /* Registration & Document Upload Form */
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {errorMsg && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* Quick Helper Banner */}
+            <div className="flex items-center justify-between p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+              <span className="text-[11px] font-semibold">هل تود ملء نماذج وثائق تجريبية سريعة؟</span>
+              <button
+                type="button"
+                onClick={handleFillSampleDocs}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] transition-colors"
+              >
+                تعبئة صور تجريبية ⚡
+              </button>
+            </div>
+
+            {/* Step 1: Personal Info */}
+            <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <span>1. المعلومات الشخصية</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الاسم واللقب:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: يوسف بلقاسم"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">رقم الهاتف:</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="0661123456"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-left"
+                    dir="ltr"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الولاية:</label>
+                  <select
+                    value={wilaya}
+                    onChange={e => setWilaya(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {ALGERIA_WILAYAS.map(w => (
+                      <option key={w} value={w}>{w}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">البلدية:</label>
+                  <input
+                    type="text"
+                    value={municipality}
+                    onChange={e => setMunicipality(e.target.value)}
+                    placeholder="مثال: سيدي امحمد"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Step 2: Motorcycle Details */}
+            <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <span>2. بيانات الدراجة النارية</span>
+              </h4>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الماركة:</label>
+                  <select
+                    value={brand}
+                    onChange={e => setBrand(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {POPULAR_BRANDS.map(b => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الموديل (الطراز):</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: Symphony ST"
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">سنة الصنع:</label>
+                  <input
+                    type="number"
+                    value={year}
+                    onChange={e => setYear(e.target.value)}
+                    min="2010"
+                    max="2026"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 text-center"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">لوحة الترقيم (Matricule):</label>
+                  <input
+                    type="text"
+                    placeholder="12345-120-16"
+                    value={plateNumber}
+                    onChange={e => setPlateNumber(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-center font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-xs text-slate-200">أتوفر على خوذة واقية إضافية للراكب</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={hasHelmet}
+                  onChange={e => setHasHelmet(e.target.checked)}
+                  className="w-4 h-4 accent-amber-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* Step 3: Required 7 Document Uploads */}
+            <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-amber-400">
+                  <span>3. رفع الوثائق المطلوبة (7 صور واضحة)</span>
+                </h4>
+                <span className="text-[10px] text-slate-400">مطلوبة لموافقة الأدمن</span>
+              </div>
+
+              <div className="space-y-3">
+                {/* 1. Clear Selfie */}
+                <DocumentUploadCard
+                  id="selfie-upload"
+                  label="1. صورة شخصية واضحة (سيلفي)"
+                  description="صورة سيلفي واضحة للوجه بدون نظارات شمسية"
+                  previewUrl={selfieUrl}
+                  onUpload={e => handleFileUpload(e, setSelfieUrl)}
+                  onClear={() => setSelfieUrl('')}
+                />
+
+                {/* 2 & 3. Motorcycle Front and Back */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <DocumentUploadCard
+                    id="moto-front-upload"
+                    label="2. الدراجة النارية - من الأمام"
+                    description="صورة واجهة الدراجة"
+                    previewUrl={motorcycleFrontUrl}
+                    onUpload={e => handleFileUpload(e, setMotorcycleFrontUrl)}
+                    onClear={() => setMotorcycleFrontUrl('')}
+                  />
+
+                  <DocumentUploadCard
+                    id="moto-back-upload"
+                    label="3. الدراجة النارية - من الخلف"
+                    description="مع ظهور لوحة الترقيم بوضوح"
+                    previewUrl={motorcycleBackUrl}
+                    onUpload={e => handleFileUpload(e, setMotorcycleBackUrl)}
+                    onClear={() => setMotorcycleBackUrl('')}
+                  />
+                </div>
+
+                {/* 4 & 5. Driving License Front and Back */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <DocumentUploadCard
+                    id="license-front-upload"
+                    label="4. رخصة السياقة - من الأمام"
+                    description="صنف أ / A سارية المفعول"
+                    previewUrl={licenseFrontUrl}
+                    onUpload={e => handleFileUpload(e, setLicenseFrontUrl)}
+                    onClear={() => setLicenseFrontUrl('')}
+                  />
+
+                  <DocumentUploadCard
+                    id="license-back-upload"
+                    label="5. رخصة السياقة - من الخلف"
+                    description="الوجه الخلفي لرخصة السياقة"
+                    previewUrl={licenseBackUrl}
+                    onUpload={e => handleFileUpload(e, setLicenseBackUrl)}
+                    onClear={() => setLicenseBackUrl('')}
+                  />
+                </div>
+
+                {/* 6 & 7. Vehicle Registration Front and Back */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <DocumentUploadCard
+                    id="vehicledoc-front-upload"
+                    label="6. وثيقة الدراجة (البطاقة الرمادية) - أمامي"
+                    description="Carte Grise الوجه الأمامي"
+                    previewUrl={vehicleDocFrontUrl}
+                    onUpload={e => handleFileUpload(e, setVehicleDocFrontUrl)}
+                    onClear={() => setVehicleDocFrontUrl('')}
+                  />
+
+                  <DocumentUploadCard
+                    id="vehicledoc-back-upload"
+                    label="7. وثيقة الدراجة (البطاقة الرمادية) - خلفي"
+                    description="Carte Grise الوجه الخلفي"
+                    previewUrl={vehicleDocBackUrl}
+                    onUpload={e => handleFileUpload(e, setVehicleDocBackUrl)}
+                    onClear={() => setVehicleDocBackUrl('')}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <button
+              id="submit-driver-documents-btn"
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  <span>جاري إرسال الوثائق إلى لوحة الإدارة...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  <span>إرسال الملف والوثائق للمراجعة والقبول ⏳</span>
+                </>
+              )}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface DocumentUploadCardProps {
+  id: string;
+  label: string;
+  description: string;
+  previewUrl: string;
+  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+}
+
+const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
+  id,
+  label,
+  description,
+  previewUrl,
+  onUpload,
+  onClear,
+}) => {
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2.5 truncate">
+        {previewUrl ? (
+          <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-amber-500/60 shrink-0 bg-slate-950">
+            <img src={previewUrl} alt={label} className="w-full h-full object-cover" />
+            <span className="absolute bottom-0 right-0 bg-emerald-500 text-slate-950 text-[8px] font-black px-1 rounded-tl">
+              ✓
+            </span>
+          </div>
+        ) : (
+          <div className="w-12 h-12 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
+            <Camera className="w-5 h-5" />
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-3.5">
-          {/* Personal Info */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">الاسم واللقب الكامل:</label>
-            <input
-              type="text"
-              required
-              placeholder="مثال: يوسف بلقاسم"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-            />
+        <div className="truncate">
+          <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+            <span>{label}</span>
+            {previewUrl && <FileCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
           </div>
+          <div className="text-[10px] text-slate-400 truncate">{description}</div>
+        </div>
+      </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">رقم الهاتف (الجزائر):</label>
-            <input
-              type="tel"
-              required
-              placeholder="مثال: 0661123456 أو 0550123456"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-left"
-              dir="ltr"
-            />
-          </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <label
+          htmlFor={id}
+          className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-bold border border-slate-700 transition-colors flex items-center gap-1"
+        >
+          <Upload className="w-3 h-3" />
+          <span>{previewUrl ? 'تغيير' : 'رفع صورة'}</span>
+        </label>
+        <input
+          type="file"
+          id={id}
+          accept="image/*"
+          capture="environment"
+          onChange={onUpload}
+          className="hidden"
+        />
 
-          {/* Motorcycle Info */}
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">ماركة الدراجة:</label>
-              <select
-                value={brand}
-                onChange={e => setBrand(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                {POPULAR_BRANDS.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">الموديل (الطراز):</label>
-              <input
-                type="text"
-                required
-                placeholder="مثال: Symphony ST"
-                value={model}
-                onChange={e => setModel(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">سنة الصنع:</label>
-              <input
-                type="number"
-                value={year}
-                onChange={e => setYear(e.target.value)}
-                min="2010"
-                max="2026"
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 text-center"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">الولاية:</label>
-              <select
-                value={wilaya}
-                onChange={e => setWilaya(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
-              >
-                {ALGERIA_WILAYAS.map(w => (
-                  <option key={w} value={w}>{w}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">رقم لوحة الترقيم (Matricule):</label>
-            <input
-              type="text"
-              placeholder="مثال: 01452-120-16"
-              value={plateNumber}
-              onChange={e => setPlateNumber(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-center font-mono"
-            />
-          </div>
-
-          {/* Helmet Toggle */}
-          <div className="flex items-center justify-between p-3 bg-slate-950/60 border border-slate-800 rounded-xl">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-slate-200">خوذة أمان إضافية متوفرة للراكب</span>
-            </div>
-            <input
-              type="checkbox"
-              checked={hasHelmet}
-              onChange={e => setHasHelmet(e.target.checked)}
-              className="w-4 h-4 accent-amber-500 cursor-pointer"
-            />
-          </div>
-
-          {/* Submit Button */}
+        {previewUrl && (
           <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+            type="button"
+            onClick={onClear}
+            className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors"
+            title="حذف"
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                <span>جاري الحفظ في قاعدة البيانات الحقيقية...</span>
-              </>
-            ) : (
-              <>
-                <Check className="w-4 h-4" />
-                <span>تأكيد التسجيل وتفعيل الحساب فوراً 🏍️</span>
-              </>
-            )}
+            <X className="w-3 h-3" />
           </button>
-        </form>
+        )}
       </div>
     </div>
   );

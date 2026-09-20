@@ -3,13 +3,14 @@ import { useApp } from '../../contexts/AppContext';
 import { Coordinates } from '../../types';
 import {
   ALGERIA_LOCATIONS,
+  FEATURED_WILAYAS,
   calculateDistanceKm,
   estimateDurationMinutes,
   reverseGeocodeCoords,
   searchAlgeriaPlaces,
 } from '../../utils/geo';
 import { calculateFare, formatCurrencyDZD, getQuickFareChips, validateOfferedPrice } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare, Loader2, RefreshCw } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 
 interface BookRideModalProps {
   onClose: () => void;
@@ -34,14 +35,15 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const { requestRide, pricing } = useApp();
 
   const [pickup, setPickup] = useState<Coordinates>(
-    initialPickup || ALGERIA_LOCATIONS[2].coords // Default: Bab Ezzouar (حي 5 جويلية)
+    initialPickup || ALGERIA_LOCATIONS[0].coords // Default: Guelma Centre or first hotspot
   );
   const [destination, setDestination] = useState<Coordinates>(
-    initialDestination || ALGERIA_LOCATIONS[4].coords // Default: Grande Poste (البريد المركزي)
+    initialDestination || ALGERIA_LOCATIONS[19].coords // Default: Hammam Debagh
   );
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedWilaya, setSelectedWilaya] = useState<string>('الكل');
   const [searchResults, setSearchResults] = useState<{ name: string; wilaya: string; coords: Coordinates }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
@@ -53,23 +55,26 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Debounced real place search
+  // Real-time location search: instant results on any letter typed or wilaya clicked
   React.useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.trim().length < 2) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
+    let isCancelled = false;
+    const trimmed = searchQuery.trim();
+
+    if (trimmed.length >= 3) {
+      setIsSearching(true);
     }
 
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      const results = await searchAlgeriaPlaces(searchQuery.trim());
-      setSearchResults(results);
-      setIsSearching(false);
-    }, 400);
+    searchAlgeriaPlaces(trimmed, selectedWilaya).then(results => {
+      if (!isCancelled) {
+        setSearchResults(results);
+        setIsSearching(false);
+      }
+    });
 
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [searchQuery, selectedWilaya]);
 
   // Real GPS Geolocation with reverse geocoding
   const handleUseRealGPS = () => {
@@ -143,8 +148,10 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     setOfferedPrice(recommendedPrice);
   }, [recommendedPrice]);
 
+  const minAllowedForTrip = distanceKm <= 5 ? 120 : (pricing.minimumFare || 120);
+
   const handleAdjustPrice = (delta: number) => {
-    const newPrice = Math.max(pricing.minimumFare, offeredPrice + delta);
+    const newPrice = Math.max(minAllowedForTrip, offeredPrice + delta);
     setOfferedPrice(newPrice);
     setErrorMsg(null);
   };
@@ -165,8 +172,13 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   };
 
   const handleConfirmRide = async () => {
+    if (distanceKm > 70) {
+      setErrorMsg('لا يمكن طلب رحلة أبعد من 70 كم بالدراجة النارية حفاظاً على السلامة والراحة.');
+      return;
+    }
+
     // Validate price bounds
-    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing);
+    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing, distanceKm);
     if (!validation.isValid) {
       setErrorMsg(validation.error || 'السعر المقترح غير صالح');
       return;
@@ -192,13 +204,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       setErrorMsg(res.error || 'فشل في إنشاء الطلب');
     }
   };
-
-  // Filter locations
-  const filteredLocations = ALGERIA_LOCATIONS.filter(
-    loc =>
-      loc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      loc.wilaya.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   const priceDiff = offeredPrice - recommendedPrice;
 
@@ -227,21 +232,64 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setSearchType(null)}
+                onClick={() => {
+                  setSearchType(null);
+                  setSearchQuery('');
+                }}
                 className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
+                title="رجوع"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
               <div className="relative flex-1">
                 <input
                   type="text"
-                  placeholder={searchType === 'pickup' ? 'ابحث عن موقع الانطلاق...' : 'ابحث عن الوجهة...'}
+                  placeholder={
+                    searchType === 'pickup'
+                      ? 'ابحث عن مكان الانطلاق (مثال: قالمة، حمام الدباغ، وادي الزناتي، عقبي...)'
+                      : 'ابحث عن الوجهة (مثال: قالمة، بوشقوف، هليوبوليس، قسنطينة...)'
+                  }
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   autoFocus
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pr-9 pl-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pr-9 pl-8 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                 />
                 <Search className="w-4 h-4 text-slate-500 absolute right-3 top-3" />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute left-2.5 top-2.5 p-0.5 rounded-full hover:bg-slate-800 text-slate-400"
+                    title="مسح"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Featured Wilayas Horizontal Filter */}
+            <div className="space-y-1.5">
+              <div className="text-[11px] text-slate-400 flex items-center justify-between px-1">
+                <span>تصفية حسب الولاية:</span>
+                <span className="text-[10px] text-amber-400 font-bold">
+                  {selectedWilaya === 'الكل' ? 'جميع الولايات والمدن' : `ولاية ${selectedWilaya}`}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {FEATURED_WILAYAS.map(w => (
+                  <button
+                    key={w}
+                    type="button"
+                    onClick={() => setSelectedWilaya(w)}
+                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all border shrink-0 ${
+                      selectedWilaya === w
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
+                        : 'bg-slate-950/80 text-slate-300 hover:bg-slate-800 border-slate-800 font-medium'
+                    }`}
+                  >
+                    {w === 'قالمة' ? '📍 قالمة (Guelma)' : w}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -270,62 +318,51 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             )}
 
-            {/* Real Search Results (if user searched) */}
-            {searchQuery.trim().length >= 2 && (
-              <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                <div className="text-[11px] text-amber-400 font-semibold px-1 flex items-center justify-between">
-                  <span>نتائج البحث الحية في الجزائر:</span>
-                  {isSearching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                </div>
-
-                {searchResults.length > 0 ? (
-                  searchResults.map((loc, idx) => (
-                    <button
-                      key={`search-${idx}`}
-                      onClick={() => {
-                        if (searchType === 'pickup') setPickup(loc.coords);
-                        else setDestination(loc.coords);
-                        setSearchType(null);
-                        setSearchQuery('');
-                      }}
-                      className="w-full text-right p-3 rounded-xl bg-slate-950/80 hover:bg-slate-800/90 border border-amber-500/30 transition-all flex items-center justify-between group"
-                    >
-                      <div className="truncate flex-1">
-                        <div className="text-xs font-bold text-white group-hover:text-amber-400 truncate">{loc.name}</div>
-                        <div className="text-[10px] text-slate-400 mt-0.5 truncate">{loc.coords.address || loc.wilaya}</div>
-                      </div>
-                      <MapPin className="w-4 h-4 text-amber-400 shrink-0 mr-2" />
-                    </button>
-                  ))
-                ) : !isSearching ? (
-                  <div className="p-3 text-center text-xs text-slate-500 bg-slate-950/40 rounded-xl">
-                    لم يتم العثور على أماكن مطابقة لـ "{searchQuery}". يمكنك الاختيار من القائمة أدناه أو استخدام GPS.
-                  </div>
-                ) : null}
+            {/* Live Instant Search Results List */}
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-0.5">
+              <div className="text-[11px] text-amber-400 font-semibold px-1 flex items-center justify-between">
+                <span>
+                  {searchQuery.trim()
+                    ? `الأماكن المطابقة لـ "${searchQuery}" (${searchResults.length}):`
+                    : selectedWilaya !== 'الكل'
+                    ? `أماكن وبلديات ولاية ${selectedWilaya} (${searchResults.length}):`
+                    : 'أماكن ومحطات شهيرة وسريعة:'}
+                </span>
+                {isSearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
               </div>
-            )}
 
-            {/* Hotspot Locations List */}
-            <div className="space-y-1.5 max-h-60 overflow-y-auto">
-              <div className="text-[11px] text-slate-400 font-semibold px-1">أماكن ومحطات شهيرة سريعة:</div>
-              {filteredLocations.map((loc, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    if (searchType === 'pickup') setPickup(loc.coords);
-                    else setDestination(loc.coords);
-                    setSearchType(null);
-                    setSearchQuery('');
-                  }}
-                  className="w-full text-right p-3 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800/80 transition-all flex items-center justify-between"
-                >
-                  <div className="truncate">
-                    <div className="text-xs font-bold text-white">{loc.name}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">{loc.wilaya}</div>
-                  </div>
-                  <MapPin className="w-4 h-4 text-slate-500 shrink-0" />
-                </button>
-              ))}
+              {searchResults.length > 0 ? (
+                searchResults.map((loc, idx) => (
+                  <button
+                    key={`loc-${idx}`}
+                    onClick={() => {
+                      if (searchType === 'pickup') setPickup(loc.coords);
+                      else setDestination(loc.coords);
+                      setSearchType(null);
+                      setSearchQuery('');
+                    }}
+                    className="w-full text-right p-3 rounded-2xl bg-slate-950/80 hover:bg-slate-800/90 border border-slate-800/80 hover:border-amber-500/40 transition-all flex items-center justify-between group"
+                  >
+                    <div className="truncate flex-1">
+                      <div className="text-xs font-bold text-white group-hover:text-amber-400 truncate flex items-center gap-2">
+                        <span className="truncate">{loc.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 font-normal shrink-0 border border-slate-700">
+                          {loc.wilaya}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                        {loc.coords.address || loc.wilaya}
+                      </div>
+                    </div>
+                    <MapPin className="w-4 h-4 text-slate-500 group-hover:text-amber-400 shrink-0 mr-2" />
+                  </button>
+                ))
+              ) : !isSearching ? (
+                <div className="p-4 text-center text-xs text-slate-400 bg-slate-950/40 rounded-xl space-y-1">
+                  <div>لم نجد نتائج مطابقة لـ "{searchQuery}".</div>
+                  <div className="text-[10px] text-slate-500">جرب كتابة حرف أو اسم بلدية أو اختيار ولاية من الأزرار أعلاه.</div>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -377,13 +414,19 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 
             {/* Distance & Time Metrics Bar */}
             <div className="grid grid-cols-2 gap-2.5">
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center">
+              <div className={`border rounded-2xl p-3 flex items-center gap-3 ${
+                distanceKm > 70 ? 'bg-rose-950/40 border-rose-500/60' : 'bg-slate-950 border-slate-800'
+              }`}>
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  distanceKm > 70 ? 'bg-rose-900/50 text-rose-400' : 'bg-slate-900 text-amber-400'
+                }`}>
                   <Navigation className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="text-[10px] text-slate-400">المسافة المقدرة</div>
-                  <div className="text-sm font-black text-white">{distanceKm} كم</div>
+                  <div className={`text-sm font-black ${distanceKm > 70 ? 'text-rose-400' : 'text-white'}`}>
+                    {distanceKm} كم
+                  </div>
                 </div>
               </div>
 
@@ -397,6 +440,32 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Special highlight for trips <= 5 km */}
+            {distanceKm <= 5 && (
+              <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-300">
+                <span className="text-base shrink-0">⚡</span>
+                <div>
+                  <div className="font-bold text-emerald-200">مسافة رحلة قصيرة ({distanceKm} كم)</div>
+                  <div className="text-[11px] text-emerald-400/90 mt-0.5">
+                    جميع المسافات الأقل من 5 كم تسعيرتها الموحدة <strong>120 د.ج</strong> فقط!
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Warning if distance exceeds 70 km */}
+            {distanceKm > 70 && (
+              <div className="bg-rose-500/15 border-2 border-rose-500/40 rounded-2xl p-3.5 text-rose-200 text-xs flex items-start gap-3 animate-in fade-in">
+                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-black text-white text-sm">المسافة تتجاوز الحد الأقصى (70 كم)</div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    المسافة المحسوبة لهذه الرحلة هي <strong className="text-rose-300 font-bold">{distanceKm} كم</strong>. حفاظاً على سلامتك وسلامة سائقي الدراجات، تمنع المنصة طلبات الرحلات الأطول من 70 كم. يرجى اختيار وجهة أقرب.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* InDrive-style Fare Negotiation Section */}
             <div className="bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 space-y-3.5 shadow-lg relative overflow-hidden">
@@ -415,7 +484,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleAdjustPrice(-20)}
-                  disabled={offeredPrice <= pricing.minimumFare}
+                  disabled={offeredPrice <= minAllowedForTrip}
                   className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 font-bold flex items-center justify-center text-lg disabled:opacity-30 transition-all"
                   title="إنقاص 20 د.ج"
                 >
@@ -546,10 +615,20 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
             <button
               id="confirm-ride-booking-btn"
               onClick={handleConfirmRide}
-              disabled={isSubmitting}
-              className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 text-base transition-all active:scale-[0.98] disabled:opacity-50"
+              disabled={isSubmitting || distanceKm > 70}
+              className={`w-full py-4 font-black rounded-2xl shadow-xl flex items-center justify-center gap-2 text-base transition-all active:scale-[0.98] ${
+                distanceKm > 70
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/25 disabled:opacity-50'
+              }`}
             >
-              <span>{isSubmitting ? 'جاري نشر طلبك...' : `نشر الطلب بسعر ${offeredPrice} د.ج واستقبال العروض 🏍️`}</span>
+              <span>
+                {isSubmitting
+                  ? 'جاري نشر طلبك...'
+                  : distanceKm > 70
+                  ? 'المسافة تتجاوز الحد الأقصى (70 كم) ⛔'
+                  : `نشر الطلب بسعر ${offeredPrice} د.ج واستقبال العروض 🏍️`}
+              </span>
             </button>
           </>
         )}

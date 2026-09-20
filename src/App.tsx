@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './contexts/AppContext';
 import { Header } from './components/shared/Header';
 import { BottomNav } from './components/shared/BottomNav';
 import { SOSModal } from './components/shared/SOSModal';
+import { LegalModal } from './components/legal/LegalModal';
 
 // Passenger Views
 import { PassengerHome } from './pages/passenger/PassengerHome';
@@ -29,6 +30,31 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
+
+  // Detect URL parameter for privacy policy, terms, or GCP guide (useful for Google Cloud Console verification)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page === 'privacy') {
+      setLegalTab('privacy');
+      setIsLegalOpen(true);
+    } else if (page === 'terms') {
+      setLegalTab('terms');
+      setIsLegalOpen(true);
+    } else if (page === 'gcp' || page === 'google-cloud' || page === 'branding') {
+      setLegalTab('gcp-guide');
+      setIsLegalOpen(true);
+    }
+
+    const handleOpenLegal = (e: any) => {
+      setLegalTab(e?.detail?.tab || 'privacy');
+      setIsLegalOpen(true);
+    };
+    window.addEventListener('open-legal', handleOpenLegal);
+    return () => window.removeEventListener('open-legal', handleOpenLegal);
+  }, []);
 
   // Request geolocation permission on app start
   useEffect(() => {
@@ -133,6 +159,13 @@ const AppContent: React.FC = () => {
 
         {/* Algerian Emergency SOS Modal */}
         {isSOSOpen && <SOSModal onClose={() => setIsSOSOpen(false)} />}
+
+        {/* Legal, Privacy Policy & Terms Modal (Google Cloud Verification) */}
+        <LegalModal
+          isOpen={isLegalOpen}
+          onClose={() => setIsLegalOpen(false)}
+          defaultTab={legalTab}
+        />
       </div>
     </div>
   );
@@ -145,6 +178,9 @@ export default function App() {
       libraries={['marker', 'routes', 'places', 'geometry']}
       language="ar"
       region="DZ"
+      onError={(err) => {
+        console.warn('Google Maps API notice:', err);
+      }}
     >
       <AppProvider>
         <AppContent />

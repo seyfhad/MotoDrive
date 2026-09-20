@@ -8,6 +8,7 @@ import {
   useMapsLibrary,
   MapMouseEvent,
 } from '@vis.gl/react-google-maps';
+import { Navigation } from 'lucide-react';
 import { Coordinates, DriverProfile } from '../../types';
 import { getRobustUserLocation } from '../../utils/geo';
 
@@ -84,9 +85,10 @@ const MapController: React.FC<{
     const origin = { lat: pickup.lat, lng: pickup.lng };
     const dest = { lat: destination.lat, lng: destination.lng };
 
-    // Try TWO_WHEELER first for motorcycles, fallback to DRIVING
+    // Try TWO_WHEELER first for motorcycles, fallback to DRIVING, then free OSRM road geometry
     const computeRouteWithMode = async (mode: 'TWO_WHEELER' | 'DRIVING') => {
       try {
+        if (!routesLib?.Route) return false;
         const request = {
           origin,
           destination: dest,
@@ -112,20 +114,40 @@ const MapController: React.FC<{
       return false;
     };
 
+    // Free road routing fallback via OSRM (100% free, no billing needed)
+    const fetchOsrmRoute = async (): Promise<google.maps.LatLngLiteral[] | null> => {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${origin.lng},${origin.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.routes?.[0]?.geometry?.coordinates?.length) {
+            return data.routes[0].geometry.coordinates.map((c: [number, number]) => ({
+              lat: c[1],
+              lng: c[0],
+            }));
+          }
+        }
+      } catch {
+        // Fallback to direct geodesic
+      }
+      return null;
+    };
+
     computeRouteWithMode('TWO_WHEELER').then((success) => {
       if (!success) {
-        computeRouteWithMode('DRIVING').then((drvSuccess) => {
-          // If Routes API fails or quota exceeded, fallback to direct path
+        computeRouteWithMode('DRIVING').then(async (drvSuccess) => {
           if (!drvSuccess && map) {
-            const fallbackPolyline = new google.maps.Polyline({
-              path: [origin, dest],
+            const osrmPath = await fetchOsrmRoute();
+            const polyline = new google.maps.Polyline({
+              path: osrmPath || [origin, dest],
               strokeColor: '#f59e0b',
-              strokeOpacity: 0.8,
-              strokeWeight: 4,
-              geodesic: true,
+              strokeOpacity: 0.85,
+              strokeWeight: 5,
+              geodesic: !osrmPath,
               map,
             });
-            routePolylineRef.current = fallbackPolyline;
+            routePolylineRef.current = polyline;
           }
         });
       }
@@ -328,19 +350,20 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
         )}
       </Map>
 
-      {/* زر تحديد الموقع الحالي GPS عائم على الخريطة */}
+      {/* زر تحديد الموقع الحالي GPS عائم على الخريطة - أعلى قليلاً من أزرار التكبير والتصغير (+ / -) */}
       {interactive && (
         <button
           type="button"
+          id="map-locate-above-zoom-btn"
           onClick={requestUserLocation}
           disabled={isLocating}
-          className="absolute bottom-6 right-6 z-10 bg-slate-900/95 border border-amber-500/50 text-amber-400 p-3.5 rounded-full shadow-2xl hover:bg-slate-800 transition-all flex items-center justify-center group active:scale-95"
-          title="تحديد موقعي الحالي"
+          className="absolute bottom-[116px] right-2.5 sm:right-3.5 z-10 w-10 h-10 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/80 text-amber-400 shadow-2xl flex items-center justify-center transition-all active:scale-95 group backdrop-blur-md"
+          title="تحديد موقعي الفعلي على الخريطة (GPS)"
         >
           {isLocating ? (
-            <span className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
+            <span className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
           ) : (
-            <span className="text-xl">🎯</span>
+            <Navigation className="w-5 h-5 text-amber-400 transition-transform group-hover:scale-110" />
           )}
         </button>
       )}

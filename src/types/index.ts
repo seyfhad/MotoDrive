@@ -80,6 +80,14 @@ export interface DriverDocuments {
   insuranceUrl?: string;
   personalPhotoUrl?: string;
   motorcyclePhotosUrls?: string[];
+  // Specific required uploads requested by user
+  selfieUrl?: string;
+  motorcycleFrontUrl?: string;
+  motorcycleBackUrl?: string;
+  licenseFrontUrl?: string;
+  licenseBackUrl?: string;
+  vehicleDocFrontUrl?: string;
+  vehicleDocBackUrl?: string;
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
   reviewedBy?: string;

@@ -9,7 +9,7 @@ import { formatCurrencyDZD } from '../../utils/pricing';
 import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const PassengerHome: React.FC = () => {
-  const { activePassenger, currentPassengerRide, rides, drivers } = useApp();
+  const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
 
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>(ALGERIA_LOCATIONS[2].coords);
@@ -99,8 +99,12 @@ export const PassengerHome: React.FC = () => {
 
         {/* Floating Map Overlay Badges */}
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-800 text-xs text-slate-300">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>{drivers.filter(d => d.isOnline).length} سائق دراجة متاح</span>
+          <span className={`w-2 h-2 rounded-full ${drivers.filter(d => d.isOnline).length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`}></span>
+          <span>
+            {drivers.filter(d => d.isOnline).length > 0
+              ? `${drivers.filter(d => d.isOnline).length} سائق دراجة متاح`
+              : 'في انتظار انضمام السائقين'}
+          </span>
         </div>
 
         {/* Floating GPS Button & Map Pinning Controls */}
@@ -151,9 +155,15 @@ export const PassengerHome: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-black text-white">
-                    مرحباً، <span className="text-amber-400">{activePassenger.name.split(' ')[0]}</span> 👋
+                    {currentUser ? (
+                      <>مرحباً، <span className="text-amber-400">{activePassenger.name.split(' ')[0]}</span> 👋</>
+                    ) : (
+                      <>مرحباً بك في <span className="text-amber-400">MotoDrive</span> 👋</>
+                    )}
                   </h2>
-                  <p className="text-xs text-slate-400 font-medium">أين تريد الذهاب اليوم بالدراجة؟</p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {currentUser ? 'أين تريد الذهاب اليوم بالدراجة النارية؟' : 'سجّل دخولك لحجز دراجة نارية والتنقل بسرعة'}
+                  </p>
                 </div>
                 <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-lg">
                   🛵
@@ -207,6 +217,18 @@ export const PassengerHome: React.FC = () => {
                 </button>
               </div>
 
+              {/* Pricing & Distance Policy Banner */}
+              <div className="flex items-center justify-between px-3 py-2 bg-slate-950/70 border border-slate-800/80 rounded-xl text-[11px]">
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                  <span>⚡ السعر يبدأ من 120 د.ج (أقل من 5 كم = 120 د.ج)</span>
+                  <span className="text-slate-600">•</span>
+                  <span className="text-slate-300 font-normal">أقصى مسافة 70 كم</span>
+                </div>
+                <div className="text-[10px] text-slate-400">
+                  تسعيرة ثابتة
+                </div>
+              </div>
+
               {/* Main Call to Action Button */}
               <button
                 id="passenger-order-ride-main-btn"
@@ -216,28 +238,6 @@ export const PassengerHome: React.FC = () => {
                 <span>اطلب رحلة دراجة الآن</span>
                 <ArrowLeft className="w-4 h-4" />
               </button>
-            </div>
-
-            {/* Quick Destinations */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs px-1 text-slate-400 font-semibold">
-                <span>وجهات شائعة وسريعة</span>
-                <span className="text-[10px] text-amber-400">توفير الوقت في الزحام</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {ALGERIA_LOCATIONS.slice(0, 4).map((loc, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleQuickLocationSelect(loc.coords)}
-                    className="p-3 bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800/80 rounded-2xl text-right transition-all group"
-                  >
-                    <div className="text-xs font-bold text-white group-hover:text-amber-400 truncate">
-                      {loc.name.split('(')[0]}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">{loc.wilaya}</div>
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Recent Trips Section */}

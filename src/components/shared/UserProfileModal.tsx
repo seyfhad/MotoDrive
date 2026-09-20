@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { syncUserProfile } from '../../services/firestoreService';
-import { X, User, Phone, Check, Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { X, User, Phone, Check, Loader2, ShieldCheck, Sparkles, LogOut } from 'lucide-react';
 import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 
 interface UserProfileModalProps {
@@ -10,7 +10,7 @@ interface UserProfileModalProps {
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
-  const { activePassenger, setActivePassenger, currentUser } = useApp();
+  const { activePassenger, setActivePassenger, currentUser, logout } = useApp();
 
   const [name, setName] = useState(activePassenger.name || '');
   const [phone, setPhone] = useState(activePassenger.phone || '');
@@ -157,6 +157,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               </>
             )}
           </button>
+
+          {currentUser && (
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                onClose();
+              }}
+              className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors mt-2"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>تسجيل الخروج من الحساب</span>
+            </button>
+          )}
         </form>
       </div>
     </div>
