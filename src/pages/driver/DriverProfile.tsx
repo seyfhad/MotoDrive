@@ -88,7 +88,13 @@ export const DriverProfile: React.FC = () => {
           </div>
           <span className="text-[10px] text-amber-400 font-mono">MotoDrive Algérie</span>
         </div>
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            حول التطبيق
+          </button>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
             className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"

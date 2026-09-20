@@ -118,7 +118,7 @@ export const PassengerProfile: React.FC = () => {
             <button
               onClick={handleSignOut}
               disabled={isSigningOut}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-300 text-xs font-bold transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-300 text-xs font-semibold transition-colors disabled:opacity-60"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>{isSigningOut ? 'جاري تسجيل الخروج...' : 'تسجيل الخروج من حساب Google'}</span>
@@ -219,7 +219,13 @@ export const PassengerProfile: React.FC = () => {
           </div>
           <span className="text-[10px] text-amber-400 font-mono">v1.2.0 Production</span>
         </div>
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="grid grid-cols-1 gap-2 pt-1">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+          >
+            حول التطبيق
+          </button>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
             className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
