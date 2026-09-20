@@ -16,12 +16,33 @@
         }
 
         .container {
+            position: relative;
             max-width: 700px;
             margin: auto;
             background: #fff;
             padding: 40px;
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .welcome-card-close {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 32px;
+            height: 32px;
+            border: 0;
+            border-radius: 50%;
+            background: #eef1f4;
+            color: #333;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .welcome-card-close:hover,
+        .welcome-card-close:focus-visible {
+            background: #dce2e8;
         }
 
         h1 {
@@ -58,8 +79,18 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>MotoDrive</h1>
+    <div id="welcome-card" class="container" role="dialog" aria-labelledby="welcome-card-title">
+        <button
+            type="button"
+            class="welcome-card-close"
+            aria-label="إغلاق"
+            title="إغلاق"
+            onclick="document.getElementById('welcome-card').remove()"
+        >
+            <span aria-hidden="true">×</span>
+        </button>
+
+        <h1 id="welcome-card-title">MotoDrive</h1>
         <p>
             تطبيق MotoDrive هو منصة مخصصة لتسهيل التنقل وخدمات التوصيل بالدراجات النارية في الجزائر، عبر ربط المستخدمين بالسائقين.
         </p>
