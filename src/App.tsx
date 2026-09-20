@@ -30,24 +30,11 @@ const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  // Legal content is opt-in: it must never be shown during application startup.
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
 
-  // Detect URL parameter for privacy policy, terms, or GCP guide (useful for Google Cloud Console verification)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const page = params.get('page');
-    if (page === 'privacy') {
-      setLegalTab('privacy');
-      setIsLegalOpen(true);
-    } else if (page === 'terms') {
-      setLegalTab('terms');
-      setIsLegalOpen(true);
-    } else if (page === 'gcp' || page === 'google-cloud' || page === 'branding') {
-      setLegalTab('gcp-guide');
-      setIsLegalOpen(true);
-    }
-
     const handleOpenLegal = (e: any) => {
       setLegalTab(e?.detail?.tab || 'privacy');
       setIsLegalOpen(true);
@@ -188,5 +175,3 @@ export default function App() {
     </APIProvider>
   );
 }
-
-
