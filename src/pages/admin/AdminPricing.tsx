@@ -12,22 +12,23 @@ export const AdminPricing: React.FC = () => {
   const [minimumFare, setMinimumFare] = useState(pricing.minimumFare || 120);
   const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee);
   const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent);
-  const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier);
-  const [peakHourMultiplier, setPeakHourMultiplier] = useState(pricing.peakHourMultiplier);
+  const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier ?? 1.0);
+  const [peakMultiplier, setPeakMultiplier] = useState(pricing.peakMultiplier ?? 1.0);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     updatePricing({
-      baseFare,
-      pricePerKm,
-      pricePerMinute,
-      minimumFare,
-      cancellationFee,
-      platformCommissionPercent,
-      nightMultiplier,
-      peakHourMultiplier,
+      ...pricing,
+      baseFare: Number(baseFare) || 120,
+      pricePerKm: Number(pricePerKm) || 0,
+      pricePerMinute: Number(pricePerMinute) || 0,
+      minimumFare: Number(minimumFare) || 120,
+      cancellationFee: Number(cancellationFee) || 100,
+      platformCommissionPercent: Number(platformCommissionPercent) || 15,
+      nightMultiplier: Number(nightMultiplier) || 1.0,
+      peakMultiplier: Number(peakMultiplier) || 1.0,
     });
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
@@ -151,6 +152,33 @@ export const AdminPricing: React.FC = () => {
                   min="0"
                 />
                 <span className="text-slate-400 shrink-0 font-bold">د.ج</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">معامل الساعات الليلية (Night Multiplier):</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={nightMultiplier}
+                  onChange={e => setNightMultiplier(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
+                  min="1"
+                  max="3"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1 font-semibold">معامل ساعات الذروة (Peak Multiplier):</label>
+                <input
+                  type="number"
+                  step="0.05"
+                  value={peakMultiplier}
+                  onChange={e => setPeakMultiplier(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-bold"
+                  min="1"
+                  max="3"
+                />
               </div>
             </div>
           </div>

@@ -1,4 +1,9 @@
 import { Coordinates } from '../types';
+import { ALL_WILAYAS_COMPREHENSIVE_PLACES } from './allWilayasPlaces';
+import { ALL_58_WILAYAS, WILAYA_NAMES, findNearestAlgerianWilaya, WilayaInfo } from './wilayasData';
+
+export { ALL_58_WILAYAS, WILAYA_NAMES, findNearestAlgerianWilaya };
+export type { WilayaInfo };
 
 export interface AlgeriaLocationItem {
   id: string;
@@ -28,7 +33,7 @@ export const FEATURED_WILAYAS = [
   'الطارف',
 ];
 
-export const COMPREHENSIVE_ALGERIA_LOCATIONS: AlgeriaLocationItem[] = [
+const BASE_LOCATIONS: AlgeriaLocationItem[] = [
   // ==========================================
   // 📍 ولاية قالمة (Guelma - 24) - تغطية شاملة ودقيقة
   // ==========================================
@@ -1146,6 +1151,11 @@ export const COMPREHENSIVE_ALGERIA_LOCATIONS: AlgeriaLocationItem[] = [
   },
 ];
 
+export const COMPREHENSIVE_ALGERIA_LOCATIONS: AlgeriaLocationItem[] = [
+  ...BASE_LOCATIONS,
+  ...ALL_WILAYAS_COMPREHENSIVE_PLACES,
+];
+
 /**
  * Normalizes an Arabic/Latin query string for flexible matching
  * Converts:
@@ -1188,7 +1198,10 @@ export function searchLocalLocations(
   // Filter by Wilaya if selected and not 'الكل'
   if (wilayaFilter && wilayaFilter !== 'الكل') {
     const normWilaya = normalizeSearchString(wilayaFilter);
-    pool = pool.filter(item => normalizeSearchString(item.wilaya).includes(normWilaya));
+    pool = pool.filter(item => {
+      const itemWilaya = normalizeSearchString(item.wilaya);
+      return itemWilaya.includes(normWilaya) || normWilaya.includes(itemWilaya);
+    });
   }
 
   if (!normQuery) {
@@ -1201,8 +1214,12 @@ export function searchLocalLocations(
     const normWilaya = normalizeSearchString(item.wilaya);
     const normAddress = item.coords.address ? normalizeSearchString(item.coords.address) : '';
     const normAliases = item.aliases ? item.aliases.map(normalizeSearchString).join(' ') : '';
+    const codeMatch =
+      item.wilayaCode === normQuery ||
+      (item.wilayaCode && !isNaN(Number(normQuery)) && Number(item.wilayaCode) === Number(normQuery));
 
     return (
+      codeMatch ||
       normName.includes(normQuery) ||
       normNameFr.includes(normQuery) ||
       normWilaya.includes(normQuery) ||
@@ -1210,4 +1227,36 @@ export function searchLocalLocations(
       normAliases.includes(normQuery)
     );
   });
+}
+
+function calculateSimpleDistanceKm(p1: Coordinates, p2: Coordinates): number {
+  const R = 6371;
+  const dLat = ((p2.lat - p1.lat) * Math.PI) / 180;
+  const dLng = ((p2.lng - p1.lng) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((p1.lat * Math.PI) / 180) * Math.cos((p2.lat * Math.PI) / 180) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+
+/**
+ * Finds the nearest known Algerian location landmark across all 58 Wilayas
+ */
+export function findNearestLocalLocation(
+  lat: number,
+  lng: number
+): { item: AlgeriaLocationItem; distKm: number } {
+  let bestItem = COMPREHENSIVE_ALGERIA_LOCATIONS[0];
+  let bestDist = calculateSimpleDistanceKm({ lat, lng }, bestItem.coords);
+
+  for (const item of COMPREHENSIVE_ALGERIA_LOCATIONS) {
+    const d = calculateSimpleDistanceKm({ lat, lng }, item.coords);
+    if (d < bestDist) {
+      bestDist = d;
+      bestItem = item;
+    }
+  }
+
+  return { item: bestItem, distKm: bestDist };
 }

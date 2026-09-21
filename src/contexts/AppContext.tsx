@@ -51,6 +51,8 @@ import {
   syncDriverProfile,
   syncUserProfile,
   clearAllTestDataFromFirestore,
+  saveSystemPricing,
+  sanitizeFirestoreData,
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
@@ -75,6 +77,7 @@ interface AppContextType {
   // Firebase Realtime State
   isFirebaseConnected: boolean;
   currentUser: any;
+  setCurrentUser: (user: any) => void;
   logout: () => Promise<void>;
 
   // Passenger actions
@@ -119,6 +122,7 @@ interface AppContextType {
   suspendDriver: (driverId: string) => Promise<void>;
   updateDriverStatus: (driverId: string, status: DriverApprovalStatus, reason?: string) => Promise<void>;
   updatePricing: (newPricing: PricingSettings) => Promise<void>;
+  toggleServiceArea: (id: string) => void;
   resolveComplaint: (complaintId: string, notes: string) => Promise<void>;
   broadcastNotification: (title: string, body: string, targetRole?: UserRole) => void;
   purgeAllTestData: () => Promise<{ deletedCount: number }>;
@@ -223,16 +227,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...rawData,
           baseFare: 120,
           minimumFare: 120,
+          peakMultiplier: rawData.peakMultiplier ?? (rawData as any).peakHourMultiplier ?? 1.0,
+          nightMultiplier: rawData.nightMultiplier ?? 1.0,
         };
+        delete (sanitized as any).peakHourMultiplier;
         setPricing(sanitized);
 
-        // If Firestore had stale 150 DZD, automatically update it to 120 DZD
-        if (rawData.minimumFare !== 120 || rawData.baseFare !== 120) {
-          setDoc(pricingDocRef, { ...sanitized, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+        // If Firestore had stale 150 DZD or deprecated keys, automatically update it
+        if (rawData.minimumFare !== 120 || rawData.baseFare !== 120 || (rawData as any).peakHourMultiplier !== undefined) {
+          saveSystemPricing(sanitized).catch(() => {});
         }
       } else {
         // Initialize default pricing in Firestore if missing
-        setDoc(pricingDocRef, { ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120, updatedAt: serverTimestamp() }).catch(err => {
+        saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120 }).catch(err => {
           console.warn('Initial pricing set notice:', err);
         });
       }
@@ -805,10 +812,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updatePricing = async (newPricing: PricingSettings) => {
-    setPricing(newPricing);
-    const pricingDocRef = doc(db, 'system_config', 'pricing');
-    await setDoc(pricingDocRef, { ...newPricing, updatedAt: serverTimestamp() }, { merge: true });
+    const cleanedPricing: PricingSettings = {
+      ...DEFAULT_PRICING,
+      ...newPricing,
+      peakMultiplier: newPricing.peakMultiplier ?? (newPricing as any).peakHourMultiplier ?? 1.0,
+      nightMultiplier: newPricing.nightMultiplier ?? 1.0,
+    };
+    delete (cleanedPricing as any).peakHourMultiplier;
+    setPricing(cleanedPricing);
+    await saveSystemPricing(cleanedPricing);
     addNotification('admin', 'admin', '⚙️ تم تحديث الأسعار', 'تم حفظ إعدادات التسعير والعمولة في Firebase.');
+  };
+
+  const toggleServiceArea = (id: string) => {
+    setServiceAreas(prev =>
+      prev.map(a => (a.id === id ? { ...a, isActive: !a.isActive } : a))
+    );
   };
 
   const resolveComplaint = async (complaintId: string, notes: string) => {
@@ -872,6 +891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ratings,
         isFirebaseConnected,
         currentUser,
+        setCurrentUser,
         logout,
 
         currentPassengerRide,
@@ -898,6 +918,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         suspendDriver,
         updateDriverStatus,
         updatePricing,
+        toggleServiceArea,
         resolveComplaint,
         broadcastNotification,
         purgeAllTestData,

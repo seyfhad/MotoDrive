@@ -4,6 +4,8 @@ import { Coordinates } from '../../types';
 import {
   ALGERIA_LOCATIONS,
   FEATURED_WILAYAS,
+  ALL_58_WILAYAS,
+  findNearestLocalLocation,
   calculateDistanceKm,
   estimateDurationMinutes,
   reverseGeocodeCoords,
@@ -76,60 +78,117 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     };
   }, [searchQuery, selectedWilaya]);
 
-  // Real GPS Geolocation with reverse geocoding
-  const handleUseRealGPS = () => {
+  // Real GPS Geolocation with robust high/low accuracy fallback
+  const handleUseRealGPS = async () => {
     if (!navigator.geolocation) {
-      setGpsError('تحديد المواقع الجغرافي غير مدعوم في متصفحك.');
+      setGpsError('خاصية تحديد المواقع الجغرافي غير مدعومة في متصفحك أو جهازك.');
       return;
     }
 
     setIsGpsLoading(true);
     setGpsError(null);
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const address = await reverseGeocodeCoords(latitude, longitude);
-          const realLoc: Coordinates = {
-            lat: latitude,
-            lng: longitude,
-            name: address || 'موقعي الحالي (GPS)',
-            address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-          };
+    const getPositionPromise = (options: PositionOptions): Promise<GeolocationPosition> => {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    };
 
-          if (searchType === 'pickup') {
-            setPickup(realLoc);
-          } else {
-            setDestination(realLoc);
-          }
-          setSearchType(null);
-        } catch (e) {
-          const fallbackLoc: Coordinates = {
-            lat: latitude,
-            lng: longitude,
-            name: 'موقعي الحالي (GPS)',
-            address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-          };
-          if (searchType === 'pickup') setPickup(fallbackLoc);
-          else setDestination(fallbackLoc);
-          setSearchType(null);
-        } finally {
-          setIsGpsLoading(false);
-        }
-      },
-      (err) => {
+    let position: GeolocationPosition | null = null;
+    let locationError: GeolocationPositionError | null = null;
+
+    // Attempt 1: High Accuracy GPS (Satellite)
+    try {
+      position = await getPositionPromise({
+        enableHighAccuracy: true,
+        timeout: 6000,
+        maximumAge: 30000,
+      });
+    } catch (err1: any) {
+      locationError = err1;
+      // If permission was denied directly (code 1), don't retry, fail immediately
+      if (err1?.code === 1) {
         setIsGpsLoading(false);
-        if (err.code === 1) {
-          setGpsError('تم رفض إذن الوصول إلى الموقع. يرجى تفعيل إذن الموقع من شريط المتصفح.');
-        } else if (err.code === 2) {
-          setGpsError('تعذر الحصول على إشارة GPS، يرجى المحاولة لاحقاً أو اختيار مكان من القائمة.');
-        } else {
-          setGpsError('انتهت مهلة تحديد الموقع.');
-        }
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-    );
+        setGpsError(
+          'تم رفض إذن الموقع. إذا قمت بتثبيت التطبيق على هاتفك، يُرجى فتح إعدادات الهاتف ⬅️ التطبيقات ⬅️ MotoDrive (أو Chrome) ⬅️ الأذونات ⬅️ تفعيل إذن "الموقع الجغرافي".'
+        );
+        return;
+      }
+
+      // Attempt 2: Network / Cellular / Wi-Fi fallback (crucial for mobile indoors)
+      try {
+        position = await getPositionPromise({
+          enableHighAccuracy: false,
+          timeout: 8000,
+          maximumAge: 120000,
+        });
+      } catch (err2: any) {
+        locationError = err2;
+      }
+    }
+
+    if (!position) {
+      setIsGpsLoading(false);
+      if (locationError?.code === 1) {
+        setGpsError(
+          'تم رفض إذن الموقع الجغرافي. يرجى تفعيل إذن الموقع من إعدادات المتصفح أو إعدادات الهاتف.'
+        );
+      } else if (locationError?.code === 2) {
+        setGpsError(
+          'تعذر التقاط إشارة GPS. تأكد من تفعيل زر "الموقع" (Location) في شريط إشعارات هاتفك، أو اختر ولايتك ووجهتك مباشرة من القائمة.'
+        );
+      } else {
+        setGpsError(
+          'انتهت مهلة التقاط إشارة GPS. يمكنك اختيار ولايتك ومنطقتك مباشرة وسيقوم التطبيق بحساب المسار فوراً.'
+        );
+      }
+      return;
+    }
+
+    try {
+      const { latitude, longitude } = position.coords;
+      const address = await reverseGeocodeCoords(latitude, longitude);
+      const nearest = findNearestLocalLocation(latitude, longitude);
+
+      if (nearest?.item?.wilaya) {
+        setSelectedWilaya(nearest.item.wilaya);
+      }
+
+      const placeName =
+        address ||
+        (nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقعي الحالي (GPS)');
+
+      const realLoc: Coordinates = {
+        lat: latitude,
+        lng: longitude,
+        name: placeName,
+        address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)} (${nearest?.item?.wilaya || 'الجزائر'})`,
+      };
+
+      if (searchType === 'pickup') {
+        setPickup(realLoc);
+      } else {
+        setDestination(realLoc);
+      }
+      setSearchType(null);
+    } catch {
+      const { latitude, longitude } = position.coords;
+      const nearest = findNearestLocalLocation(latitude, longitude);
+      const fallbackLoc: Coordinates = {
+        lat: latitude,
+        lng: longitude,
+        name: nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقعي الحالي (GPS)',
+        address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      };
+      if (nearest?.item?.wilaya) {
+        setSelectedWilaya(nearest.item.wilaya);
+      }
+      if (searchType === 'pickup') setPickup(fallbackLoc);
+      else setDestination(fallbackLoc);
+      setSearchType(null);
+    } finally {
+      setIsGpsLoading(false);
+    }
   };
 
   const distanceKm = calculateDistanceKm(pickup, destination);
@@ -246,8 +305,12 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                   type="text"
                   placeholder={
                     searchType === 'pickup'
-                      ? 'ابحث عن مكان الانطلاق (مثال: قالمة، حمام الدباغ، وادي الزناتي، عقبي...)'
-                      : 'ابحث عن الوجهة (مثال: قالمة، بوشقوف، هليوبوليس، قسنطينة...)'
+                      ? selectedWilaya !== 'الكل'
+                        ? `ابحث عن أي مكان أو بلدية في ${selectedWilaya} أو اكتب حرفاً...`
+                        : 'ابحث عن مكان الانطلاق (اكتب اسم المكان أو البلدية أو حرفاً)...'
+                      : selectedWilaya !== 'الكل'
+                      ? `ابحث عن الوجهة في ${selectedWilaya} أو أي ولاية...`
+                        : 'ابحث عن الوجهة (اكتب اسم المكان أو البلدية أو حرفاً)...'
                   }
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -267,14 +330,32 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Featured Wilayas Horizontal Filter */}
-            <div className="space-y-1.5">
+            {/* 58 Wilayas Selector & Quick Filter */}
+            <div className="space-y-2">
               <div className="text-[11px] text-slate-400 flex items-center justify-between px-1">
-                <span>تصفية حسب الولاية:</span>
+                <span>تحديد الولاية (58 ولاية):</span>
                 <span className="text-[10px] text-amber-400 font-bold">
                   {selectedWilaya === 'الكل' ? 'جميع الولايات والمدن' : `ولاية ${selectedWilaya}`}
                 </span>
               </div>
+
+              {/* 58 Wilayas Dropdown */}
+              <div className="relative">
+                <select
+                  value={selectedWilaya}
+                  onChange={e => setSelectedWilaya(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
+                >
+                  <option value="الكل">🇩🇿 كل ولايات الجزائر (58 ولاية - تغطية وطنية)</option>
+                  {ALL_58_WILAYAS.map(w => (
+                    <option key={w.code} value={w.name}>
+                      {String(w.code).padStart(2, '0')} - ولاية {w.name} ({w.nameFr})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quick Horizontal Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {FEATURED_WILAYAS.map(w => (
                   <button

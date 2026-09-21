@@ -4,6 +4,10 @@ import {
   searchLocalLocations,
   normalizeSearchString,
   FEATURED_WILAYAS,
+  ALL_58_WILAYAS,
+  WILAYA_NAMES,
+  findNearestAlgerianWilaya,
+  findNearestLocalLocation,
   AlgeriaLocationItem
 } from '../data/algeriaLocations';
 
@@ -11,7 +15,11 @@ export {
   COMPREHENSIVE_ALGERIA_LOCATIONS,
   searchLocalLocations,
   normalizeSearchString,
-  FEATURED_WILAYAS
+  FEATURED_WILAYAS,
+  ALL_58_WILAYAS,
+  WILAYA_NAMES,
+  findNearestAlgerianWilaya,
+  findNearestLocalLocation
 };
 export type { AlgeriaLocationItem };
 
@@ -114,20 +122,15 @@ export async function reverseGeocodeCoords(lat: number, lng: number): Promise<st
     // Fallback if offline or network blocked
   }
 
-  // 2. Find nearest known Algerian location landmark
+  // 2. Find nearest known Algerian location landmark across all 58 wilayas
   try {
-    let nearestLoc: { name: string; wilaya: string; dist: number } | null = null;
-    for (const loc of ALGERIA_LOCATIONS) {
-      const d = calculateDistanceKm({ lat, lng }, loc.coords);
-      if (!nearestLoc || d < nearestLoc.dist) {
-        nearestLoc = { name: loc.name, wilaya: loc.wilaya, dist: d };
-      }
-    }
-
-    if (nearestLoc && nearestLoc.dist <= 1.5) {
-      return `${nearestLoc.name}`;
-    } else if (nearestLoc && nearestLoc.dist <= 15) {
-      return `قرب ${nearestLoc.name} (${nearestLoc.wilaya})`;
+    const nearest = findNearestLocalLocation(lat, lng);
+    if (nearest && nearest.distKm <= 2) {
+      return `${nearest.item.name} (${nearest.item.wilaya})`;
+    } else if (nearest && nearest.distKm <= 20) {
+      return `قرب ${nearest.item.name} (${nearest.item.wilaya} - ${nearest.distKm} كم)`;
+    } else if (nearest) {
+      return `${nearest.item.name}، ${nearest.item.wilaya}`;
     }
   } catch {
     // Ignore distance calculation errors
@@ -152,7 +155,7 @@ export async function searchAlgeriaPlaces(
 
   // If query is empty or less than 3 characters, instant local dataset provides perfect results
   if (trimmed.length < 3) {
-    return localMatches.slice(0, 20);
+    return localMatches.slice(0, 60);
   }
 
   // 2. For queries 3+ chars, also query Nominatim in background with timeout
@@ -206,13 +209,13 @@ export async function searchAlgeriaPlaces(
           merged.push(online);
         }
       }
-      return merged.slice(0, 25);
+      return merged.slice(0, 60);
     }
   } catch {
     // Return instant local matches on network timeout or failure
   }
 
-  return localMatches.slice(0, 25);
+  return localMatches.slice(0, 60);
 }
 
 export interface RobustLocationResult {

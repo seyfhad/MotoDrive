@@ -1,0 +1,25 @@
+{
+  "name": "MotoDrive - موتو درايف الجزائر",
+  "short_name": "MotoDrive",
+  "description": "تطبيق حجز ونقل الركاب بالدراجات النارية في الجزائر",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#f59e0b",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["travel", "transportation"],
+  "icons": [
+    {
+      "src": "/assets/aistudio/pwa-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/aistudio/pwa-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
