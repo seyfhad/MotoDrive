@@ -126,6 +126,7 @@ interface AppContextType {
   resolveComplaint: (complaintId: string, notes: string) => Promise<void>;
   broadcastNotification: (title: string, body: string, targetRole?: UserRole) => void;
   sendInAppNotification: (recipientId: string, recipientRole: UserRole, title: string, body: string) => void;
+  markAllNotificationsAsRead: () => void;
   purgeAllTestData: () => Promise<{ deletedCount: number }>;
 
   // Simulator controls
@@ -854,6 +855,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(recipientId, recipientRole, title, body, 'system');
   };
 
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
   const logout = async () => {
     try {
       await signOutUser();
@@ -927,6 +932,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resolveComplaint,
         broadcastNotification,
         sendInAppNotification,
+        markAllNotificationsAsRead,
         purgeAllTestData,
 
         isAutoDriverSimulation,

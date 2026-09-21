@@ -21,7 +21,51 @@ interface RegisterDriverModalProps {
   onClose: () => void;
 }
 
-const POPULAR_BRANDS = ['SYM', 'Yamaha', 'Honda', 'VMS', 'Kymco', 'Peugeot', 'Suzuki', 'BMW', 'Dayang'];
+const POPULAR_BRANDS = [
+  'SYM',
+  'Yamaha',
+  'VMS',
+  'Honda',
+  'Kymco',
+  'Peugeot',
+  'Piaggio / Vespa',
+  'Suzuki',
+  'Benelli',
+  'BMW',
+  'Kawasaki',
+  'KTM',
+  'Dayang',
+  'Lifan',
+  'Haojue',
+  'Keeway',
+  'Luojia',
+  'Sanya',
+  'Zontes',
+  'علامة أخرى',
+];
+
+const BRAND_MODELS_MAP: Record<string, string[]> = {
+  SYM: ['Symphony ST', 'Symphony SR', 'Fiddle II', 'Fiddle III', 'Fiddle IV', 'Orbit II', 'Orbit III', 'Jet 14', 'Cruisym 300', 'GTS 250', 'Tonik 125', 'Jet 4 RX'],
+  Yamaha: ['TMAX 530 / 560', 'NMAX 155', 'XMAX 300', 'MT-07', 'MT-09', 'Crypton 110', 'YBR 125', 'DT 125', 'Cygnus Z', 'RayZR 125'],
+  VMS: ['VMS VMAX 200', 'VMS Cuxi 110', 'VMS Driver 125', 'VMS Joker 125', 'VMS RK200', 'VMS Monster 125', 'VMS Estate 125', 'VMS Express 125'],
+  Honda: ['PCX 125 / 160', 'SH 125 / 150 / 300', 'ADV 150 / 350', 'Forza 300 / 350', 'CB125R', 'Africa Twin', 'Vision 110', 'X-ADV 750'],
+  Kymco: ['Agility 16+ 125/150', 'Like 125', 'Super 8', 'Xciting 400', 'AK 550', 'People S 125'],
+  Peugeot: ['Django 125', 'Kisbee 50/125', 'Tweet 125', 'Metropolis 400', 'Speedfight 4'],
+  'Piaggio / Vespa': ['Vespa Primavera 125', 'Vespa GTS 300', 'Piaggio Liberty 125', 'Piaggio Beverly 300/400', 'Piaggio Zip 50/125'],
+  Suzuki: ['Burgman 125/200/400', 'Address 110', 'GSX-R125', 'Bandit 600/1250', 'V-Strom 650'],
+  Benelli: ['TNT 125 / 150 / 251', 'TRK 502 / 502X', 'BN 302', 'Imperiale 400', 'Leoncino 500'],
+  BMW: ['C400X / C400GT', 'R1250GS / R1200GS', 'S1000RR', 'F850GS / F750GS'],
+  Kawasaki: ['Z900', 'Z650', 'Z1000', 'Ninja 400', 'Versys 650'],
+  KTM: ['Duke 125 / 200 / 390', 'Duke 790 / 890', 'RC 390', 'Adventure 390 / 790'],
+  Dayang: ['Dayang DY125', 'Dayang DY150', 'Dayang ADV 150', 'Dayang Matrix'],
+  Lifan: ['Lifan LF125', 'Lifan KPV 150', 'Lifan LF150'],
+  Haojue: ['Haojue KA150', 'Haojue HJ125', 'Haojue VS125'],
+  Keeway: ['Keeway Zahara 125', 'Keeway Superlight 125', 'Keeway Vieste 300'],
+  Luojia: ['Luojia LJ125', 'Luojia LJ110'],
+  Sanya: ['Sanya SY125', 'Sanya SY150'],
+  Zontes: ['Zontes 310M', 'Zontes 350D', 'Zontes 125 U1'],
+  'علامة أخرى': ['طراز آخر'],
+};
 const ALGERIA_WILAYAS = [
   'الجزائر العاصمة',
   'وهران',
@@ -110,14 +154,27 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       return;
     }
 
-    // Check that documents are uploaded or fallback samples
-    const finalSelfie = selfieUrl || SAMPLE_DOCS.selfie;
-    const finalMotoFront = motorcycleFrontUrl || SAMPLE_DOCS.motoFront;
-    const finalMotoBack = motorcycleBackUrl || SAMPLE_DOCS.motoBack;
-    const finalLicenseFront = licenseFrontUrl || SAMPLE_DOCS.licenseFront;
-    const finalLicenseBack = licenseBackUrl || SAMPLE_DOCS.licenseBack;
-    const finalVehicleDocFront = vehicleDocFrontUrl || SAMPLE_DOCS.vehicleDocFront;
-    const finalVehicleDocBack = vehicleDocBackUrl || SAMPLE_DOCS.vehicleDocBack;
+    // Strict validation: Driver MUST upload all 7 required documents before moving to pending review
+    if (
+      !selfieUrl ||
+      !motorcycleFrontUrl ||
+      !motorcycleBackUrl ||
+      !licenseFrontUrl ||
+      !licenseBackUrl ||
+      !vehicleDocFrontUrl ||
+      !vehicleDocBackUrl
+    ) {
+      setErrorMsg('⚠️ يرجى رفع جميع الصور الـ 7 المطلوبة كاملاً قبل الإرسال (الصورة الشخصية، الدراجة أمام وخلف، رخصة السياقة جهتين، والبطاقة الرمادية جهتين). يمكنك الضغط على زر "تعبئة صور تجريبية" لتسريع المراجعة.');
+      return;
+    }
+
+    const finalSelfie = selfieUrl;
+    const finalMotoFront = motorcycleFrontUrl;
+    const finalMotoBack = motorcycleBackUrl;
+    const finalLicenseFront = licenseFrontUrl;
+    const finalLicenseBack = licenseBackUrl;
+    const finalVehicleDocFront = vehicleDocFrontUrl;
+    const finalVehicleDocBack = vehicleDocBackUrl;
 
     setIsSubmitting(true);
     setErrorMsg(null);
@@ -342,7 +399,13 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الماركة:</label>
                   <select
                     value={brand}
-                    onChange={e => setBrand(e.target.value)}
+                    onChange={e => {
+                      const newBrand = e.target.value;
+                      setBrand(newBrand);
+                      if (BRAND_MODELS_MAP[newBrand]?.[0]) {
+                        setModel(BRAND_MODELS_MAP[newBrand][0]);
+                      }
+                    }}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
                     {POPULAR_BRANDS.map(b => (
@@ -353,14 +416,15 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الموديل (الطراز):</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: Symphony ST"
+                  <select
                     value={model}
                     onChange={e => setModel(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-                  />
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  >
+                    {(BRAND_MODELS_MAP[brand] || ['طراز آخر']).map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -437,7 +501,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <DocumentUploadCard
                     id="moto-back-upload"
                     label="3. الدراجة النارية - من الخلف"
-                    description="مع ظهور لوحة الترقيم بوضوح"
+                    description="شرط إلزامي: يجب أن تظهر لوحة الترقيم (Matricule) بوضوح"
                     previewUrl={motorcycleBackUrl}
                     onUpload={e => handleFileUpload(e, setMotorcycleBackUrl)}
                     onClear={() => setMotorcycleBackUrl('')}

@@ -18,6 +18,7 @@ export const Header: React.FC = () => {
     drivers,
     passengers,
     notifications,
+    markAllNotificationsAsRead,
     currentPassengerRide,
     currentDriverRide,
   } = useApp();
@@ -141,7 +142,12 @@ export const Header: React.FC = () => {
             <div className="relative">
               <button
                 id="notifications-bell-btn"
-                onClick={() => setShowNotifications(!showNotifications)}
+                onClick={() => {
+                  if (!showNotifications) {
+                    markAllNotificationsAsRead();
+                  }
+                  setShowNotifications(!showNotifications);
+                }}
                 className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors relative"
                 title="التنبيهات والإشعارات"
               >
