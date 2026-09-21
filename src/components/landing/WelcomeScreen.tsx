@@ -96,7 +96,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* Primary Action Buttons */}
         <div className="space-y-3 pt-2">
-          {/* 1. زر تسجيل الدخول */}
+          {/* 1. زر تسجيل الدخول الإلزامي */}
           <button
             type="button"
             id="welcome-login-btn"
@@ -104,19 +104,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             className="w-full py-3.5 px-5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
           >
             <LogIn className="w-4 h-4 shrink-0" />
-            <span>تسجيل الدخول / إنشاء حساب</span>
+            <span>تسجيل الدخول / إنشاء حساب (إلزامي للاستخدام)</span>
           </button>
 
-          {/* 2. زر الدخول بدون تسجيل */}
+          {/* 2. زر الدخول كراكب أو كسائق */}
           <button
             type="button"
             id="welcome-guest-btn"
-            onClick={onContinueAsGuest}
+            onClick={onOpenLogin}
             className="w-full py-3.5 px-5 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.99] border border-slate-700/80 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            <span>الدخول بدون تسجيل (متابعة كزائر)</span>
+            <span>تسجيل الدخول المباشر (راكب أو سائق)</span>
             <ArrowLeft className="w-4 h-4 shrink-0 text-amber-400" />
           </button>
+
+          <p className="text-center text-[11px] text-amber-400/90 font-medium">
+            * تسجيل الدخول ضروري لجميع الركاب وسائقي الدراجات للوصول للخدمات
+          </p>
         </div>
       </div>
 

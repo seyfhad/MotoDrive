@@ -33,13 +33,9 @@ const AppContent: React.FC = () => {
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
-  // Initial Welcome Screen State (Prompted initially if not logged in and not entered yet)
-  const [hasEnteredApp, setHasEnteredApp] = useState<boolean>(() => {
-    return sessionStorage.getItem('motodrive_has_entered') === 'true';
-  });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Legal content (Privacy, Terms, GCP Guide) - Directly accessible for Google Cloud verification
+  // Legal content (Privacy, Terms) - Directly accessible for Google Cloud verification
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
 
@@ -51,10 +47,6 @@ const AppContent: React.FC = () => {
       setLegalTab(page as any);
       setIsLegalOpen(true);
     }
-    if (params.get('welcome') === 'true') {
-      setHasEnteredApp(false);
-      sessionStorage.removeItem('motodrive_has_entered');
-    }
   }, []);
 
   useEffect(() => {
@@ -62,15 +54,9 @@ const AppContent: React.FC = () => {
       setLegalTab(e?.detail?.tab || 'privacy');
       setIsLegalOpen(true);
     };
-    const handleOpenWelcome = () => {
-      setHasEnteredApp(false);
-      sessionStorage.removeItem('motodrive_has_entered');
-    };
     window.addEventListener('open-legal', handleOpenLegal);
-    window.addEventListener('open-welcome', handleOpenWelcome);
     return () => {
       window.removeEventListener('open-legal', handleOpenLegal);
-      window.removeEventListener('open-welcome', handleOpenWelcome);
     };
   }, []);
 
@@ -134,17 +120,14 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Initial Welcome Screen (Required by Google Cloud Verification: displays Sign In, Guest Entry, Privacy Policy & Terms of Service)
-  if (!currentUser && !hasEnteredApp) {
+  // Initial Welcome Screen (Mandatory Login as explicitly requested by user)
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
         <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60">
           <WelcomeScreen
             onOpenLogin={() => setIsAuthModalOpen(true)}
-            onContinueAsGuest={() => {
-              sessionStorage.setItem('motodrive_has_entered', 'true');
-              setHasEnteredApp(true);
-            }}
+            onContinueAsGuest={() => setIsAuthModalOpen(true)}
             onOpenLegal={(tab) => {
               setLegalTab(tab);
               setIsLegalOpen(true);
@@ -156,13 +139,11 @@ const AppContent: React.FC = () => {
             isOpen={isAuthModalOpen}
             onClose={() => setIsAuthModalOpen(false)}
             onSuccess={() => {
-              sessionStorage.setItem('motodrive_has_entered', 'true');
-              setHasEnteredApp(true);
               setIsAuthModalOpen(false);
             }}
           />
 
-          {/* Legal Modal (Privacy Policy, Terms of Service & Google Cloud Guide) */}
+          {/* Legal Modal (Privacy Policy & Terms of Service) */}
           <LegalModal
             isOpen={isLegalOpen}
             onClose={() => setIsLegalOpen(false)}

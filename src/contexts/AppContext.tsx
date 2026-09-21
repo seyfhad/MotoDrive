@@ -125,6 +125,7 @@ interface AppContextType {
   toggleServiceArea: (id: string) => void;
   resolveComplaint: (complaintId: string, notes: string) => Promise<void>;
   broadcastNotification: (title: string, body: string, targetRole?: UserRole) => void;
+  sendInAppNotification: (recipientId: string, recipientRole: UserRole, title: string, body: string) => void;
   purgeAllTestData: () => Promise<{ deletedCount: number }>;
 
   // Simulator controls
@@ -849,6 +850,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification('all', targetRole || 'passenger', title, body, 'system');
   };
 
+  const sendInAppNotification = (recipientId: string, recipientRole: UserRole, title: string, body: string) => {
+    addNotification(recipientId, recipientRole, title, body, 'system');
+  };
+
   const logout = async () => {
     try {
       await signOutUser();
@@ -921,6 +926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleServiceArea,
         resolveComplaint,
         broadcastNotification,
+        sendInAppNotification,
         purgeAllTestData,
 
         isAutoDriverSimulation,

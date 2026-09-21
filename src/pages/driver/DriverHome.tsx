@@ -8,6 +8,7 @@ import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigat
 import { updateFirestoreDriverLocation } from '../../services/firestoreService';
 import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
+import { DriverPendingApprovalView } from './DriverPendingApprovalView';
 
 export const DriverHome: React.FC = () => {
   const {
@@ -24,6 +25,11 @@ export const DriverHome: React.FC = () => {
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+
+  // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق
+  if (activeDriver.status !== 'approved') {
+    return <DriverPendingApprovalView />;
+  }
 
   // جلب موقع GPS الحقيقي للسائق وتحديثه فوراً في السحابة
   const handleRefreshDriverGPS = async () => {

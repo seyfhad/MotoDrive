@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, Bike, Mail, Shield, LogOut } from 'lucide-react';
+import { Bell, AlertTriangle, User, Bike, LogOut, Send } from 'lucide-react';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
 import { AuthModal } from '../auth/AuthModal';
-import { GmailReceiptModal } from './GmailReceiptModal';
+import { AdminInAppMessageModal } from './AdminInAppMessageModal';
 
 export const Header: React.FC = () => {
   const {
@@ -27,10 +27,11 @@ export const Header: React.FC = () => {
   const [showRegisterDriver, setShowRegisterDriver] = useState(false);
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showGmailModal, setShowGmailModal] = useState(false);
+  const [showAdminMessageModal, setShowAdminMessageModal] = useState(false);
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
   const isTripActive = Boolean(currentPassengerRide || currentDriverRide);
+  const isOwner = currentUser?.email === 'seyfhad@gmail.com' || currentRole === 'admin';
 
   return (
     <>
@@ -123,27 +124,18 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-black hidden sm:inline">SOS</span>
             </button>
 
-            {/* Gmail Action Button */}
-            <button
-              id="header-gmail-btn"
-              onClick={() => setShowGmailModal(true)}
-              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors"
-              title="إرسال عبر Gmail"
-            >
-              <Mail className="w-3.5 h-3.5 text-amber-400" />
-            </button>
-
-            {/* Google Cloud & Verification Guide Button */}
-            <button
-              id="header-gcp-guide-btn"
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'gcp-guide' } }));
-              }}
-              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors"
-              title="دليل نشر التطبيق وإعدادات Google Cloud"
-            >
-              <Shield className="w-3.5 h-3.5 text-amber-400" />
-            </button>
+            {/* Owner/Admin In-App Message Action Button */}
+            {isOwner && (
+              <button
+                id="header-admin-inapp-message-btn"
+                onClick={() => setShowAdminMessageModal(true)}
+                className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors"
+                title="إرسال رسالة لحساب مستخدم (داخل التطبيق)"
+              >
+                <Send className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-bold hidden sm:inline">إرسال إشعار</span>
+              </button>
+            )}
 
             {/* Notification Bell */}
             <div className="relative">
@@ -214,10 +206,9 @@ export const Header: React.FC = () => {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
       />
-      <GmailReceiptModal
-        isOpen={showGmailModal}
-        onClose={() => setShowGmailModal(false)}
-        defaultRecipient={activePassenger.email || ''}
+      <AdminInAppMessageModal
+        isOpen={showAdminMessageModal}
+        onClose={() => setShowAdminMessageModal(false)}
       />
     </>
   );

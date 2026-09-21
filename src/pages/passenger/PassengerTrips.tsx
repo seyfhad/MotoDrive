@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { History, Calendar, MapPin, Star, AlertCircle, FileText, Download, Mail } from 'lucide-react';
-import { GmailReceiptModal } from '../../components/shared/GmailReceiptModal';
+import { History, Calendar, MapPin, Star, AlertCircle, FileText, Download } from 'lucide-react';
 import { Ride } from '../../types';
 
 export const PassengerTrips: React.FC = () => {
   const { activePassenger, rides } = useApp();
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
-  const [selectedRideForReceipt, setSelectedRideForReceipt] = useState<Ride | null>(null);
 
   const passengerRides = rides.filter(r => r.passengerId === activePassenger.id);
 
@@ -121,32 +119,12 @@ export const PassengerTrips: React.FC = () => {
                   <div className="text-sm font-black text-amber-400">
                     {formatCurrencyDZD(trip.finalPrice || trip.estimatedPrice)}
                   </div>
-                  {trip.status === 'completed' && (
-                    <button
-                      onClick={() => setSelectedRideForReceipt(trip)}
-                      className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-[10px] font-bold transition-all flex items-center gap-1 mt-1"
-                      title="إرسال إيصال الرحلة إلى البريد الإلكتروني"
-                    >
-                      <Mail className="w-3 h-3" />
-                      <span>إيصال Gmail</span>
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
           ))
         )}
       </div>
-
-      {/* Gmail Receipt Modal */}
-      {selectedRideForReceipt && (
-        <GmailReceiptModal
-          isOpen={Boolean(selectedRideForReceipt)}
-          onClose={() => setSelectedRideForReceipt(null)}
-          ride={selectedRideForReceipt}
-          defaultRecipient={activePassenger.email || ''}
-        />
-      )}
     </div>
   );
 };
