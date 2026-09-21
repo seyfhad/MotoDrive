@@ -250,8 +250,8 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
   };
 
   try {
-    // Attempt 1: High accuracy GPS with short 7s timeout
-    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 });
+    // المحاولة الأولى: طلب الموقع السريع بالاعتماد على أجهزة الهاتف والشبكة بدون فرض الدقة المفرطة لمنع Timeout
+    const pos = await tryPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
     const { latitude, longitude } = pos.coords;
     const address = await reverseGeocodeCoords(latitude, longitude);
     return {
@@ -265,9 +265,9 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
       message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
     };
   } catch (err1) {
-    // Attempt 2: Low accuracy (WiFi/Cellular/IP) with 10s timeout
+    // المحاولة الثانية الاحتياطية: مهلة أطول وقبول آخر موقع مخزن لمنع توقف التطبيق
     try {
-      const pos = await tryPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 });
+      const pos = await tryPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: Infinity });
       const { latitude, longitude } = pos.coords;
       const address = await reverseGeocodeCoords(latitude, longitude);
       return {
