@@ -34,6 +34,7 @@ export const subscribeToAuth = (
           name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
           phone: firebaseUser.phoneNumber || '0550123456',
           email: firebaseUser.email || undefined,
+          photoUrl: firebaseUser.photoURL || undefined,
           role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
           status: 'active',
           cancellationCount: 0,
@@ -59,6 +60,7 @@ export const subscribeToAuth = (
         name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
         phone: firebaseUser.phoneNumber || '0550123456',
         email: firebaseUser.email || undefined,
+        photoUrl: firebaseUser.photoURL || undefined,
         role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
         status: 'active',
         cancellationCount: 0,
@@ -217,7 +219,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   let profile: UserProfile;
   if (userSnap && userSnap.exists()) {
     profile = userSnap.data() as UserProfile;
-    // Update profile with Google details if missing
+    // التحديث التلقائي للبيانات المتغيرة من حساب Google
     const updates: Partial<UserProfile> = {};
     if (user.photoURL && !profile.photoUrl) updates.photoUrl = user.photoURL;
     if (user.displayName && (!profile.name || profile.name.includes('مستخدم'))) updates.name = user.displayName;
@@ -291,5 +293,6 @@ export const signUpWithEmail = async (email: string, pass: string, name: string,
 };
 
 export const signOutUser = async () => {
+  cachedAccessToken = null;
   await fbSignOut(auth);
 };
