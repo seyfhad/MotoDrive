@@ -37,14 +37,19 @@ export const Header: React.FC = () => {
       <header className="bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 px-3.5 py-2 sm:px-4 sm:py-2.5" id="app-main-header">
         <div className="w-full flex items-center justify-between gap-2">
           {/* Brand Icon & Name */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent('open-welcome'))}
+            className="flex items-center gap-1.5 sm:gap-2 text-right hover:opacity-90 transition-opacity cursor-pointer"
+            title="الواجهة الأولية وشروط الاستخدام"
+          >
             <div className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-sm shadow-sm shadow-amber-500/20 shrink-0">
               🏍️
             </div>
             <div>
               <span className="text-sm sm:text-base font-black tracking-tight text-white font-sans">Moto<span className="text-amber-400">Drive</span></span>
             </div>
-          </div>
+          </button>
 
           {/* User Account & Quick Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -91,7 +96,11 @@ export const Header: React.FC = () => {
             {currentUser && (
               <button
                 id="header-logout-btn"
-                onClick={logout}
+                onClick={async () => {
+                  sessionStorage.removeItem('motodrive_has_entered');
+                  await logout();
+                  window.dispatchEvent(new CustomEvent('open-welcome'));
+                }}
                 className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all"
                 title="تسجيل الخروج"
               >

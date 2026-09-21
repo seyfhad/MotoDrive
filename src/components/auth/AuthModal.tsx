@@ -20,12 +20,14 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   defaultRole?: UserRole;
+  onSuccess?: () => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
   isOpen,
   onClose,
   defaultRole = 'passenger',
+  onSuccess,
 }) => {
   const { activePassenger, currentUser, setCurrentUser, setActivePassenger, setCurrentRole, broadcastNotification } = useApp();
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
@@ -78,6 +80,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         'مرحباً بك في موتو درايف',
         `تم تسجيل الدخول بنجاح عبر البريد: ${profile.email}`
       );
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
       console.error('Direct Gmail Login Error:', err);
@@ -232,7 +235,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="space-y-2 pt-1">
                 <GoogleSignInButton
                   role={selectedRole}
-                  onSuccess={() => onClose()}
+                  onSuccess={() => {
+                    if (onSuccess) onSuccess();
+                    onClose();
+                  }}
                   label="المتابعة باستخدام Google"
                   id="auth-modal-google-signin-btn"
                 />

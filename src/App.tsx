@@ -5,6 +5,8 @@ import { Header } from './components/shared/Header';
 import { BottomNav } from './components/shared/BottomNav';
 import { SOSModal } from './components/shared/SOSModal';
 import { LegalModal } from './components/legal/LegalModal';
+import { WelcomeScreen } from './components/landing/WelcomeScreen';
+import { AuthModal } from './components/auth/AuthModal';
 
 // Passenger Views
 import { PassengerHome } from './pages/passenger/PassengerHome';
@@ -26,21 +28,50 @@ const GOOGLE_MAPS_API_KEY =
   'AIzaSyBqJIpB6lQZNXKY_N6ptrBVV5_R84FpRWM';
 
 const AppContent: React.FC = () => {
-  const { currentRole } = useApp();
+  const { currentRole, currentUser } = useApp();
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
-  // Legal content is opt-in: it must never be shown during application startup.
+
+  // Initial Welcome Screen State (Prompted initially if not logged in and not entered yet)
+  const [hasEnteredApp, setHasEnteredApp] = useState<boolean>(() => {
+    return sessionStorage.getItem('motodrive_has_entered') === 'true';
+  });
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Legal content (Privacy, Terms, GCP Guide) - Directly accessible for Google Cloud verification
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
+
+  // Check URL parameters on mount (Google Cloud Verification links support ?page=privacy & ?page=terms)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const page = params.get('page');
+    if (page === 'privacy' || page === 'terms' || page === 'gcp-guide') {
+      setLegalTab(page as any);
+      setIsLegalOpen(true);
+    }
+    if (params.get('welcome') === 'true') {
+      setHasEnteredApp(false);
+      sessionStorage.removeItem('motodrive_has_entered');
+    }
+  }, []);
 
   useEffect(() => {
     const handleOpenLegal = (e: any) => {
       setLegalTab(e?.detail?.tab || 'privacy');
       setIsLegalOpen(true);
     };
+    const handleOpenWelcome = () => {
+      setHasEnteredApp(false);
+      sessionStorage.removeItem('motodrive_has_entered');
+    };
     window.addEventListener('open-legal', handleOpenLegal);
-    return () => window.removeEventListener('open-legal', handleOpenLegal);
+    window.addEventListener('open-welcome', handleOpenWelcome);
+    return () => {
+      window.removeEventListener('open-legal', handleOpenLegal);
+      window.removeEventListener('open-welcome', handleOpenWelcome);
+    };
   }, []);
 
   // Request geolocation permission on app start
@@ -102,6 +133,45 @@ const AppContent: React.FC = () => {
         return <DriverHome />;
     }
   };
+
+  // Initial Welcome Screen (Required by Google Cloud Verification: displays Sign In, Guest Entry, Privacy Policy & Terms of Service)
+  if (!currentUser && !hasEnteredApp) {
+    return (
+      <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
+        <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60">
+          <WelcomeScreen
+            onOpenLogin={() => setIsAuthModalOpen(true)}
+            onContinueAsGuest={() => {
+              sessionStorage.setItem('motodrive_has_entered', 'true');
+              setHasEnteredApp(true);
+            }}
+            onOpenLegal={(tab) => {
+              setLegalTab(tab);
+              setIsLegalOpen(true);
+            }}
+          />
+
+          {/* Sign-In / Account Modal */}
+          <AuthModal
+            isOpen={isAuthModalOpen}
+            onClose={() => setIsAuthModalOpen(false)}
+            onSuccess={() => {
+              sessionStorage.setItem('motodrive_has_entered', 'true');
+              setHasEnteredApp(true);
+              setIsAuthModalOpen(false);
+            }}
+          />
+
+          {/* Legal Modal (Privacy Policy, Terms of Service & Google Cloud Guide) */}
+          <LegalModal
+            isOpen={isLegalOpen}
+            onClose={() => setIsLegalOpen(false)}
+            defaultTab={legalTab}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
