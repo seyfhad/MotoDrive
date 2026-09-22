@@ -6,15 +6,12 @@ import { supabase } from '../../supabaseClient';
 import {
   X,
   Bike,
-  Check,
-  Loader2,
   Upload,
   Camera,
   FileCheck,
   Clock,
   AlertCircle,
-  ShieldCheck,
-  Image as ImageIcon,
+  Loader2,
 } from 'lucide-react';
 
 interface RegisterDriverModalProps {
@@ -22,7 +19,7 @@ interface RegisterDriverModalProps {
   onClose: () => void;
 }
 
-// دالة مخصصة لتصغير أبعاد الصورة وضغط جودتها لتخفيض الحجم قبل تحويلها إلى Base64
+// دالة تصغير أبعاد الصورة وضغط جودتها لمنع خطأ حجم البيانات في Supabase
 const compressImage = (file: File, maxWidth = 800, quality = 0.6): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -140,7 +137,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
   const [plateNumber, setPlateNumber] = useState('');
   const [wilaya, setWilaya] = useState('الجزائر العاصمة');
   const [municipality, setMunicipality] = useState('الجزائر الوسطى');
-  const [hasHelmet, setHasHelmet] = useState(true);
 
   const [selfieUrl, setSelfieUrl] = useState<string>('');
   const [motorcycleFrontUrl, setMotorcycleFrontUrl] = useState<string>('');
@@ -206,14 +202,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       return;
     }
 
-    const finalSelfie = selfieUrl;
-    const finalMotoFront = motorcycleFrontUrl;
-    const finalMotoBack = motorcycleBackUrl;
-    const finalLicenseFront = licenseFrontUrl;
-    const finalLicenseBack = licenseBackUrl;
-    const finalVehicleDocFront = vehicleDocFrontUrl;
-    const finalVehicleDocBack = vehicleDocBackUrl;
-
     setIsSubmitting(true);
     setErrorMsg(null);
 
@@ -226,7 +214,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       email: currentUser?.email || undefined,
       wilaya,
       municipality: municipality || 'وسط المدينة',
-      photoUrl: finalSelfie,
+      photoUrl: selfieUrl,
       rating: 5.0,
       ratingCount: 1,
       totalTrips: 0,
@@ -234,7 +222,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       isOnline: false,
       isAvailable: false,
       status: 'pending',
-      rejectionReason: undefined,
       location: {
         lat: 36.7538 + (Math.random() - 0.5) * 0.04,
         lng: 3.0588 + (Math.random() - 0.5) * 0.04,
@@ -250,27 +237,28 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       documents: {
         status: 'pending',
         submittedAt: new Date().toISOString(),
-        selfieUrl: finalSelfie,
-        personalPhotoUrl: finalSelfie,
-        motorcycleFrontUrl: finalMotoFront,
-        motorcycleBackUrl: finalMotoBack,
-        licenseFrontUrl: finalLicenseFront,
-        licenseBackUrl: finalLicenseBack,
-        vehicleDocFrontUrl: finalVehicleDocFront,
-        vehicleDocBackUrl: finalVehicleDocBack,
-        licenseUrl: finalLicenseFront,
-        identityDocumentUrl: finalSelfie,
-        vehicleRegistrationUrl: finalVehicleDocFront,
-        motorcyclePhotosUrls: [finalMotoFront, finalMotoBack],
+        selfieUrl,
+        personalPhotoUrl: selfieUrl,
+        motorcycleFrontUrl,
+        motorcycleBackUrl,
+        licenseFrontUrl,
+        licenseBackUrl,
+        vehicleDocFrontUrl,
+        vehicleDocBackUrl,
+        licenseUrl: licenseFrontUrl,
+        identityDocumentUrl: selfieUrl,
+        vehicleRegistrationUrl: vehicleDocFrontUrl,
+        motorcyclePhotosUrls: [motorcycleFrontUrl, motorcycleBackUrl],
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     try {
+      // 1. مزامنة البيانات مع Firestore
       await syncDriverProfile(newDriver);
 
-      // إرسال البيانات وحفظها في جدول Drivers في Supabase مع المعرف والإيميل ورقم الهاتف
+      // 2. إرسال كامل البيانات إلى Supabase (تشتمل المعرف والاتصال والدراجة والوثيقة)
       const { error: sbError } = await supabase
         .from('Drivers')
         .insert([
@@ -279,13 +267,17 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
             email: currentUser?.email || undefined,
             name: name.trim(), 
             phone: phone.trim(),
-            license_image: finalLicenseFront, 
+            wilaya: wilaya,
+            brand: brand,
+            model: model.trim(),
+            plate_number: plateNumber.trim(),
+            license_image: licenseFrontUrl, 
             status: 'pending' 
           }
         ]);
 
       if (sbError) {
-        console.error('خطأ في حفظ السائق في Supabase:', sbError.message);
+        console.error('خطأ في حفظ بيانات السائق في Supabase:', sbError.message);
       }
 
       setActiveDriver(newDriver);
@@ -561,7 +553,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>جاري الإرسال إلى Supabase والإدارة...</span>
+                  <span>جاري الإرسال وحفظ الوثائق...</span>
                 </>
               ) : (
                 <>
