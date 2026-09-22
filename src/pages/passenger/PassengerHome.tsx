@@ -38,11 +38,6 @@ export const PassengerHome: React.FC = () => {
     }
   };
 
-  // محاولة أخذ الموقع عند التشغيل
-  useEffect(() => {
-    handleGetRealGPSLocation();
-  }, []);
-
   // النقر المباشر على الخريطة لتحديد موقع الانطلاق أو الوجهة
   const handleMapClick = async (coords: Coordinates) => {
     try {
