@@ -72,7 +72,7 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
 
-  // Render Passenger Tabs
+  // Render Passenger / Client Tabs
   const renderPassengerView = () => {
     switch (activeTab) {
       case 'home':
@@ -90,7 +90,7 @@ const AppContent: React.FC = () => {
   // Render Driver Tabs
   const renderDriverView = () => {
     // Strictly block access if driver status is not approved by the owner
-    if (activeDriver.status !== 'approved') {
+    if (!activeDriver || activeDriver.status !== 'approved') {
       return <DriverPendingApprovalView />;
     }
 
@@ -111,7 +111,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Initial Welcome Screen (Mandatory Login as explicitly requested by user)
+  // Initial Welcome Screen (Mandatory Login)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
@@ -165,14 +165,14 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main Responsive Mobile Frame (fits mobile 100%, and frames as phone on wide screens) */}
+      {/* Main Responsive Mobile Frame */}
       <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20">
         {/* Global Application Header */}
         <Header onOpenSOS={() => setIsSOSOpen(true)} />
 
         {/* Main View Area */}
         <main className="flex-1 w-full">
-          {currentRole === 'passenger' && renderPassengerView()}
+          {(currentRole === 'passenger' || currentRole === 'client') && renderPassengerView()}
           {currentRole === 'driver' && renderDriverView()}
           {currentRole === 'admin' && <AdminPanel />}
         </main>
@@ -189,7 +189,7 @@ const AppContent: React.FC = () => {
         {/* Algerian Emergency SOS Modal */}
         {isSOSOpen && <SOSModal onClose={() => setIsSOSOpen(false)} />}
 
-        {/* Legal, Privacy Policy & Terms Modal (Google Cloud Verification) */}
+        {/* Legal, Privacy Policy & Terms Modal */}
         <LegalModal
           isOpen={isLegalOpen}
           onClose={() => setIsLegalOpen(false)}
