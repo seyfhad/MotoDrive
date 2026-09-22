@@ -70,86 +70,114 @@ export const DriverPendingApprovalView: React.FC = () => {
     },
   ];
 
+  const hasSubmittedAllDocs = docList.filter(d => Boolean(d.url)).length >= 7;
+
+  // Auto-open edit modal if documents are incomplete and not opened yet
+  const [hasAutoOpened, setHasAutoOpened] = useState(false);
+  if (!hasSubmittedAllDocs && !isRejected && !showEditModal && !hasAutoOpened) {
+    setShowEditModal(true);
+    setHasAutoOpened(true);
+  }
+
   return (
     <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-5 pb-24" id="driver-pending-approval-view" dir="rtl">
-      {/* Top Banner / Status Card */}
-      <div
-        className={`rounded-3xl p-5 border shadow-2xl relative overflow-hidden space-y-4 ${
-          isRejected
-            ? 'bg-red-500/10 border-red-500/30 text-red-200'
-            : isSuspended
-            ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-            : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${
-              isRejected ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400 animate-pulse'
-            }`}
-          >
-            {isRejected ? <AlertCircle className="w-6 h-6 text-red-400" /> : <Clock className="w-6 h-6 text-amber-400" />}
-          </div>
-          <div>
-            <span className="text-[11px] font-bold text-amber-400 tracking-wide uppercase block">
-              حساب السائق • MotoDrive
-            </span>
-            <h2 className="text-lg font-black text-white">
-              {isRejected
-                ? 'تم رفض طلب التسجيل'
-                : isSuspended
-                ? 'تم إيقاف الحساب مؤقتاً'
-                : 'طلبك قيد المراجعة من طرف المالك'}
-            </h2>
-          </div>
-        </div>
-
-        {/* Rejection Details */}
-        {isRejected ? (
-          <div className="p-3.5 bg-red-950/70 border border-red-500/40 rounded-2xl space-y-1.5 text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-red-300">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>سبب الرفض المسجل من طرف الإدارة:</span>
+      {/* If not submitted all docs yet and not rejected, render direct upload prompt card */}
+      {!hasSubmittedAllDocs && !isRejected ? (
+        <div className="rounded-3xl p-5 border border-amber-500/30 bg-slate-900 shadow-2xl space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl shrink-0">
+              <Camera className="w-6 h-6 text-amber-400" />
             </div>
-            <p className="text-white font-medium pr-5 leading-relaxed">
-              {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
-            </p>
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setShowEditModal(true)}
-                className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>تحديث وإعادة إرسال الوثائق المطلوبة</span>
-              </button>
+            <div>
+              <h2 className="text-base font-black text-white">إكمال ملف السائق والوثائق المطلوبة</h2>
+              <span className="text-[11px] font-bold text-amber-400">نظام التسجيل • MotoDrive</span>
             </div>
           </div>
-        ) : (
-          /* Pending Details */
-          <div className="space-y-2 text-xs leading-relaxed text-slate-300">
-            <p>
-              شكراً لتسجيلك في MotoDrive يا <strong className="text-white">{activeDriver.name}</strong>. تم استلام ملفك
-              وبيانات دراجتك النارية (<span className="text-amber-300">{activeDriver.motorcycle.brand} {activeDriver.motorcycle.model}</span>).
-            </p>
-            <p className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 text-[11px] text-amber-300">
-              ⏳ <strong>تنبيه:</strong> يجب انتظار موافقة مالك التطبيق والتحقق من رخصة السياقة والوثائق قبل أن تظهر لك واجهة السائق وتتمكن من بدء العمل وتفعيل وضع Online.
-            </p>
-          </div>
-        )}
 
-        <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px]">
-          <span className="text-slate-400">تاريخ الإرسال: {new Date(activeDriver.documents?.submittedAt || activeDriver.createdAt).toLocaleDateString('ar-DZ')}</span>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            مرحباً بك يا <strong className="text-white">{activeDriver.name || 'سائقنا الجديد'}</strong>. يرجى البدء بملء بيانات الدراجة النارية وإرفاق الوثائق الـ 7 المطلوبة لإرسال ملفك إلى مالك التطبيق لمراجعته وقبوله.
+          </p>
+
           <button
             type="button"
-            onClick={handleRefresh}
-            className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold"
+            onClick={() => setShowEditModal(true)}
+            className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
           >
-            <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span>تحديث الحالة</span>
+            <Camera className="w-4 h-4" />
+            <span>فتح صفحة رفع الوثائق المطلوبة الآن</span>
           </button>
         </div>
-      </div>
+      ) : (
+        /* Top Banner / Status Card after submission */
+        <div
+          className={`rounded-3xl p-5 border shadow-2xl relative overflow-hidden space-y-3.5 ${
+            isRejected
+              ? 'bg-red-500/10 border-red-500/30 text-red-200'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${
+                isRejected ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400 animate-pulse'
+              }`}
+            >
+              {isRejected ? <AlertCircle className="w-6 h-6 text-red-400" /> : <Clock className="w-6 h-6 text-amber-400" />}
+            </div>
+            <div>
+              <h2 className="text-base font-black text-white">
+                {isRejected
+                  ? 'تم رفض طلب التسجيل'
+                  : isSuspended
+                  ? 'تم إيقاف الحساب مؤقتاً'
+                  : 'طلبك قيد المراجعة من طرف المالك'}
+              </h2>
+            </div>
+          </div>
+
+          {/* Rejection Details */}
+          {isRejected ? (
+            <div className="p-3.5 bg-red-950/70 border border-red-500/40 rounded-2xl space-y-1.5 text-xs">
+              <div className="flex items-center gap-1.5 font-bold text-red-300">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>سبب الرفض المسجل من طرف الإدارة:</span>
+              </div>
+              <p className="text-white font-medium pr-5 leading-relaxed">
+                {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>تحديث وإعادة إرسال الوثائق المطلوبة</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Clean Pending Details after 7 documents submission */
+            <div className="space-y-2 text-xs leading-relaxed text-slate-300">
+              <p>
+                شكراً لتسجيلك في MotoDrive يا <strong className="text-white">{activeDriver.name || 'سائقنا الجديد'}</strong>. نرجو منك إكمال بيانات الدراجة النارية ورخصة السياقة.
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
+            <span className="text-slate-400">تاريخ الإرسال: {new Date(activeDriver.documents?.submittedAt || activeDriver.createdAt).toLocaleDateString('ar-DZ')}</span>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>تحديث الحالة</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Uploaded Documents List */}
       <div className="space-y-3">

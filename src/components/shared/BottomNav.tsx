@@ -16,6 +16,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, o
 
   if (currentRole === 'admin') return null;
 
+  if (currentRole === 'driver' && activeDriver.status !== 'approved') {
+    return (
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-950/95 backdrop-blur-xl border-t border-slate-800/80 px-4 py-2.5 shadow-2xl" id="app-bottom-nav">
+        <div className="max-w-md mx-auto flex items-center justify-between text-xs text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-2xl">
+          <span className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <span className="truncate">طلب السائق قيد المراجعة والمعالجة من المالك</span>
+          </span>
+          <span className="text-[10px] text-slate-400 shrink-0 pr-2">MotoDrive</span>
+        </div>
+      </nav>
+    );
+  }
+
   const handleTabClick = (tab: string) => {
     if (onTabChange) onTabChange(tab);
     if (setActiveTab) setActiveTab(tab);

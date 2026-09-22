@@ -19,6 +19,7 @@ import { DriverEarnings } from './pages/driver/DriverEarnings';
 import { DriverDocumentsUpload } from './pages/driver/DriverDocumentsUpload';
 import { DriverTrips } from './pages/driver/DriverTrips';
 import { DriverProfile } from './pages/driver/DriverProfile';
+import { DriverPendingApprovalView } from './pages/driver/DriverPendingApprovalView';
 
 // Admin Views
 import { AdminPanel } from './pages/admin/AdminPanel';
@@ -28,7 +29,7 @@ const GOOGLE_MAPS_API_KEY =
   'AIzaSyBqJIpB6lQZNXKY_N6ptrBVV5_R84FpRWM';
 
 const AppContent: React.FC = () => {
-  const { currentRole, currentUser } = useApp();
+  const { currentRole, currentUser, activeDriver } = useApp();
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
@@ -103,6 +104,11 @@ const AppContent: React.FC = () => {
 
   // Render Driver Tabs
   const renderDriverView = () => {
+    // Strictly block access if driver status is not approved by the owner
+    if (activeDriver.status !== 'approved') {
+      return <DriverPendingApprovalView />;
+    }
+
     switch (activeTab) {
       case 'home':
       case 'requests':

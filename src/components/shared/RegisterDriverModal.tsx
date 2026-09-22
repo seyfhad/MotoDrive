@@ -428,6 +428,23 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                 </div>
               </div>
 
+              {/* Custom brand/model note when 'علامة أخرى' is selected */}
+              {brand === 'علامة أخرى' && (
+                <div className="pt-1.5 border-t border-amber-500/30">
+                  <label className="block text-[11px] font-bold text-amber-400 mb-1">
+                    خانة ملاحظة: اكتب اسم الماركة وطراز الدراجة النارية بالتفصيل:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="مثال: Ducati Monster 821 / Aprilia RS660"
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
+                    className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">سنة الصنع:</label>
@@ -474,6 +491,23 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <span>3. رفع الوثائق المطلوبة (7 صور واضحة)</span>
                 </h4>
                 <span className="text-[10px] text-slate-400">مطلوبة لموافقة الأدمن</span>
+              </div>
+
+              {/* Driver Requirements & Conditions Notice */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 space-y-1.5 text-xs text-amber-200">
+                <div className="flex items-center gap-1.5 font-bold text-amber-400">
+                  <Bike className="w-4 h-4 shrink-0" />
+                  <span>شروط ومتطلبات التسجيل المعتمدة:</span>
+                </div>
+                <ul className="text-[11px] space-y-1 text-slate-300 list-disc pr-4 leading-relaxed">
+                  <li>رفع <strong>رخصة السياقة</strong> (صنفي أ / A جهتين)</li>
+                  <li>رفع <strong>البطاقة الرمادية للدراجة</strong> (جهتين)</li>
+                  <li>رفع <strong>صورة شخصية (سيلفي)</strong> واضحة</li>
+                  <li>رفع <strong>صور الدراجة النارية</strong> من الأمام والخلف (مع ظهور لوحة الترقيم بوضوح)</li>
+                  <li className="text-amber-300 font-bold list-none pr-0 pt-1 border-t border-amber-500/20 mt-1">
+                    🔒 <strong>ملاحظة هامة:</strong> بعد استكمال رفع الوثائق الـ 7 والضغط على إرسال، سيتم تحويل ملفك لمالك التطبيق لمراجعته وقبوله.
+                  </li>
+                </ul>
               </div>
 
               <div className="space-y-3">
