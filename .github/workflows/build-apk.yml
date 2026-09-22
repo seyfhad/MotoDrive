@@ -31,6 +31,7 @@ jobs:
           npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap init MotoDrive com.motodrive.app --web-dir dist
           npx cap add android
+          if [ -f google-services.json ]; then cp google-services.json android/app/; fi
 
       - name: Fix Kotlin Version Conflict
         run: |
