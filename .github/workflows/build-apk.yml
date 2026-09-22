@@ -33,6 +33,11 @@ jobs:
           npx cap add android
           if [ -f google-services.json ]; then cp google-services.json android/app/; fi
 
+      - name: Generate Native App Icons
+        run: |
+          npm install -g @capacitor/assets
+          npx @capacitor/assets generate --iconPath icon.jpg --android
+
       - name: Fix Kotlin Version Conflict
         run: |
           echo "
