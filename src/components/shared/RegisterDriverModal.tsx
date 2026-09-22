@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { DriverProfile } from '../../types';
 import { syncDriverProfile } from '../../services/firestoreService';
+import { supabase } from '../../supabaseClient';
 import {
   X,
   Bike,
@@ -66,6 +67,7 @@ const BRAND_MODELS_MAP: Record<string, string[]> = {
   Zontes: ['Zontes 310M', 'Zontes 350D', 'Zontes 125 U1'],
   'علامة أخرى': ['طراز آخر'],
 };
+
 const ALGERIA_WILAYAS = [
   'الجزائر العاصمة',
   'وهران',
@@ -82,7 +84,6 @@ const ALGERIA_WILAYAS = [
   'تلمسان',
 ];
 
-// High-quality fallback placeholders for testing if user doesn't pick camera
 const SAMPLE_DOCS = {
   selfie: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
   motoFront: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=400',
@@ -96,7 +97,6 @@ const SAMPLE_DOCS = {
 export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
   const { setCurrentRole, setActiveDriver, broadcastNotification, currentUser } = useApp();
 
-  // Basic Information
   const [name, setName] = useState(currentUser?.displayName || '');
   const [phone, setPhone] = useState('');
   const [brand, setBrand] = useState('SYM');
@@ -107,7 +107,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
   const [municipality, setMunicipality] = useState('الجزائر الوسطى');
   const [hasHelmet, setHasHelmet] = useState(true);
 
-  // 7 Required Documents requested by the user
   const [selfieUrl, setSelfieUrl] = useState<string>('');
   const [motorcycleFrontUrl, setMotorcycleFrontUrl] = useState<string>('');
   const [motorcycleBackUrl, setMotorcycleBackUrl] = useState<string>('');
@@ -122,7 +121,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  // Helper to read file to base64
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -154,7 +152,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       return;
     }
 
-    // Strict validation: Driver MUST upload all 7 required documents before moving to pending review
     if (
       !selfieUrl ||
       !motorcycleFrontUrl ||
@@ -164,7 +161,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       !vehicleDocFrontUrl ||
       !vehicleDocBackUrl
     ) {
-      setErrorMsg('⚠️ يرجى رفع جميع الصور الـ 7 المطلوبة كاملاً قبل الإرسال (الصورة الشخصية، الدراجة أمام وخلف، رخصة السياقة جهتين، والبطاقة الرمادية جهتين). يمكنك الضغط على زر "تعبئة صور تجريبية" لتسريع المراجعة.');
+      setErrorMsg('⚠️ يرجى رفع جميع الصور الـ 7 المطلوبة كاملاً قبل الإرسال.');
       return;
     }
 
@@ -193,9 +190,9 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       ratingCount: 1,
       totalTrips: 0,
       cancellationCount: 0,
-      isOnline: false, // Must not be online until admin approves
+      isOnline: false,
       isAvailable: false,
-      status: 'pending', // Strictly pending as requested by user!
+      status: 'pending',
       rejectionReason: undefined,
       location: {
         lat: 36.7538 + (Math.random() - 0.5) * 0.04,
@@ -231,10 +228,25 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
     try {
       await syncDriverProfile(newDriver);
+
+      // إرسال البيانات وحفظها في جدول Drivers في Supabase
+      const { error: sbError } = await supabase
+        .from('Drivers')
+        .insert([
+          { 
+            name: name.trim(), 
+            license_image: finalLicenseFront, 
+            status: 'pending' 
+          }
+        ]);
+
+      if (sbError) {
+        console.error('خطأ في حفظ السائق في Supabase:', sbError.message);
+      }
+
       setActiveDriver(newDriver);
       setCurrentRole('driver');
 
-      // Send broadcast notification for the admin
       broadcastNotification(
         'طلب تسجيل سائق جديد',
         `أرسل السائق ${name.trim()} وثائق دراجته (${brand} ${model}) بانتظار موافقة الإدارة.`
@@ -255,7 +267,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       id="register-driver-modal"
     >
       <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-5 text-right text-slate-100 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <button
             onClick={onClose}
@@ -275,7 +286,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           </div>
         </div>
 
-        {/* Success / Pending Notice State */}
         {isSubmittedSuccess ? (
           <div className="p-6 text-center space-y-4 animate-in fade-in">
             <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-500 text-amber-400 flex items-center justify-center text-2xl mx-auto shadow-lg shadow-amber-500/20">
@@ -289,16 +299,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </p>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 text-right space-y-2 leading-relaxed">
-              <div className="flex items-center gap-2 text-amber-400 font-bold">
-                <ShieldCheck className="w-4 h-4" />
-                <span>الخطوة القادمة:</span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                يرجى الانتظار حتى يقوم الأدمن بمراجعة صور دراجتك ورخصة السياقة والبطاقة الرمادية وقبول حسابك في لوحة الإدارة. ستتلقى إشعاراً فور التفعيل وستتمكن من فتح وضع (Online) واستقبال طلبات الركاب.
-              </p>
-            </div>
-
             <button
               onClick={onClose}
               className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors"
@@ -307,7 +307,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
             </button>
           </div>
         ) : (
-          /* Registration & Document Upload Form */
           <form onSubmit={handleSubmit} className="space-y-4">
             {errorMsg && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
@@ -316,7 +315,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </div>
             )}
 
-            {/* Quick Helper Banner */}
             <div className="flex items-center justify-between p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
               <span className="text-[11px] font-semibold">هل تود ملء نماذج وثائق تجريبية سريعة؟</span>
               <button
@@ -328,12 +326,8 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </button>
             </div>
 
-            {/* Step 1: Personal Info */}
             <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
-              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                <span>1. المعلومات الشخصية</span>
-              </h4>
-
+              <h4 className="text-xs font-bold text-amber-400">1. المعلومات الشخصية</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الاسم واللقب:</label>
@@ -346,7 +340,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
-
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">رقم الهاتف:</label>
                   <input
@@ -374,7 +367,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">البلدية:</label>
                   <input
@@ -388,12 +380,8 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </div>
             </div>
 
-            {/* Step 2: Motorcycle Details */}
             <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
-              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                <span>2. بيانات الدراجة النارية</span>
-              </h4>
-
+              <h4 className="text-xs font-bold text-amber-400">2. بيانات الدراجة النارية</h4>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الماركة:</label>
@@ -413,9 +401,8 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     ))}
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الموديل (الطراز):</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">الموديل:</label>
                   <select
                     value={model}
                     onChange={e => setModel(e.target.value)}
@@ -427,23 +414,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   </select>
                 </div>
               </div>
-
-              {/* Custom brand/model note when 'علامة أخرى' is selected */}
-              {brand === 'علامة أخرى' && (
-                <div className="pt-1.5 border-t border-amber-500/30">
-                  <label className="block text-[11px] font-bold text-amber-400 mb-1">
-                    خانة ملاحظة: اكتب اسم الماركة وطراز الدراجة النارية بالتفصيل:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: Ducati Monster 821 / Aprilia RS660"
-                    value={model}
-                    onChange={e => setModel(e.target.value)}
-                    className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -457,9 +427,8 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 text-center"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">لوحة الترقيم (Matricule):</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">لوحة الترقيم:</label>
                   <input
                     type="text"
                     placeholder="12345-120-16"
@@ -469,115 +438,68 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   />
                 </div>
               </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-slate-900 border border-slate-800 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-xs text-slate-200">أتوفر على خوذة واقية إضافية للراكب</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={hasHelmet}
-                  onChange={e => setHasHelmet(e.target.checked)}
-                  className="w-4 h-4 accent-amber-500 cursor-pointer"
-                />
-              </div>
             </div>
 
-            {/* Step 3: Required 7 Document Uploads */}
             <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-amber-400">
-                  <span>3. رفع الوثائق المطلوبة (7 صور واضحة)</span>
-                </h4>
-                <span className="text-[10px] text-slate-400">مطلوبة لموافقة الأدمن</span>
-              </div>
-
-              {/* Driver Requirements & Conditions Notice */}
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 space-y-1.5 text-xs text-amber-200">
-                <div className="flex items-center gap-1.5 font-bold text-amber-400">
-                  <Bike className="w-4 h-4 shrink-0" />
-                  <span>شروط ومتطلبات التسجيل المعتمدة:</span>
-                </div>
-                <ul className="text-[11px] space-y-1 text-slate-300 list-disc pr-4 leading-relaxed">
-                  <li>رفع <strong>رخصة السياقة</strong> (صنفي أ / A جهتين)</li>
-                  <li>رفع <strong>البطاقة الرمادية للدراجة</strong> (جهتين)</li>
-                  <li>رفع <strong>صورة شخصية (سيلفي)</strong> واضحة</li>
-                  <li>رفع <strong>صور الدراجة النارية</strong> من الأمام والخلف (مع ظهور لوحة الترقيم بوضوح)</li>
-                  <li className="text-amber-300 font-bold list-none pr-0 pt-1 border-t border-amber-500/20 mt-1">
-                    🔒 <strong>ملاحظة هامة:</strong> بعد استكمال رفع الوثائق الـ 7 والضغط على إرسال، سيتم تحويل ملفك لمالك التطبيق لمراجعته وقبوله.
-                  </li>
-                </ul>
-              </div>
-
+              <h4 className="text-xs font-bold text-amber-400">3. رفع الوثائق المطلوبة (7 صور)</h4>
               <div className="space-y-3">
-                {/* 1. Clear Selfie */}
                 <DocumentUploadCard
                   id="selfie-upload"
-                  label="1. صورة شخصية واضحة (سيلفي)"
-                  description="صورة سيلفي واضحة للوجه بدون نظارات شمسية"
+                  label="1. صورة شخصية (سيلفي)"
+                  description="صورة وجه واضحة"
                   previewUrl={selfieUrl}
                   onUpload={e => handleFileUpload(e, setSelfieUrl)}
                   onClear={() => setSelfieUrl('')}
                 />
-
-                {/* 2 & 3. Motorcycle Front and Back */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <DocumentUploadCard
                     id="moto-front-upload"
-                    label="2. الدراجة النارية - من الأمام"
-                    description="صورة واجهة الدراجة"
+                    label="2. الدراجة - من الأمام"
+                    description="صورة الواجهة"
                     previewUrl={motorcycleFrontUrl}
                     onUpload={e => handleFileUpload(e, setMotorcycleFrontUrl)}
                     onClear={() => setMotorcycleFrontUrl('')}
                   />
-
                   <DocumentUploadCard
                     id="moto-back-upload"
-                    label="3. الدراجة النارية - من الخلف"
-                    description="شرط إلزامي: يجب أن تظهر لوحة الترقيم (Matricule) بوضوح"
+                    label="3. الدراجة - من الخلف"
+                    description="لوحة الترقيم بوضوح"
                     previewUrl={motorcycleBackUrl}
                     onUpload={e => handleFileUpload(e, setMotorcycleBackUrl)}
                     onClear={() => setMotorcycleBackUrl('')}
                   />
                 </div>
-
-                {/* 4 & 5. Driving License Front and Back */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <DocumentUploadCard
                     id="license-front-upload"
-                    label="4. رخصة السياقة - من الأمام"
-                    description="صنف أ / A سارية المفعول"
+                    label="4. رخصة السياقة - أمامي"
+                    description="صنف أ / A"
                     previewUrl={licenseFrontUrl}
                     onUpload={e => handleFileUpload(e, setLicenseFrontUrl)}
                     onClear={() => setLicenseFrontUrl('')}
                   />
-
                   <DocumentUploadCard
                     id="license-back-upload"
-                    label="5. رخصة السياقة - من الخلف"
-                    description="الوجه الخلفي لرخصة السياقة"
+                    label="5. رخصة السياقة - خلفي"
+                    description="ظهر الرخصة"
                     previewUrl={licenseBackUrl}
                     onUpload={e => handleFileUpload(e, setLicenseBackUrl)}
                     onClear={() => setLicenseBackUrl('')}
                   />
                 </div>
-
-                {/* 6 & 7. Vehicle Registration Front and Back */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <DocumentUploadCard
                     id="vehicledoc-front-upload"
-                    label="6. وثيقة الدراجة (البطاقة الرمادية) - أمامي"
-                    description="Carte Grise الوجه الأمامي"
+                    label="6. البطاقة الرمادية - أمامي"
+                    description="Carte Grise"
                     previewUrl={vehicleDocFrontUrl}
                     onUpload={e => handleFileUpload(e, setVehicleDocFrontUrl)}
                     onClear={() => setVehicleDocFrontUrl('')}
                   />
-
                   <DocumentUploadCard
                     id="vehicledoc-back-upload"
-                    label="7. وثيقة الدراجة (البطاقة الرمادية) - خلفي"
-                    description="Carte Grise الوجه الخلفي"
+                    label="7. البطاقة الرمادية - خلفي"
+                    description="الوجه الخلفي"
                     previewUrl={vehicleDocBackUrl}
                     onUpload={e => handleFileUpload(e, setVehicleDocBackUrl)}
                     onClear={() => setVehicleDocBackUrl('')}
@@ -586,22 +508,21 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               id="submit-driver-documents-btn"
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>جاري إرسال الوثائق إلى لوحة الإدارة...</span>
+                  <span>جاري الإرسال إلى Supabase والإدارة...</span>
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  <span>إرسال الملف والوثائق للمراجعة والقبول ⏳</span>
+                  <span>إرسال الملف والوثائق للمراجعة ⏳</span>
                 </>
               )}
             </button>
