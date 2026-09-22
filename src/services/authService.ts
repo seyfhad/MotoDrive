@@ -3,6 +3,8 @@ import {
   createUserWithEmailAndPassword,
   signInAnonymously,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as fbSignOut,
   onAuthStateChanged,
@@ -173,6 +175,20 @@ export const setGmailAccessToken = (token: string | null) => {
   cachedAccessToken = token;
 };
 
+// Check for redirect result on initialization (for Mobile WebView / APK redirect flow)
+getRedirectResult(auth)
+  .then((result) => {
+    if (result) {
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        cachedAccessToken = credential.accessToken;
+      }
+    }
+  })
+  .catch((err) => {
+    console.warn('Redirect result check notice:', err);
+  });
+
 export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
@@ -190,6 +206,21 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     }
   } catch (err: any) {
     console.warn('Google Popup SignIn notice:', err?.code || err?.message);
+    
+    // If popup is blocked or running inside Android WebView/APK, fallback to redirect or handle error
+    if (
+      err?.code === 'auth/popup-blocked' ||
+      err?.code === 'auth/operation-not-supported-in-this-environment' ||
+      err?.code === 'auth/disallowed-useragent'
+    ) {
+      try {
+        await signInWithRedirect(auth, provider);
+        return { user: auth.currentUser!, profile: null as any };
+      } catch (redirectErr) {
+        console.warn('Redirect sign-in error:', redirectErr);
+      }
+    }
+
     if (auth.currentUser) {
       user = auth.currentUser;
     } else {
@@ -197,7 +228,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
         const anonCred = await signInAnonymously(auth);
         user = anonCred.user;
       } catch (anonErr: any) {
-        console.warn('Anonymous auth restricted, fallback to local owner/user session:', anonErr?.code || anonErr?.message);
+        console.warn('Anonymous auth restricted, fallback to local session:', anonErr?.code || anonErr?.message);
         user = {
           uid: 'owner-seyfhad',
           displayName: 'سيف الدين (المالك)',
