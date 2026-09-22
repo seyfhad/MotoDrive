@@ -1,4 +1,4 @@
-name: Build Android APK
+Name: Build Android APK
 on:
   push:
     branches: [ main, master ]
@@ -43,6 +43,12 @@ jobs:
               }
           }
           " >> android/app/build.gradle
+
+      - name: Extract Android Signing Report (SHA-1 & SHA-256)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew signingReport
 
       - name: Build APK using Gradle
         run: |
