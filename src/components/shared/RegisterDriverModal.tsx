@@ -156,7 +156,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  // دالة التعامل مع رفع الصور وضغطها تلقائياً قبل الحفظ
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -165,7 +164,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
         setter(compressedBase64);
       } catch (err) {
         console.error("خطأ أثناء ضغط الصورة:", err);
-        // في حال فشل الضغط، نقوم بقراءتها بالطريقة العادية
         const reader = new FileReader();
         reader.onload = () => {
           if (typeof reader.result === 'string') {
@@ -272,12 +270,15 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
     try {
       await syncDriverProfile(newDriver);
 
-      // إرسال البيانات وحفظها في جدول Drivers في Supabase
+      // إرسال البيانات وحفظها في جدول Drivers في Supabase مع المعرف والإيميل ورقم الهاتف
       const { error: sbError } = await supabase
         .from('Drivers')
         .insert([
           { 
+            user_id: currentUser?.uid || driverId,
+            email: currentUser?.email || undefined,
             name: name.trim(), 
+            phone: phone.trim(),
             license_image: finalLicenseFront, 
             status: 'pending' 
           }
