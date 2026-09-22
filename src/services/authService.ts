@@ -12,6 +12,7 @@ import {
   updateProfile,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 
@@ -198,6 +199,12 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   
   let user: FirebaseUser;
   try {
+    // إذا كان التطبيق يعمل كـ Native APK على الهاتف، نتحول مباشرة إلى Redirect لتفادي حظر الـ WebView
+    if (Capacitor.isNativePlatform()) {
+      await signInWithRedirect(auth, provider);
+      return { user: auth.currentUser!, profile: null as any };
+    }
+
     const cred = await signInWithPopup(auth, provider);
     user = cred.user;
     const credential = GoogleAuthProvider.credentialFromResult(cred);
@@ -207,7 +214,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   } catch (err: any) {
     console.warn('Google Popup SignIn notice:', err?.code || err?.message);
     
-    // If popup is blocked or running inside Android WebView/APK, fallback to redirect or handle error
+    // Fallback في حال حدوث خطأ أو حظر للبصمات/النوافذ المنبثقة
     if (
       err?.code === 'auth/popup-blocked' ||
       err?.code === 'auth/operation-not-supported-in-this-environment' ||
