@@ -121,6 +121,31 @@ export const PassengerTrips: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Rating & Comment snippet if available */}
+              {trip.status === 'completed' && (trip.ratingStars || trip.ratingComment) && (
+                <div className="pt-2 border-t border-slate-800/50 bg-slate-950/50 p-2.5 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400 font-medium">تقييمك للسائق:</span>
+                    <div className="flex items-center gap-0.5 text-amber-400 font-bold">
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <Star
+                          key={s}
+                          className={`w-3.5 h-3.5 ${
+                            s <= (trip.ratingStars || 5) ? 'text-amber-400 fill-amber-400' : 'text-slate-700'
+                          }`}
+                        />
+                      ))}
+                      <span className="mr-1 text-xs text-amber-300">({trip.ratingStars || 5}/5)</span>
+                    </div>
+                  </div>
+                  {trip.ratingComment && (
+                    <p className="text-[11px] text-slate-300 italic">
+                      "{trip.ratingComment}"
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}

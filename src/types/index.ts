@@ -171,6 +171,12 @@ export interface Ride {
   completedAt?: string;
   cancelledAt?: string;
   expiresAt?: string;
+
+  // Passenger Rating fields
+  ratingStars?: number;
+  ratingComment?: string;
+  ratingTags?: string[];
+  ratedAt?: string;
 }
 
 export interface Rating {

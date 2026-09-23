@@ -337,62 +337,90 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         </div>
 
         {/* 5-Star Rating Card */}
-        {!ratingSubmitted ? (
-          <div className="space-y-3">
-            <div className="text-center">
-              <div className="text-xs font-bold text-slate-300">كيف كانت تجربتك مع السائق {ride.driverName}؟</div>
-              <div className="flex items-center justify-center gap-2 my-3">
+        {!ratingSubmitted && !ride.ratingStars ? (
+          <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-4 space-y-3 shadow-xl">
+            <div className="text-center space-y-1">
+              <div className="text-xs font-black text-amber-400">تقييم تجربة الرحلة مع السائق</div>
+              <div className="text-sm font-bold text-white">{ride.driverName || 'سائق MotoDrive'}</div>
+
+              {/* Star Rating Bar */}
+              <div className="flex items-center justify-center gap-2 py-2">
                 {[1, 2, 3, 4, 5].map(star => (
                   <button
                     key={star}
+                    type="button"
                     onClick={() => setRatingStars(star)}
-                    className="p-1 transition-transform hover:scale-125"
+                    className="p-1 transition-all transform hover:scale-125 active:scale-95 cursor-pointer"
                   >
                     <Star
-                      className={`w-7 h-7 ${
-                        star <= ratingStars ? 'text-amber-400 fill-amber-400' : 'text-slate-700'
+                      className={`w-8 h-8 ${
+                        star <= ratingStars ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]' : 'text-slate-700'
                       }`}
                     />
                   </button>
                 ))}
               </div>
+
+              <div className="text-[11px] font-extrabold text-amber-300">
+                {ratingStars === 5 && '🌟 ممتاز جداً - رحلة مثالية!'}
+                {ratingStars === 4 && '⭐ جيد جداً - خيار ممتاز'}
+                {ratingStars === 3 && '👍 جيد - تجربة مقبولة'}
+                {ratingStars === 2 && '😐 مقبول - يحتاج تحسين'}
+                {ratingStars === 1 && '👎 سيء - تجربة غير مرضية'}
+              </div>
             </div>
 
             {/* Quick Positive Compliments */}
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              {availableTags.map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => toggleTag(tag)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
-                    selectedTags.includes(tag)
-                      ? 'bg-amber-500 text-slate-950 font-bold'
-                      : 'bg-slate-950 text-slate-400 border border-slate-800'
-                  }`}
-                >
-                  {tag}
-                </button>
-              ))}
+            <div className="space-y-1">
+              <div className="text-[10px] text-slate-400 font-bold text-center">أبرز النقاط الإيجابية:</div>
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {availableTags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all cursor-pointer ${
+                      selectedTags.includes(tag)
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                        : 'bg-slate-900 text-slate-400 border border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <input
-              type="text"
-              placeholder="اكتب ملاحظة أو تعليق للسائق (اختياري)..."
-              value={ratingComment}
-              onChange={e => setRatingComment(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-            />
+            {/* Text Comment Area */}
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-300 font-bold block">تعليق أو ملاحظة للسائق (اختياري):</label>
+              <textarea
+                rows={2}
+                placeholder="اكتب كلمة طيبة أو ملاحظة للسائق هنا..."
+                value={ratingComment}
+                onChange={e => setRatingComment(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition-colors resize-none"
+              />
+            </div>
 
             <button
+              type="button"
               onClick={handleRatingSubmit}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
-              إرسال التقييم
+              <Star className="w-4 h-4 fill-slate-950" />
+              <span>إرسال التقييم للسائق</span>
             </button>
           </div>
         ) : (
-          <div className="text-center py-3 text-emerald-400 text-xs font-bold bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-            تم استلام تقييمك بنجاح. شكراً لمساهمتك في تحسين الجودة!
+          <div className="text-center py-4 px-3 text-emerald-400 text-xs font-bold bg-emerald-500/10 rounded-2xl border border-emerald-500/20 space-y-1">
+            <div className="text-base">🎉</div>
+            <div>تم استلام تقييمك بنجاح. شكراً لمساهمتك في تحسين جودة MotoDrive!</div>
+            {(ratingComment || ride.ratingComment) && (
+              <div className="text-[11px] text-slate-300 italic pt-1 border-t border-emerald-500/20 mt-1">
+                "{ratingComment || ride.ratingComment}"
+              </div>
+            )}
           </div>
         )}
 

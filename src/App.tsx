@@ -5,8 +5,11 @@ import { Header } from './components/shared/Header';
 import { BottomNav } from './components/shared/BottomNav';
 import { SOSModal } from './components/shared/SOSModal';
 import { LegalModal } from './components/legal/LegalModal';
+import { UserGuideModal } from './components/guide/UserGuideModal';
+import { AndroidAppModal } from './components/android/AndroidAppModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
+import { PushNotificationToast } from './components/shared/PushNotificationToast';
 
 // Passenger Views
 import { PassengerHome } from './pages/passenger/PassengerHome';
@@ -61,6 +64,49 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
+  // User Guide modal state & event listener
+  const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
+  const [userGuideTab, setUserGuideTab] = useState<'passenger' | 'driver' | 'reviewer'>('passenger');
+
+  useEffect(() => {
+    const handleOpenGuide = (e: any) => {
+      setUserGuideTab(e?.detail?.tab || 'passenger');
+      setIsUserGuideOpen(true);
+    };
+    window.addEventListener('open-user-guide', handleOpenGuide);
+    return () => {
+      window.removeEventListener('open-user-guide', handleOpenGuide);
+    };
+  }, []);
+
+  // Android Native App modal state & event listener
+  const [isAndroidModalOpen, setIsAndroidModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenAndroidModal = () => {
+      setIsAndroidModalOpen(true);
+    };
+    window.addEventListener('open-android-modal', handleOpenAndroidModal);
+    return () => {
+      window.removeEventListener('open-android-modal', handleOpenAndroidModal);
+    };
+  }, []);
+
+  // Request geolocation permission on app start
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          console.log('Location permission granted:', pos.coords.latitude, pos.coords.longitude);
+        },
+        (err) => {
+          console.warn('Geolocation prompt response:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  }, []);
+
   // Reset tab when switching roles
   useEffect(() => {
     setActiveTab('home');
@@ -72,7 +118,7 @@ const AppContent: React.FC = () => {
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
 
-  // Render Passenger / Client Tabs
+  // Render Passenger Tabs
   const renderPassengerView = () => {
     switch (activeTab) {
       case 'home':
@@ -90,7 +136,7 @@ const AppContent: React.FC = () => {
   // Render Driver Tabs
   const renderDriverView = () => {
     // Strictly block access if driver status is not approved by the owner
-    if (!activeDriver || activeDriver.status !== 'approved') {
+    if (activeDriver.status !== 'approved') {
       return <DriverPendingApprovalView />;
     }
 
@@ -111,7 +157,7 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Initial Welcome Screen (Mandatory Login)
+  // Initial Welcome Screen (Mandatory Login as explicitly requested by user)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
@@ -165,14 +211,17 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main Responsive Mobile Frame */}
+      {/* Main Responsive Mobile Frame (fits mobile 100%, and frames as phone on wide screens) */}
       <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20">
+        {/* Push Notification System Top Toast & Permission Banner */}
+        <PushNotificationToast />
+
         {/* Global Application Header */}
         <Header onOpenSOS={() => setIsSOSOpen(true)} />
 
         {/* Main View Area */}
         <main className="flex-1 w-full">
-          {(currentRole === 'passenger' || currentRole === 'client') && renderPassengerView()}
+          {currentRole === 'passenger' && renderPassengerView()}
           {currentRole === 'driver' && renderDriverView()}
           {currentRole === 'admin' && <AdminPanel />}
         </main>
@@ -189,11 +238,24 @@ const AppContent: React.FC = () => {
         {/* Algerian Emergency SOS Modal */}
         {isSOSOpen && <SOSModal onClose={() => setIsSOSOpen(false)} />}
 
-        {/* Legal, Privacy Policy & Terms Modal */}
+        {/* Legal, Privacy Policy & Terms Modal (Google Cloud Verification) */}
         <LegalModal
           isOpen={isLegalOpen}
           onClose={() => setIsLegalOpen(false)}
           defaultTab={legalTab}
+        />
+
+        {/* Simplified User & Google Play Reviewers Guide Modal */}
+        <UserGuideModal
+          isOpen={isUserGuideOpen}
+          onClose={() => setIsUserGuideOpen(false)}
+          defaultTab={userGuideTab}
+        />
+
+        {/* Android Native App (WebAPK / Capacitor / Google Play Export) Modal */}
+        <AndroidAppModal
+          isOpen={isAndroidModalOpen}
+          onClose={() => setIsAndroidModalOpen(false)}
         />
       </div>
     </div>

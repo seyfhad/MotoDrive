@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { signOutUser, signInWithDirectGmail } from '../../services/authService';
-import { GoogleSignInButton } from './GoogleSignInButton';
+import {
+  signOutUser,
+  signInWithEmailPass,
+  signUpWithEmailPass,
+} from '../../services/authService';
 import { UserRole } from '../../types';
 import {
   X,
@@ -12,8 +15,12 @@ import {
   Sparkles,
   Bike,
   Mail,
+  Phone,
   ArrowRight,
   Loader2,
+  Lock,
+  UserPlus,
+  LogIn,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -29,14 +36,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   defaultRole = 'passenger',
   onSuccess,
 }) => {
-  const { activePassenger, currentUser, setCurrentUser, setActivePassenger, setCurrentRole, broadcastNotification } = useApp();
+  const {
+    activePassenger,
+    currentUser,
+    setCurrentUser,
+    setActivePassenger,
+    setActiveDriver,
+    setCurrentRole,
+    broadcastNotification,
+  } = useApp();
+
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
+  const [step, setStep] = useState<'role_selection' | 'auth_form'>('role_selection');
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [authMode, setAuthMode] = useState<'google' | 'email'>('google');
+
+  // Email Auth State
+  const [emailTab, setEmailTab] = useState<'signin' | 'signup'>('signup');
   const [emailInput, setEmailInput] = useState('');
-  const [nameInput, setNameInput] = useState('');
-  const [loadingDirect, setLoadingDirect] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [emailNameInput, setEmailNameInput] = useState('');
+  const [emailPhoneInput, setEmailPhoneInput] = useState('');
+
+  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setErrorMsg(null);
+      setStep('role_selection');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -56,37 +85,83 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleDirectEmailSubmit = async (e: React.FormEvent) => {
+  // Direct Email Auth (Sign In / Sign Up with Firebase Email Link Verification)
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!emailInput.trim() || !emailInput.includes('@')) {
-      setErrorMsg('يرجى إدخال عنوان بريد Gmail صحيح (مثال: user@gmail.com)');
+    setErrorMsg(null);
+
+    const cleanEmail = emailInput.trim().toLowerCase();
+    const cleanPass = passwordInput.trim();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('يرجى إدخال بريد إلكتروني صحيح (مثال: user@gmail.com)');
+      return;
+    }
+    if (!cleanPass || cleanPass.length < 6) {
+      setErrorMsg('كلمة المرور يجب أن تتكون من 6 أحرف على الأقل');
       return;
     }
 
     try {
-      setLoadingDirect(true);
-      setErrorMsg(null);
-      const { user, profile } = await signInWithDirectGmail(emailInput, nameInput, '0550123456', selectedRole);
+      setLoading(true);
+      let res;
+
+      if (emailTab === 'signin') {
+        res = await signInWithEmailPass(cleanEmail, cleanPass);
+      } else {
+        if (!emailNameInput.trim()) {
+          setErrorMsg('يرجى إدخال الاسم الكامل');
+          setLoading(false);
+          return;
+        }
+        if (!emailPhoneInput.trim() || emailPhoneInput.trim().length < 8) {
+          setErrorMsg('يرجى إدخال رقم هاتف صحيح (مثال: 0550123456)');
+          setLoading(false);
+          return;
+        }
+        res = await signUpWithEmailPass(
+          cleanEmail,
+          cleanPass,
+          emailNameInput.trim(),
+          emailPhoneInput.trim(),
+          selectedRole
+        );
+      }
+
+      const { user, profile, driver } = res;
 
       setCurrentUser(user);
       setActivePassenger(profile);
+      if (driver) {
+        setActiveDriver(driver);
+      }
+
       if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
         setCurrentRole('admin');
+      } else if (driver || profile.role === 'driver') {
+        setCurrentRole('driver');
       } else {
         setCurrentRole(selectedRole);
       }
 
-      broadcastNotification(
-        'مرحباً بك في موتو درايف',
-        `تم تسجيل الدخول بنجاح عبر البريد: ${profile.email}`
-      );
+      if (emailTab === 'signup') {
+        broadcastNotification(
+          'تم إرسال رابط التأكيد بنجاح 📧',
+          `أهلاً بك ${profile.name}! لقد أرسلنا رابط تأكيد الحساب إلى بريدك (${cleanEmail}). يرجى تفقّد بريدك والضغط على رابط التفعيل.`
+        );
+      } else {
+        broadcastNotification(
+          'تم تسجيل الدخول بنجاح',
+          `أهلاً بك مجدداً ${profile.name}!`
+        );
+      }
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
-      console.error('Direct Gmail Login Error:', err);
-      setErrorMsg(err?.message || 'حدث خطأ أثناء التسجيل بالبريد');
+      console.error('Email Auth Error:', err);
+      setErrorMsg(err?.message || 'حدث خطأ أثناء الاتصال. يرجى مراجعة البيانات.');
     } finally {
-      setLoadingDirect(false);
+      setLoading(false);
     }
   };
 
@@ -99,7 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }}
     >
       <div
-        className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 sm:p-6 text-right text-slate-100 shadow-2xl space-y-5 relative overflow-hidden"
+        className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-5 sm:p-6 text-right text-slate-100 shadow-2xl space-y-4 relative overflow-hidden max-h-[92vh] overflow-y-auto"
         id="auth-modal-container"
       >
         {/* Ambient Top Glow */}
@@ -116,10 +191,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <div className="text-center">
             <h3 className="text-base font-black text-white flex items-center gap-1.5 justify-center">
-              <span>حسابك في MotoDrive</span>
+              <span>تسجيل الدخول / حساب جديد</span>
               <Sparkles className="w-4 h-4 text-amber-400" />
             </h3>
-            <p className="text-[11px] text-slate-400">سجّل دخولك لحفظ بياناتك ورحلاتك بأمان</p>
+            <p className="text-[11px] text-slate-400">اختر نوع الحساب للمتابعة</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
             <ShieldCheck className="w-4 h-4" />
@@ -132,7 +207,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-center space-y-3">
               <div className="relative w-16 h-16 mx-auto">
                 <img
-                  src={currentUser?.photoURL || activePassenger.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
+                  src={
+                    currentUser?.photoURL ||
+                    activePassenger.photoUrl ||
+                    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+                  }
                   alt={currentUser?.displayName || activePassenger.name}
                   className="w-full h-full rounded-full object-cover border-2 border-emerald-500 shadow-lg"
                 />
@@ -151,7 +230,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-semibold">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>تم تسجيل الدخول بحساب Google</span>
+                <span>تم تسجيل الدخول بنجاح</span>
               </div>
             </div>
 
@@ -174,152 +253,194 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           </div>
+        ) : step === 'role_selection' ? (
+          /* Step 1: Medium-Sized Icon Cards for Role Selection (راكب / سائق) */
+          <div className="space-y-4 py-2 animate-in fade-in duration-300">
+            <p className="text-xs text-slate-300 text-center font-semibold">
+              اختر نوع صفة الحساب للانتقال إلى التسجيل:
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Passenger Card (راكب) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole('passenger');
+                  setStep('auth_form');
+                  setErrorMsg(null);
+                }}
+                className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 border-slate-800 hover:border-amber-500/80 text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shadow-md">
+                  <User className="w-7 h-7" />
+                </div>
+                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">راكب</span>
+              </button>
+
+              {/* Driver Card (سائق) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole('driver');
+                  setStep('auth_form');
+                  setErrorMsg(null);
+                }}
+                className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 border-slate-800 hover:border-amber-500/80 text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shadow-md">
+                  <Bike className="w-7 h-7" />
+                </div>
+                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">سائق</span>
+              </button>
+            </div>
+          </div>
         ) : (
-          /* Sign-In State */
-          <div className="space-y-4">
-            {/* Mode Switcher */}
-            <div className="bg-slate-950 border border-slate-800 p-1 rounded-2xl flex items-center text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setAuthMode('google')}
-                className={`flex-1 py-1.5 rounded-xl transition-all text-center ${
-                  authMode === 'google' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                تسجيل سريع عبر Google
-              </button>
-              <button
-                type="button"
-                onClick={() => setAuthMode('email')}
-                className={`flex-1 py-1.5 rounded-xl transition-all text-center ${
-                  authMode === 'email' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                إدخال بريد Gmail مباشرة
-              </button>
-            </div>
-
-            {/* Account Type Selector */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-400 mb-1.5">اختر صفتك في التطبيق:</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('passenger')}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    selectedRole === 'passenger'
-                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-400 shadow-sm'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>راكب (طلب رحلات)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRole('driver')}
-                  className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border text-xs font-bold transition-all ${
-                    selectedRole === 'driver'
-                      ? 'bg-amber-500/15 border-amber-500/50 text-amber-400 shadow-sm'
-                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <Bike className="w-3.5 h-3.5" />
-                  <span>سائق (تقديم عروض)</span>
-                </button>
+          /* Step 2: Sign-In / Sign-Up Form for Selected Role */
+          <div className="space-y-3 animate-in fade-in duration-300">
+            {/* Top Bar showing current role & back button */}
+            <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-2 rounded-2xl">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-black">
+                  {selectedRole === 'driver' ? <Bike className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                </div>
+                <span className="text-xs font-black text-amber-400">
+                  {selectedRole === 'driver' ? 'حساب سائق' : 'حساب راكب'}
+                </span>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('role_selection');
+                  setErrorMsg(null);
+                }}
+                className="text-[11px] font-bold text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1"
+              >
+                <span>تغييرالصفة</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
             </div>
 
-            {authMode === 'google' ? (
-              /* Google Sign-In Action */
-              <div className="space-y-2 pt-1">
-                <GoogleSignInButton
-                  role={selectedRole}
-                  onSuccess={() => {
-                    if (onSuccess) onSuccess();
-                    onClose();
+            {/* Direct Email / Password Authentication Form */}
+            <form onSubmit={handleEmailSubmit} className="space-y-3 pt-1">
+              <div className="bg-slate-950/80 border border-slate-800 p-0.5 rounded-xl grid grid-cols-2 gap-1 text-[11px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailTab('signup');
+                    setErrorMsg(null);
                   }}
-                  label="المتابعة باستخدام Google"
-                  id="auth-modal-google-signin-btn"
-                />
+                  className={`py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
+                    emailTab === 'signup'
+                      ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>إنشاء حساب جديد</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailTab('signin');
+                    setErrorMsg(null);
+                  }}
+                  className={`py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
+                    emailTab === 'signin'
+                      ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>تسجيل الدخول</span>
+                </button>
               </div>
-            ) : (
-              /* Direct Email Form */
-              <form onSubmit={handleDirectEmailSubmit} className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">عنوان Gmail الخاص بك:</label>
-                  <div className="relative">
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">البريد الإلكتروني:</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    placeholder="مثال: user@gmail.com"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                    required
+                  />
+                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">كلمة المرور:</label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    value={passwordInput}
+                    onChange={e => setPasswordInput(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                    required
+                    minLength={6}
+                  />
+                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                </div>
+              </div>
+
+              {emailTab === 'signup' && (
+                <>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">الاسم الكامل:</label>
                     <input
-                      type="email"
-                      value={emailInput}
-                      onChange={e => setEmailInput(e.target.value)}
-                      placeholder="مثال: seyfhad@gmail.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                      type="text"
+                      value={emailNameInput}
+                      onChange={e => setEmailNameInput(e.target.value)}
+                      placeholder="اسمك الكامل"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
                       required
                     />
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">الاسم (اختياري):</label>
-                  <input
-                    type="text"
-                    value={nameInput}
-                    onChange={e => setNameInput(e.target.value)}
-                    placeholder="اسمك الكامل"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1">رقم الهاتف:</label>
+                    <div className="relative">
+                      <input
+                        type="tel"
+                        value={emailPhoneInput}
+                        onChange={e => setEmailPhoneInput(e.target.value)}
+                        placeholder="مثال: 0550123456"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                        required
+                        dir="ltr"
+                      />
+                      <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                    </div>
+                  </div>
+                </>
+              )}
 
-                {errorMsg && (
-                  <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
-                    {errorMsg}
-                  </p>
+              {errorMsg && (
+                <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
+                  {errorMsg}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                ) : (
+                  <>
+                    <span>{emailTab === 'signup' ? 'إنشاء الحساب والتسجيل' : 'تسجيل الدخول'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
                 )}
-
-                <button
-                  type="submit"
-                  disabled={loadingDirect}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {loadingDirect ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  ) : (
-                    <>
-                      <span>تسجيل الدخول وإتمام الحساب</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* Privacy & Instant Note */}
-            <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 text-[11px] text-slate-400 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>حماية ومصادقة فورية:</span>
-              </div>
-              <p className="leading-relaxed text-[10px]">
-                يتم التحقق من حسابك وتخزين بياناتك بأمان في قاعدة بيانات سحابية مشفرة. بالاستمرار، فإنك توافق على{' '}
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
-                  className="text-amber-400 underline hover:text-amber-300 font-bold"
-                >
-                  شروط الاستخدام
-                </button>{' '}
-                و{' '}
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
-                  className="text-amber-400 underline hover:text-amber-300 font-bold"
-                >
-                  سياسة الخصوصية
-                </button>.
-              </p>
-            </div>
+              </button>
+            </form>
           </div>
         )}
       </div>

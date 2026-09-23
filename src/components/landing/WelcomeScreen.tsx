@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogIn, ArrowLeft, Shield, FileText, CheckCircle2, Bike, Sparkles, MapPin, Zap } from 'lucide-react';
+import { LogIn, ArrowLeft, Shield, FileText, CheckCircle2, Bike, Sparkles, MapPin, Zap, BookOpen, Smartphone } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenLogin: () => void;
@@ -120,8 +120,36 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <span>ممتثل لسياسات Google Cloud والمعايير القانونية الجزائرية</span>
         </div>
 
-        {/* The Two Small Bottom Buttons: Privacy Policy & Terms of Service */}
-        <div className="flex items-center justify-center gap-2.5">
+        {/* Footer Buttons: User Guide, Privacy Policy & Terms of Service */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {/* زر تطبيق الأندرويد */}
+          <button
+            type="button"
+            id="welcome-android-btn"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-android-modal'));
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>تطبيق الأندرويد</span>
+          </button>
+
+          {/* زر دليل الاستخدام والمراجعة */}
+          <button
+            type="button"
+            id="welcome-guide-btn"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('open-user-guide', { detail: { tab: 'passenger' } })
+              );
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span>دليل الاستخدام والمراجعة</span>
+          </button>
+
           {/* زر سياسة الخصوصية */}
           <button
             type="button"
@@ -132,8 +160,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>سياسة الخصوصية</span>
           </button>
-
-          <span className="text-slate-700">•</span>
 
           {/* زر شروط الاستخدام */}
           <button

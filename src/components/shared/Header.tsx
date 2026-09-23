@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, Bike, LogOut, Send } from 'lucide-react';
+import { Bell, AlertTriangle, User, Bike, LogOut, Send, BookOpen, Smartphone } from 'lucide-react';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
 import { AuthModal } from '../auth/AuthModal';
 import { AdminInAppMessageModal } from './AdminInAppMessageModal';
+import { pushNotificationService } from '../../services/pushNotificationService';
 
 export const Header: React.FC = () => {
   const {
@@ -125,6 +126,34 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-black hidden sm:inline">SOS</span>
             </button>
 
+            {/* User Guide Button */}
+            <button
+              id="user-guide-header-btn"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent('open-user-guide', { detail: { tab: 'passenger' } })
+                );
+              }}
+              className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1 text-amber-300 transition-colors cursor-pointer"
+              title="دليل استخدام التطبيق والمراجعة"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[10px] font-bold hidden sm:inline">الدليل</span>
+            </button>
+
+            {/* Android App Button */}
+            <button
+              id="android-header-btn"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('open-android-modal'));
+              }}
+              className="h-8 px-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1 text-emerald-300 transition-colors cursor-pointer"
+              title="تطبيق الأندرويد الحقيقي وتثبيته"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-[10px] font-bold hidden sm:inline">أندرويد</span>
+            </button>
+
             {/* Owner/Admin In-App Message Action Button */}
             {isOwner && (
               <button
@@ -163,9 +192,23 @@ export const Header: React.FC = () => {
               {showNotifications && (
                 <div className="absolute left-0 mt-2 w-80 max-w-[85vw] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
-                    <h4 className="text-xs font-bold text-white">التنبيهات والإشعارات</h4>
+                    <h4 className="text-xs font-bold text-white">التنبيهات والإشعارات الفورية</h4>
                     <span className="text-[10px] text-amber-400 font-semibold">{notifications.length} إشعار</span>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pushNotificationService.sendPushNotification(
+                        '🔔 إشعار تجريبي من MotoDrive',
+                        'نظام الإشعارات الفورية والصوتية يعمل بنجاح!',
+                        { soundType: 'new_ride' }
+                      );
+                    }}
+                    className="w-full mb-2 py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <span>🔔 تجربة الإشعار والنغمة الفورية</span>
+                  </button>
                   <div className="max-h-72 overflow-y-auto space-y-2">
                     {notifications.length === 0 ? (
                       <div className="text-center py-6 text-xs text-slate-500">

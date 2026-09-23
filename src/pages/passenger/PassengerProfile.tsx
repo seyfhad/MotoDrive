@@ -220,7 +220,21 @@ export const PassengerProfile: React.FC = () => {
           <span className="text-[10px] text-amber-400 font-mono">v1.2.0 Production</span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 pt-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('open-user-guide', {
+                  detail: { tab: 'passenger' },
+                }),
+              )
+            }
+            className="p-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-center transition-colors cursor-pointer"
+          >
+            دليل الاستخدام 📖
+          </button>
+
           <button
             type="button"
             onClick={() =>
@@ -230,7 +244,7 @@ export const PassengerProfile: React.FC = () => {
                 }),
               )
             }
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
           >
             حول التطبيق
           </button>
@@ -244,7 +258,7 @@ export const PassengerProfile: React.FC = () => {
                 }),
               )
             }
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
           >
             سياسة الخصوصية
           </button>
@@ -258,7 +272,7 @@ export const PassengerProfile: React.FC = () => {
                 }),
               )
             }
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors"
+            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
           >
             شروط الاستخدام
           </button>

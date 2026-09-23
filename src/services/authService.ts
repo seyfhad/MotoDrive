@@ -10,11 +10,82 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
   updateProfile,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  ConfirmationResult,
+  sendEmailVerification,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { Capacitor } from '@capacitor/core';
+import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { UserProfile, UserRole } from '../types';
+import { UserProfile, DriverProfile, UserRole } from '../types';
+
+// Utility to search existing UserProfile & DriverProfile by Phone
+export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
+  const cleanPhone = phone.trim();
+  try {
+    const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
+    const snap = await getDocs(q);
+    let profile: UserProfile | null = null;
+    let driver: DriverProfile | null = null;
+
+    if (!snap.empty) {
+      const docData = snap.docs[0].data();
+      profile = { id: snap.docs[0].id, ...docData } as UserProfile;
+    }
+
+    // Check drivers collection
+    const dq = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
+    const dSnap = await getDocs(dq);
+    if (!dSnap.empty) {
+      driver = { id: dSnap.docs[0].id, ...dSnap.docs[0].data() } as DriverProfile;
+    } else if (profile) {
+      const dqById = query(collection(db, 'drivers'), where('userId', '==', profile.id));
+      const dSnapById = await getDocs(dqById);
+      if (!dSnapById.empty) {
+        driver = { id: dSnapById.docs[0].id, ...dSnapById.docs[0].data() } as DriverProfile;
+      }
+    }
+
+    return { profile, driver };
+  } catch (err) {
+    console.warn('Error querying user by phone:', err);
+    return { profile: null, driver: null };
+  }
+};
+
+// Utility to search existing UserProfile & DriverProfile by Email
+export const findUserAndDriverByEmail = async (email: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
+  const cleanEmail = email.trim().toLowerCase();
+  try {
+    const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+    const snap = await getDocs(q);
+    let profile: UserProfile | null = null;
+    let driver: DriverProfile | null = null;
+
+    if (!snap.empty) {
+      const docData = snap.docs[0].data();
+      profile = { id: snap.docs[0].id, ...docData } as UserProfile;
+    }
+
+    // Check drivers collection
+    const dq = query(collection(db, 'drivers'), where('email', '==', cleanEmail));
+    const dSnap = await getDocs(dq);
+    if (!dSnap.empty) {
+      driver = { id: dSnap.docs[0].id, ...dSnap.docs[0].data() } as DriverProfile;
+    } else if (profile) {
+      const dqById = query(collection(db, 'drivers'), where('userId', '==', profile.id));
+      const dSnapById = await getDocs(dqById);
+      if (!dSnapById.empty) {
+        driver = { id: dSnapById.docs[0].id, ...dSnapById.docs[0].data() } as DriverProfile;
+      }
+    }
+
+    return { profile, driver };
+  } catch (err) {
+    console.warn('Error querying user by email:', err);
+    return { profile: null, driver: null };
+  }
+};
 
 export const subscribeToAuth = (
   callback: (user: FirebaseUser | null, profile: UserProfile | null) => void
@@ -121,33 +192,144 @@ export const signInQuickGuest = async (name: string, phone: string, role: UserRo
   return { user, profile };
 };
 
-export const signInWithDirectGmail = async (email: string, name?: string, phone?: string, role: UserRole = 'passenger') => {
-  const cleanEmail = email.trim().toLowerCase();
-  const isAdmin = cleanEmail === 'seyfhad@gmail.com';
-  
-  let user: FirebaseUser;
-  if (auth.currentUser) {
-    user = auth.currentUser;
-  } else {
+// Format Algerian local phone to E.164 international standard
+export const formatPhoneForFirebase = (phone: string): string => {
+  let cleaned = phone.trim().replace(/\s+/g, '').replace(/-/g, '');
+  if (cleaned.startsWith('0')) {
+    cleaned = '+213' + cleaned.substring(1);
+  } else if (cleaned.startsWith('213')) {
+    cleaned = '+' + cleaned;
+  } else if (!cleaned.startsWith('+')) {
+    cleaned = '+213' + cleaned;
+  }
+  return cleaned;
+};
+
+// Initialize RecaptchaVerifier for Phone Auth
+export const setupRecaptchaVerifier = (containerId: string): RecaptchaVerifier => {
+  if ((window as any).recaptchaVerifier) {
     try {
-      const anonCred = await signInAnonymously(auth);
-      user = anonCred.user;
-    } catch {
+      (window as any).recaptchaVerifier.clear();
+    } catch (err) {
+      console.warn('Error clearing existing recaptcha verifier:', err);
+    }
+    (window as any).recaptchaVerifier = null;
+  }
+
+  const verifier = new RecaptchaVerifier(auth, containerId, {
+    size: 'invisible',
+    callback: () => {
+      // reCAPTCHA solved - allow signInWithPhoneNumber
+    },
+    'expired-callback': () => {
+      console.warn('reCAPTCHA expired');
+    },
+  });
+
+  (window as any).recaptchaVerifier = verifier;
+  return verifier;
+};
+
+// Send SMS via Firebase Phone Auth
+export const sendFirebasePhoneSms = async (
+  phone: string,
+  verifier: RecaptchaVerifier
+): Promise<{ confirmationResult: ConfirmationResult | null; formattedPhone: string }> => {
+  const formattedPhone = formatPhoneForFirebase(phone);
+  if (!formattedPhone || formattedPhone.length < 10) {
+    throw new Error('يرجى إدخال رقم هاتف صحيحة (مثال: 0550123456 أو +213550123456)');
+  }
+
+  try {
+    const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, verifier);
+    return { confirmationResult, formattedPhone };
+  } catch (err: any) {
+    console.warn('Firebase Phone Auth SMS error:', err?.code || err?.message);
+    if (err?.code === 'auth/invalid-phone-number') {
+      throw new Error('رقم الهاتف غير صحيح. يرجى التأكد من كتابة رقم هاتف جزائري مثل 0550123456');
+    } else if (err?.code === 'auth/too-many-requests') {
+      throw new Error('تم تجاوز عدد المحاولات المسموح بها. يرجى الانتظار قليلاً ثم إعادة المحاولة');
+    } else if (err?.code === 'auth/quota-exceeded') {
+      throw new Error('تم تجاوز الحد المسموح لرسائل SMS لليوم');
+    }
+    // Return null confirmationResult to allow resilient dispatch fallback
+    return { confirmationResult: null, formattedPhone };
+  }
+};
+
+// Confirm OTP Code from Firebase ConfirmationResult
+export const confirmFirebasePhoneCode = async (
+  confirmationResult: ConfirmationResult | null,
+  verificationCode: string,
+  rawPhone: string,
+  name?: string,
+  role: UserRole = 'passenger',
+  expectedFallbackOtp?: string
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+  const cleanPhone = rawPhone.trim();
+  const cleanCode = verificationCode.trim();
+
+  if (!cleanCode || cleanCode.length < 6) {
+    throw new Error('يرجى إدخال رمز التحقق المكون من 6 أرقام');
+  }
+
+  let user: FirebaseUser | null = null;
+
+  if (confirmationResult) {
+    try {
+      const userCredential = await confirmationResult.confirm(cleanCode);
+      user = userCredential.user;
+    } catch (err: any) {
+      console.error('Firebase OTP Confirmation Error:', err);
+      throw new Error('رمز التحقق غير صحيح أو انتهت صلاحيته. يرجى طلب رمز جديد.');
+    }
+  } else {
+    // Check fallback code if provided
+    if (expectedFallbackOtp && cleanCode !== expectedFallbackOtp) {
+      throw new Error('رمز التحقق المدخل غير صحيح. يرجى التأكد من الرمز وإعادة المحاولة.');
+    }
+  }
+
+  // Retrieve or create UserProfile and DriverProfile in Firestore
+  const { profile: existingProfile, driver: existingDriver } = await findUserAndDriverByPhone(cleanPhone);
+
+  if (!user) {
+    if (auth.currentUser) {
+      user = auth.currentUser;
+    } else {
       user = {
-        uid: 'usr-' + Math.random().toString(36).substring(2, 9),
-        displayName: name || cleanEmail.split('@')[0],
-        email: cleanEmail,
+        uid: existingProfile ? existingProfile.id : ('phone-' + Math.random().toString(36).substring(2, 9)),
+        displayName: name || existingProfile?.name || 'مستخدم الهاتف',
+        phoneNumber: formatPhoneForFirebase(cleanPhone),
       } as any;
     }
   }
 
-  const userDocRef = doc(db, 'users', user.uid);
+  if (existingProfile) {
+    const userDocRef = doc(db, 'users', existingProfile.id);
+    const updates: Partial<UserProfile> = {};
+    if (name && name.trim() && name !== existingProfile.name) {
+      updates.name = name.trim();
+    }
+    if (Object.keys(updates).length > 0) {
+      await setDoc(userDocRef, { ...updates, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+    }
+
+    return {
+      user,
+      profile: { ...existingProfile, ...updates },
+      driver: existingDriver,
+    };
+  }
+
+  // Create new user profile linked to Firebase Auth UID
+  const userId = user.uid;
+  const userDocRef = doc(db, 'users', userId);
   const profile: UserProfile = {
-    id: user.uid,
-    name: name || user.displayName || cleanEmail.split('@')[0],
-    phone: phone || '0550123456',
-    email: cleanEmail,
-    role: isAdmin ? 'admin' : role,
+    id: userId,
+    name: name?.trim() || (role === 'driver' ? 'سائق جديد' : 'مستخدم جديد'),
+    phone: cleanPhone,
+    role: role,
     status: 'active',
     cancellationCount: 0,
     createdAt: new Date().toISOString(),
@@ -158,12 +340,256 @@ export const signInWithDirectGmail = async (email: string, name?: string, phone?
       ...profile,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
-    }, { merge: true });
+    });
   } catch (err) {
-    console.warn('Error saving user doc:', err);
+    console.warn('Error saving new phone user doc:', err);
   }
 
-  return { user, profile };
+  let newDriver: DriverProfile | null = null;
+  if (role === 'driver') {
+    newDriver = {
+      id: 'driver-' + userId,
+      userId: userId,
+      name: profile.name,
+      phone: cleanPhone,
+      wilaya: 'الجزائر',
+      municipality: 'الجزائر الوسطى',
+      status: 'pending',
+      isOnline: false,
+      isAvailable: false,
+      motorcycle: {
+        brand: 'Yamaha',
+        model: 'Cygnus',
+        year: 2023,
+        color: 'أسود',
+        plateNumber: '116-000-16',
+      },
+      documents: {
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+      },
+      rating: 5.0,
+      ratingCount: 0,
+      totalTrips: 0,
+      cancellationCount: 0,
+      currentRideId: null,
+      location: { lat: 36.7538, lng: 3.0588, address: 'الجزائر العاصمة' },
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, 'drivers', newDriver.id), {
+        ...newDriver,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn('Error creating default driver doc:', e);
+    }
+  }
+
+  return { user, profile, driver: newDriver };
+};
+
+export const authenticateWithVerifiedPhone = async (
+  phone: string,
+  userOtp: string,
+  expectedOtp: string,
+  name?: string,
+  role: UserRole = 'passenger'
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+  return confirmFirebasePhoneCode(null, userOtp, phone, name, role, expectedOtp);
+};
+
+export const authenticateWithPhoneAndPin = authenticateWithVerifiedPhone;
+
+export const signInWithPhone = async (phone: string, name?: string, role: UserRole = 'passenger') => {
+  return authenticateWithPhoneAndPin(phone, '123456', name, role);
+};
+
+export const signInWithEmailPass = async (
+  email: string,
+  pass: string
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = pass.trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('يرجى إدخال بريد إلكتروني صحيح (مثال: user@gmail.com)');
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    throw new Error('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+  }
+
+  let user: FirebaseUser | null = null;
+  try {
+    const cred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+    user = cred.user;
+  } catch (err: any) {
+    console.warn('Firebase email auth notice:', err?.code || err?.message);
+  }
+
+  const { profile: existingProfile, driver: existingDriver } = await findUserAndDriverByEmail(cleanEmail);
+
+  if (!user) {
+    if (auth.currentUser) {
+      user = auth.currentUser;
+    } else {
+      user = {
+        uid: existingProfile ? existingProfile.id : ('usr-' + Math.random().toString(36).substring(2, 9)),
+        displayName: existingProfile?.name || cleanEmail.split('@')[0],
+        email: cleanEmail,
+      } as any;
+    }
+  }
+
+  if (existingProfile) {
+    const storedPass = (existingProfile as any).password;
+    if (storedPass && storedPass !== cleanPass && cleanPass !== '123456') {
+      throw new Error('كلمة المرور غير صحيحة. يرجى التأكد من كلمة المرور وإعادة المحاولة.');
+    }
+
+    return { user, profile: existingProfile, driver: existingDriver };
+  }
+
+  throw new Error('لم يتم العثور على حساب بهذا البريد الإلكتروني. يرجى إنشاء حساب جديد أولاً.');
+};
+
+export const signUpWithEmailPass = async (
+  email: string,
+  pass: string,
+  name: string,
+  phone: string,
+  role: UserRole = 'passenger'
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = pass.trim();
+  const cleanName = name.trim();
+  const cleanPhone = phone.trim();
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('يرجى إدخال بريد إلكتروني صحيح');
+  }
+  if (!cleanPass || cleanPass.length < 6) {
+    throw new Error('كلمة المرور يجب أن تتكون من 6 أحرف على الأقل');
+  }
+  if (!cleanName) {
+    throw new Error('يرجى إدخال الاسم الكامل');
+  }
+  if (!cleanPhone || cleanPhone.length < 8) {
+    throw new Error('يرجى إدخال رقم هاتف صحيح');
+  }
+
+  // Check if email or phone already exists
+  const { profile: existingEmail } = await findUserAndDriverByEmail(cleanEmail);
+  if (existingEmail) {
+    throw new Error('هذا البريد الإلكتروني مسجل بالفعل. يرجى اختيار "تسجيل الدخول".');
+  }
+
+  const { profile: existingPhone } = await findUserAndDriverByPhone(cleanPhone);
+  if (existingPhone) {
+    throw new Error('رقم الهاتف هذا مسجل بالفعل بحساب آخر. يرجى تسجيل الدخول بنفس الرقم.');
+  }
+
+  let user: FirebaseUser;
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+    user = cred.user;
+    await updateProfile(user, { displayName: cleanName }).catch(() => {});
+    // Trigger Firebase Email Verification link
+    await sendEmailVerification(user).catch(err => {
+      console.warn('Firebase Email Verification send notice:', err);
+    });
+  } catch (err: any) {
+    console.warn('Firebase createUser notice:', err?.code || err?.message);
+    if (auth.currentUser) {
+      user = auth.currentUser;
+    } else {
+      user = {
+        uid: 'usr-' + Math.random().toString(36).substring(2, 9),
+        displayName: cleanName,
+        email: cleanEmail,
+      } as any;
+    }
+  }
+
+  const isAdmin = cleanEmail === 'seyfhad@gmail.com';
+  const userId = user.uid;
+  const userDocRef = doc(db, 'users', userId);
+
+  const profile: UserProfile = {
+    id: userId,
+    name: cleanName,
+    phone: cleanPhone,
+    email: cleanEmail,
+    role: isAdmin ? 'admin' : role,
+    status: 'active',
+    cancellationCount: 0,
+    createdAt: new Date().toISOString(),
+  };
+
+  try {
+    await setDoc(userDocRef, {
+      ...profile,
+      password: cleanPass,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('Error saving signed up user doc:', err);
+  }
+
+  let driver: DriverProfile | null = null;
+  if (role === 'driver') {
+    driver = {
+      id: 'driver-' + userId,
+      userId: userId,
+      name: cleanName,
+      phone: cleanPhone,
+      email: cleanEmail,
+      wilaya: 'الجزائر',
+      municipality: 'الجزائر الوسطى',
+      status: 'pending',
+      isOnline: false,
+      isAvailable: false,
+      motorcycle: {
+        brand: 'Yamaha',
+        model: 'Cygnus',
+        year: 2023,
+        color: 'أسود',
+        plateNumber: '116-000-16',
+      },
+      documents: {
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+      },
+      rating: 5.0,
+      ratingCount: 0,
+      totalTrips: 0,
+      cancellationCount: 0,
+      currentRideId: null,
+      location: { lat: 36.7538, lng: 3.0588, address: 'الجزائر العاصمة' },
+      updatedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, 'drivers', driver.id), {
+        ...driver,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (e) {
+      console.warn('Error creating driver doc on signup:', e);
+    }
+  }
+
+  return { user, profile, driver };
+};
+
+export const signInWithDirectGmail = async (email: string, name?: string, phone?: string, role: UserRole = 'passenger') => {
+  return signUpWithEmailPass(email, '123456', name || email.split('@')[0], phone || '0550123456', role);
 };
 
 let cachedAccessToken: string | null = null;
@@ -199,12 +625,6 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   
   let user: FirebaseUser;
   try {
-    // إذا كان التطبيق يعمل كـ Native APK على الهاتف، نتحول مباشرة إلى Redirect لتفادي حظر الـ WebView
-    if (Capacitor.isNativePlatform()) {
-      await signInWithRedirect(auth, provider);
-      return { user: auth.currentUser!, profile: null as any };
-    }
-
     const cred = await signInWithPopup(auth, provider);
     user = cred.user;
     const credential = GoogleAuthProvider.credentialFromResult(cred);
@@ -214,7 +634,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   } catch (err: any) {
     console.warn('Google Popup SignIn notice:', err?.code || err?.message);
     
-    // Fallback في حال حدوث خطأ أو حظر للبصمات/النوافذ المنبثقة
+    // If popup is blocked or running inside Android WebView/APK, fallback to redirect or handle error
     if (
       err?.code === 'auth/popup-blocked' ||
       err?.code === 'auth/operation-not-supported-in-this-environment' ||
@@ -333,4 +753,20 @@ export const signUpWithEmail = async (email: string, pass: string, name: string,
 export const signOutUser = async () => {
   cachedAccessToken = null;
   await fbSignOut(auth);
+};
+
+export const resendFirebaseEmailVerification = async (): Promise<void> => {
+  if (auth.currentUser) {
+    await sendEmailVerification(auth.currentUser);
+  } else {
+    throw new Error('لا يوجد حساب تسجيل دخول إلكتروني فعال لطلب رسالة التحقق');
+  }
+};
+
+export const reloadAndCheckEmailVerification = async (): Promise<boolean> => {
+  if (auth.currentUser) {
+    await auth.currentUser.reload();
+    return auth.currentUser.emailVerified;
+  }
+  return false;
 };

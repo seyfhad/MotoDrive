@@ -26,6 +26,7 @@ import {
   Coordinates,
   Rating,
 } from '../types';
+import { pushNotificationService } from '../services/pushNotificationService';
 import {
   INITIAL_PASSENGERS,
   INITIAL_DRIVERS,
@@ -49,7 +50,9 @@ import {
   updateDriverLocation as updateFirestoreDriverLocation,
   updateDriverOnlineStatus as updateFirestoreDriverOnlineStatus,
   syncDriverProfile,
+  updateDriverStatusInFirestore,
   syncUserProfile,
+  getDriverByUserIdOrPhone,
   clearAllTestDataFromFirestore,
   saveSystemPricing,
   sanitizeFirestoreData,
@@ -189,6 +192,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
+
+        // Auto-restore DriverProfile if user has one in Firestore
+        getDriverByUserIdOrPhone(userProfile.id, userProfile.phone, userProfile.email)
+          .then((driverProfile) => {
+            if (driverProfile) {
+              setActiveDriver(driverProfile);
+            }
+          })
+          .catch((err) => {
+            console.warn('Driver profile auto restore notice:', err);
+          });
+
         // Direct admin redirect if user is seyfhad@gmail.com
         if (
           firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
@@ -368,7 +383,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ? rides.find(r => (r.status === 'searching' || r.status === 'offers_available')) || null
     : null;
 
-  // Notification Helper
+  // Notification Helper with Push Notifications & Audio Chime
   const addNotification = useCallback((
     recipientId: string,
     recipientRole: UserRole,
@@ -389,6 +404,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
     setNotifications(prev => [newNotif, ...prev]);
+
+    // Send Push Notification & Play Audio Chime
+    let soundType: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general' = 'general';
+    if (title.includes('طلب') || title.includes('رحلة') || title.includes('عرض')) {
+      soundType = 'new_ride';
+    } else if (title.includes('وصل') || title.includes('أقترب') || title.includes('اقترب')) {
+      soundType = 'driver_arriving';
+    } else if (title.includes('إدارة') || title.includes('قبول') || title.includes('رفض') || title.includes('تحديث')) {
+      soundType = 'admin_update';
+    }
+
+    pushNotificationService.sendPushNotification(title, body, {
+      soundType,
+      data,
+    });
   }, []);
 
   // --------------------------------------------------------------------------
@@ -770,9 +800,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 7. ADMIN ACTIONS
   // --------------------------------------------------------------------------
   const approveDriver = async (driverId: string) => {
+    await updateDriverStatusInFirestore(driverId, 'approved');
     const drv = drivers.find(d => d.id === driverId);
-    if (!drv) return;
-    await syncDriverProfile({ ...drv, status: 'approved' });
+    if (drv) {
+      await syncDriverProfile({ ...drv, status: 'approved' });
+    }
     addNotification(
       driverId,
       'driver',
@@ -782,19 +814,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectDriver = async (driverId: string, reason: string) => {
+    await updateDriverStatusInFirestore(driverId, 'rejected', reason);
     const drv = drivers.find(d => d.id === driverId);
-    if (!drv) return;
-    await syncDriverProfile({ ...drv, status: 'rejected', rejectionReason: reason });
+    if (drv) {
+      await syncDriverProfile({ ...drv, status: 'rejected', rejectionReason: reason });
+    }
     addNotification(driverId, 'driver', '❌ لم يتم قبول الحساب', `سبب الرفض: ${reason}`);
   };
 
   const suspendDriver = async (driverId: string) => {
+    await updateDriverStatusInFirestore(driverId, 'suspended');
     const drv = drivers.find(d => d.id === driverId);
-    if (!drv) return;
-    await syncDriverProfile({ ...drv, status: 'suspended', isOnline: false, isAvailable: false });
+    if (drv) {
+      await syncDriverProfile({ ...drv, status: 'suspended', isOnline: false, isAvailable: false });
+    }
   };
 
   const updateDriverStatus = async (driverId: string, status: DriverApprovalStatus, reason?: string) => {
+    await updateDriverStatusInFirestore(driverId, status, reason);
     if (status === 'approved') {
       await approveDriver(driverId);
     } else if (status === 'rejected') {
@@ -807,8 +844,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await syncDriverProfile({ ...drv, status });
       }
     }
-    setDrivers(prev => prev.map(d => d.id === driverId ? { ...d, status, rejectionReason: reason } : d));
-    if (activeDriver.id === driverId) {
+    setDrivers(prev => prev.map(d => d.id === driverId || d.userId === driverId ? { ...d, status, rejectionReason: reason } : d));
+    if (activeDriver.id === driverId || activeDriver.userId === driverId) {
       setActiveDriver(prev => ({ ...prev, status, rejectionReason: reason }));
     }
   };

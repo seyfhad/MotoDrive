@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
-import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile } from '../types';
+import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile, DriverApprovalStatus } from '../types';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
 
 // Helper to recursively remove all undefined properties to prevent Firestore crashes
@@ -79,6 +79,47 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   return snap.exists() ? (snap.data() as UserProfile) : null;
 };
 
+export const getDriverByUserIdOrPhone = async (
+  userId: string,
+  phone?: string,
+  email?: string
+): Promise<DriverProfile | null> => {
+  try {
+    const docRef = doc(db, 'drivers', 'driver-' + userId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as DriverProfile;
+    }
+
+    const qUser = query(collection(db, 'drivers'), where('userId', '==', userId));
+    const snapUser = await getDocs(qUser);
+    if (!snapUser.empty) {
+      return { id: snapUser.docs[0].id, ...snapUser.docs[0].data() } as DriverProfile;
+    }
+
+    if (phone) {
+      const qPhone = query(collection(db, 'drivers'), where('phone', '==', phone.trim()));
+      const snapPhone = await getDocs(qPhone);
+      if (!snapPhone.empty) {
+        return { id: snapPhone.docs[0].id, ...snapPhone.docs[0].data() } as DriverProfile;
+      }
+    }
+
+    if (email) {
+      const qEmail = query(collection(db, 'drivers'), where('email', '==', email.trim().toLowerCase()));
+      const snapEmail = await getDocs(qEmail);
+      if (!snapEmail.empty) {
+        return { id: snapEmail.docs[0].id, ...snapEmail.docs[0].data() } as DriverProfile;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('Error fetching driver profile:', err);
+    return null;
+  }
+};
+
 // ============================================================================
 // DRIVER PROFILE & LIVE GPS TELEMETRY
 // ============================================================================
@@ -92,6 +133,75 @@ export const syncDriverProfile = async (driver: DriverProfile): Promise<void> =>
     geohash: gh,
     updatedAt: serverTimestamp(),
   }), { merge: true });
+};
+
+export const updateDriverStatusInFirestore = async (
+  driverId: string,
+  status: DriverApprovalStatus,
+  rejectionReason?: string
+): Promise<void> => {
+  try {
+    const updateData: any = {
+      status,
+      updatedAt: serverTimestamp(),
+    };
+    if (rejectionReason !== undefined) {
+      updateData.rejectionReason = rejectionReason;
+    }
+
+    const cleanUserId = driverId.replace(/^driver-/, '');
+
+    // 1. Direct doc by driverId
+    const docRef1 = doc(db, 'drivers', driverId);
+    const snap1 = await getDoc(docRef1);
+    if (snap1.exists()) {
+      await setDoc(docRef1, updateData, { merge: true });
+      return;
+    }
+
+    // 2. Doc with 'driver-' prefix
+    const prefixedId = driverId.startsWith('driver-') ? driverId : `driver-${driverId}`;
+    const docRef2 = doc(db, 'drivers', prefixedId);
+    const snap2 = await getDoc(docRef2);
+    if (snap2.exists()) {
+      await setDoc(docRef2, updateData, { merge: true });
+      return;
+    }
+
+    // 3. Query by 'userId'
+    const qUserId = query(collection(db, 'drivers'), where('userId', '==', cleanUserId));
+    const snapUserId = await getDocs(qUserId);
+    if (!snapUserId.empty) {
+      await setDoc(snapUserId.docs[0].ref, updateData, { merge: true });
+      return;
+    }
+
+    // 4. Query by 'user_id'
+    const qUserIdSnake = query(collection(db, 'drivers'), where('user_id', '==', cleanUserId));
+    const snapUserIdSnake = await getDocs(qUserIdSnake);
+    if (!snapUserIdSnake.empty) {
+      await setDoc(snapUserIdSnake.docs[0].ref, updateData, { merge: true });
+      return;
+    }
+
+    // 5. Query by 'id'
+    const qId = query(collection(db, 'drivers'), where('id', '==', driverId));
+    const snapId = await getDocs(qId);
+    if (!snapId.empty) {
+      await setDoc(snapId.docs[0].ref, updateData, { merge: true });
+      return;
+    }
+
+    // 6. Fallback merge docRef1
+    await setDoc(docRef1, {
+      id: driverId,
+      userId: cleanUserId,
+      user_id: cleanUserId,
+      ...updateData,
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Error updating driver status in Firestore:', err);
+  }
 };
 
 export const updateDriverLocation = async (
@@ -340,6 +450,45 @@ export const submitRatingToFirestore = async (
     createdAt: serverTimestamp(),
   });
   const docRef = await addDoc(ratingCol, cleanRating);
+
+  // 1. Update Ride Document with rating
+  if (rating.rideId) {
+    try {
+      const rideRef = doc(db, 'rides', rating.rideId);
+      await updateDoc(rideRef, {
+        ratingStars: rating.rating,
+        ratingComment: rating.comment || '',
+        ratingTags: rating.tags || [],
+        ratedAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.warn('Error updating ride document with rating:', err);
+    }
+  }
+
+  // 2. Recalculate & Update Driver's Rating
+  if (rating.driverId) {
+    try {
+      const driverRef = doc(db, 'drivers', rating.driverId);
+      const driverSnap = await getDoc(driverRef);
+      if (driverSnap.exists()) {
+        const dData = driverSnap.data() as DriverProfile;
+        const currentCount = dData.ratingCount || 0;
+        const currentAvg = dData.rating || 5.0;
+        const newCount = currentCount + 1;
+        const newAvg = Number(((currentAvg * currentCount + rating.rating) / newCount).toFixed(1));
+
+        await updateDoc(driverRef, {
+          rating: newAvg,
+          ratingCount: newCount,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (err) {
+      console.warn('Error updating driver rating average:', err);
+    }
+  }
+
   return docRef.id;
 };
 

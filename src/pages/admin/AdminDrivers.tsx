@@ -326,39 +326,76 @@ export const AdminDrivers: React.FC = () => {
       {/* Reject Reason Modal */}
       {showRejectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full text-right space-y-3">
-            <h4 className="text-sm font-bold text-red-400">تحديد سبب رفض السائق</h4>
-            <p className="text-xs text-slate-400">سيتم إرسال هذا السبب إلى السائق في التطبيق:</p>
-            <div className="space-y-1.5">
-              {[
-                'الوثائق غير واضحة أو صور مقطوعة',
-                'رخصة السياقة منتهية الصلاحية',
-                'عمر الدراجة النارية يتجاوز الحد المسموح',
-                'عدم توفر تأمين ساري المفعول',
-              ].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setRejectReason(r)}
-                  className={`w-full text-right p-2 rounded-xl text-xs ${
-                    rejectReason === r ? 'bg-amber-500 text-slate-950 font-bold' : 'bg-slate-950 text-slate-300'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2 pt-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full text-right space-y-3.5 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <h4 className="text-sm font-black text-red-400">تحديد سبب رفض طلب السائق</h4>
               <button
+                type="button"
                 onClick={() => setShowRejectModal(false)}
-                className="py-2.5 bg-slate-800 text-slate-300 text-xs rounded-xl font-bold"
+                className="text-slate-400 hover:text-white"
               >
-                تراجع
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              كتابة سبب الرفض المخصص الموجه للسائق (سيظهر له فور دخوله الحساب):
+            </p>
+
+            {/* Custom Reason Textarea Input */}
+            <div>
+              <label className="block text-[11px] font-bold text-amber-400 mb-1">اكتب سبب الرفض بالتفصيل:</label>
+              <textarea
+                value={rejectReason}
+                onChange={e => setRejectReason(e.target.value)}
+                placeholder="أدخل سبب الرفض هنا (مثال: الوثائق المرفقة غير واضحة، رخصة السياقة منتهية، إلخ)..."
+                rows={3}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/80 transition-colors"
+                required
+              />
+            </div>
+
+            {/* Quick Preset Templates */}
+            <div>
+              <span className="block text-[10px] text-slate-400 mb-1">أو اختر سبباً جاهزاً من القائمة:</span>
+              <div className="space-y-1">
+                {[
+                  'الوثائق غير واضحة أو صور مقطوعة',
+                  'رخصة السياقة منتهية الصلاحية',
+                  'البطاقة الرمادية غير صالحة أو مطابقة',
+                  'عمر الدراجة النارية يتجاوز الحد المسموح',
+                  'عدم توفر تأمين ساري المفعول',
+                ].map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRejectReason(r)}
+                    className={`w-full text-right px-3 py-1.5 rounded-xl text-[11px] transition-all border ${
+                      rejectReason === r
+                        ? 'bg-red-500/20 border-red-500/50 text-red-300 font-bold'
+                        : 'bg-slate-950/80 border-slate-800/80 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowRejectModal(false)}
+                className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl font-bold transition-colors cursor-pointer"
+              >
+                إلغاء التراجع
               </button>
               <button
+                type="button"
                 onClick={handleReject}
-                className="py-2.5 bg-red-500 text-white text-xs rounded-xl font-bold"
+                className="py-2.5 bg-red-500 hover:bg-red-600 text-white text-xs rounded-xl font-black transition-colors shadow-lg shadow-red-500/20 cursor-pointer"
               >
-                تأكيد الرفض
+                تأكيد الرفض والإرسال
               </button>
             </div>
           </div>
