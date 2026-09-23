@@ -4,4 +4,8 @@
     <string name="title_activity_main">MotoDrive</string>
     <string name="package_name">com.motodrive.dz</string>
     <string name="custom_url_scheme">com.motodrive.dz</string>
+    <!-- Replace these with values from Meta App Dashboard before building the APK. -->
+    <string name="facebook_app_id">REPLACE_WITH_FACEBOOK_APP_ID</string>
+    <string name="facebook_client_token">REPLACE_WITH_FACEBOOK_CLIENT_TOKEN</string>
+    <string name="fb_login_protocol_scheme">fbREPLACE_WITH_FACEBOOK_APP_ID</string>
 </resources>

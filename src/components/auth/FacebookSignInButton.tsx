@@ -17,7 +17,7 @@ interface FacebookSignInButtonProps {
 
 export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   role = 'passenger', onSuccess, onError, className = '', variant = 'default',
-  fullWidth = true, label = 'تسجيل الدخول باستخدام فيسبوك (Facebook)', id = 'facebook-signin-btn',
+  fullWidth = true, label = 'تسجيل الدخول داخل التطبيق باستخدام Facebook', id = 'facebook-signin-btn',
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -26,10 +26,10 @@ export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
     try {
       setLoading(true); setErrorMsg(null);
       await signInWithFacebookOAuth(role);
-      broadcastNotification('جاري التوجيه إلى Facebook', 'سيتم فتح صفحة المصادقة في المتصفح الآمن.');
+      broadcastNotification('مرحباً بك في MotoDrive', 'تم تسجيل الدخول عبر Facebook داخل التطبيق.');
       onSuccess?.();
     } catch (err: any) {
-      const message = err?.message || 'فشل الاتصال بفيسبوك. تحقق من إعدادات Supabase Facebook Provider.';
+      const message = err?.message || 'فشل تسجيل الدخول بواسطة Facebook.';
       console.error('Facebook Sign-In Error:', err); setErrorMsg(message); onError?.(message);
     } finally { setLoading(false); }
   };
