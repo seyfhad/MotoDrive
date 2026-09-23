@@ -3,7 +3,6 @@ import {
   X,
   BookOpen,
   MapPin,
-  Bike,
   ShieldCheck,
   CheckCircle,
   Smartphone,
@@ -15,7 +14,9 @@ import {
   FileCheck,
   ExternalLink,
   HelpCircle,
+  Phone,
 } from 'lucide-react';
+import { MotoIcon } from '../shared/MotoIcon';
 import { useApp } from '../../contexts/AppContext';
 
 interface UserGuideModalProps {
@@ -88,7 +89,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 : 'text-slate-400 hover:text-white hover:bg-slate-900'
             }`}
           >
-            <Bike className="w-4 h-4" />
+            <MotoIcon className="w-4 h-4" />
             <span>دليل السائق (التسجيل والعمل)</span>
           </button>
 
@@ -348,6 +349,27 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <p className="text-slate-400 text-[11px] leading-normal">
                   التطبيق يطلب إذن الموقع الجغرافي والإشعارات لتقديم خدمة التوصيل الحية، ويحتوي على سياسة خصوصية واضحة وشاملة متوفرة بأسفل القائمة الرئيسية.
                 </p>
+              </div>
+
+              {/* Direct Support Contact for Google Play Reviewers */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-400 text-xs">
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>خط الدعم المباشر لمراجعي Google Play:</span>
+                  </div>
+                  <p className="font-mono text-xs text-white" dir="ltr">+213 662 68 87 14</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('open-contact-us'));
+                  }}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-[11px] font-black transition-colors cursor-pointer"
+                >
+                  فتح صفحة اتصل بنا
+                </button>
               </div>
 
               <div className="pt-1">

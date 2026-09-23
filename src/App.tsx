@@ -7,6 +7,7 @@ import { SOSModal } from './components/shared/SOSModal';
 import { LegalModal } from './components/legal/LegalModal';
 import { UserGuideModal } from './components/guide/UserGuideModal';
 import { AndroidAppModal } from './components/android/AndroidAppModal';
+import { ContactUsModal } from './components/support/ContactUsModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
 import { PushNotificationToast } from './components/shared/PushNotificationToast';
@@ -89,6 +90,19 @@ const AppContent: React.FC = () => {
     window.addEventListener('open-android-modal', handleOpenAndroidModal);
     return () => {
       window.removeEventListener('open-android-modal', handleOpenAndroidModal);
+    };
+  }, []);
+
+  // Contact Us & Support modal state & event listener
+  const [isContactUsOpen, setIsContactUsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenContactUs = () => {
+      setIsContactUsOpen(true);
+    };
+    window.addEventListener('open-contact-us', handleOpenContactUs);
+    return () => {
+      window.removeEventListener('open-contact-us', handleOpenContactUs);
     };
   }, []);
 
@@ -256,6 +270,12 @@ const AppContent: React.FC = () => {
         <AndroidAppModal
           isOpen={isAndroidModalOpen}
           onClose={() => setIsAndroidModalOpen(false)}
+        />
+
+        {/* Contact Us & Technical Support Modal (+213662688714 / Direct Message to Admin) */}
+        <ContactUsModal
+          isOpen={isContactUsOpen}
+          onClose={() => setIsContactUsOpen(false)}
         />
       </div>
     </div>

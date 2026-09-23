@@ -7,6 +7,13 @@ import { ALGERIA_LOCATIONS, reverseGeocodeCoords, getRobustUserLocation } from '
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  PassengerDashboardSkeleton,
+  PassengerTripHistorySkeleton,
+  TripCardSkeleton,
+  Skeleton,
+} from '../../components/shared/Skeleton';
+import { supabaseService } from '../../services/supabaseService';
 
 export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
@@ -18,6 +25,20 @@ export const PassengerHome: React.FC = () => {
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
   const [mapSelectionMode, setMapSelectionMode] = useState<'pickup' | 'destination' | null>(null);
   const [mapNotice, setMapNotice] = useState<string | null>(null);
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+
+  // مزامنة مبدئية سريعة مع Supabase مع تأثير التحميل الهيكلي (Skeleton)
+  useEffect(() => {
+    let isMounted = true;
+    supabaseService.getDrivers().catch(() => {}).finally(() => {
+      if (isMounted) {
+        setTimeout(() => setIsSyncingSupabase(false), 400);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
   const handleGetRealGPSLocation = async () => {
@@ -142,6 +163,11 @@ export const PassengerHome: React.FC = () => {
         {/* If there is an active ride, show the live tracking / radar card */}
         {currentPassengerRide ? (
           <ActiveRideView ride={currentPassengerRide} />
+        ) : isSyncingSupabase ? (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <PassengerDashboardSkeleton />
+            <PassengerTripHistorySkeleton count={3} />
+          </div>
         ) : (
           <>
             {/* Booking Card */}
@@ -160,8 +186,25 @@ export const PassengerHome: React.FC = () => {
                     {currentUser ? 'أين تريد الذهاب اليوم بالدراجة النارية؟' : 'سجّل دخولك لحجز دراجة نارية والتنقل بسرعة'}
                   </p>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-lg">
-                  🛵
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setIsSyncingSupabase(true);
+                      Promise.all([
+                        supabaseService.getDrivers(),
+                        supabaseService.getRides(activePassenger.id, 'passenger'),
+                      ]).finally(() => {
+                        setTimeout(() => setIsSyncingSupabase(false), 450);
+                      });
+                    }}
+                    className="w-9 h-9 rounded-2xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-amber-400 flex items-center justify-center transition-colors active:scale-95"
+                    title="تحديث البيانات من السحابة"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                  <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-lg">
+                    🛵
+                  </div>
                 </div>
               </div>
 

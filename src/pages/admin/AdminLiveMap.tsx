@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Bike, Navigation, Activity } from 'lucide-react';
+import { Navigation, Activity } from 'lucide-react';
 
 export const AdminLiveMap: React.FC = () => {
   const { drivers, rides } = useApp();

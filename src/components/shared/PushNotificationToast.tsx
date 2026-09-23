@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { pushNotificationService, PushPermissionStatus } from '../../services/pushNotificationService';
-import { Bell, BellOff, X, ChevronLeft, Bike, Navigation, ShieldCheck, Sparkles } from 'lucide-react';
+import { Bell, BellOff, X, ChevronLeft, Navigation, ShieldCheck, Sparkles } from 'lucide-react';
+import { MotoIcon } from './MotoIcon';
 
 export const PushNotificationToast: React.FC = () => {
   const { notifications, currentRole } = useApp();
@@ -91,7 +92,7 @@ export const PushNotificationToast: React.FC = () => {
         <div className="pointer-events-auto bg-slate-900/95 border border-amber-500/50 rounded-2xl p-3.5 shadow-2xl backdrop-blur-lg flex items-start justify-between gap-3 text-right animate-in slide-in-from-top-4 border-l-4 border-l-amber-500">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 flex items-center justify-center shrink-0 font-black shadow-lg">
             {activeToast.title.includes('سائق') || activeToast.title.includes('رحلة') ? (
-              <Bike className="w-5 h-5" />
+              <MotoIcon className="w-5 h-5" />
             ) : activeToast.title.includes('وصل') || activeToast.title.includes('أقترب') ? (
               <Navigation className="w-5 h-5 animate-pulse" />
             ) : (

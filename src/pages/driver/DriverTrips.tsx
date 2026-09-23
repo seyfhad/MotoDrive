@@ -1,10 +1,29 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { History, Calendar, MapPin, Star, User } from 'lucide-react';
+import { History, Calendar, MapPin, Star, User, RefreshCw } from 'lucide-react';
+import { TripCardSkeleton } from '../../components/shared/Skeleton';
+import { supabaseService } from '../../services/supabaseService';
 
 export const DriverTrips: React.FC = () => {
   const { activeDriver, rides } = useApp();
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // جلب سجل رحلات السائق من Supabase مع تأثير الـ Skeleton
+  const loadDriverTrips = async () => {
+    setIsLoading(true);
+    try {
+      await supabaseService.getRides(activeDriver.id, 'driver');
+    } catch (e) {
+      console.warn('Driver trips notice:', e);
+    } finally {
+      setTimeout(() => setIsLoading(false), 450);
+    }
+  };
+
+  useEffect(() => {
+    loadDriverTrips();
+  }, [activeDriver.id]);
 
   const driverRides = rides.filter(r => r.driverId === activeDriver.id);
 
@@ -13,15 +32,31 @@ export const DriverTrips: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-white">سجل رحلات السائق</h2>
-          <p className="text-xs text-slate-400">إجمالي الرحلات والأرباح المحققة</p>
+          <p className="text-xs text-slate-400">إجمالي الرحلات والأرباح المحققة عبر Supabase</p>
         </div>
-        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-          <History className="w-5 h-5" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadDriverTrips}
+            disabled={isLoading}
+            className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-amber-400 flex items-center justify-center transition-colors active:scale-95 disabled:opacity-50"
+            title="تحديث الرحلات من السحابة"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+          </button>
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <History className="w-5 h-5" />
+          </div>
         </div>
       </div>
 
       <div className="space-y-3">
-        {driverRides.length === 0 ? (
+        {isLoading ? (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <TripCardSkeleton />
+            <TripCardSkeleton />
+            <TripCardSkeleton />
+          </div>
+        ) : driverRides.length === 0 ? (
           <div className="text-center py-16 bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6">
             <div className="text-3xl mb-2">🏍️</div>
             <h3 className="text-sm font-bold text-slate-300">لا توجد رحلات مسجلة بعد</h3>

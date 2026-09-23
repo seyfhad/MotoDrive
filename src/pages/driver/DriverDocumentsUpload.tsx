@@ -6,7 +6,6 @@ import {
   Clock,
   AlertTriangle,
   UploadCloud,
-  Bike,
   User,
   ShieldCheck,
   Camera,

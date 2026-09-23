@@ -1,9 +1,28 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { User, Bike, Star, Award, Shield, Phone, MapPin } from 'lucide-react';
+import { User, Star, Award, Shield, Phone, MapPin, BadgeCheck, MessageSquare } from 'lucide-react';
+import { MotoIcon } from '../../components/shared/MotoIcon';
+import { DriverIdentityVerificationCard } from '../../components/driver/DriverIdentityVerificationCard';
+import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
+import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const DriverProfile: React.FC = () => {
   const { activeDriver, setActiveDriver, drivers } = useApp();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoadingProfile(false), 350);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoadingProfile) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-4 pb-24" id="driver-profile-screen">
+        <ProfileSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-4 pb-24" id="driver-profile-screen">
@@ -15,16 +34,28 @@ export const DriverProfile: React.FC = () => {
             alt={activeDriver.name}
             className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl"
           />
-          <span className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 border-2 border-slate-900 text-slate-950 flex items-center justify-center text-[10px] font-bold">
-            ✓
+          <span
+            className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold ${
+              activeDriver.status === 'approved'
+                ? 'bg-emerald-500 text-slate-950'
+                : activeDriver.status === 'pending'
+                ? 'bg-amber-500 text-slate-950'
+                : 'bg-red-500 text-white'
+            }`}
+            title={activeDriver.status === 'approved' ? 'موثق رسمياً' : 'قيد المراجعة'}
+          >
+            {activeDriver.status === 'approved' ? '✓' : '⏳'}
           </span>
         </div>
 
         <div>
-          <div className="flex items-center justify-center gap-1 text-sm font-black text-white">
+          <div className="flex items-center justify-center gap-1.5 text-sm font-black text-white">
             <span>{activeDriver.name}</span>
+            {activeDriver.status === 'approved' && (
+              <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
           </div>
-          <p className="text-xs text-slate-400 mt-0.5">{activeDriver.phone}</p>
+          <p className="text-xs text-slate-400 mt-0.5" dir="ltr">{activeDriver.phone}</p>
           <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold text-amber-400 mt-2">
             <Star className="w-3.5 h-3.5 fill-amber-400" />
             <span>{(activeDriver.rating ?? 5.0).toFixed(1)} ({activeDriver.totalTrips ?? 0} رحلة منجزة)</span>
@@ -52,10 +83,17 @@ export const DriverProfile: React.FC = () => {
         </div>
       </div>
 
+      {/* Identity Verification Status Card (علامة صح خضراء والوثائق المعتمدة لتعزيز الثقة) */}
+      <DriverIdentityVerificationCard
+        driver={activeDriver}
+        onOpenDocuments={() => setIsEditModalOpen(true)}
+        onOpenContactSupport={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
+      />
+
       {/* Motorcycle Specs */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
         <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-          <Bike className="w-4 h-4 text-amber-400" />
+          <MotoIcon className="w-5 h-5 text-amber-400" />
           <h4 className="text-sm font-bold text-white">دراجتي النارية</h4>
         </div>
 
@@ -91,17 +129,10 @@ export const DriverProfile: React.FC = () => {
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-user-guide', { detail: { tab: 'driver' } }))}
+            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
             className="p-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-center transition-colors cursor-pointer"
           >
-            دليل السائق 📖
-          </button>
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'privacy' } }))}
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
-          >
-            حول التطبيق
+            شروط الاستخدام 📄
           </button>
           <button
             type="button"
@@ -110,15 +141,15 @@ export const DriverProfile: React.FC = () => {
           >
             سياسة الخصوصية
           </button>
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-legal', { detail: { tab: 'terms' } }))}
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
-          >
-            شروط الاستخدام
-          </button>
         </div>
       </div>
+
+      {/* Driver Registration / Documents update modal */}
+      <RegisterDriverModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+      />
     </div>
   );
 };
+

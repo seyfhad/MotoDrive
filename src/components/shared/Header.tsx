@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, Bike, LogOut, Send, BookOpen, Smartphone } from 'lucide-react';
+import { Bell, AlertTriangle, User, LogOut, Send, FileText } from 'lucide-react';
+import { MotoIcon } from './MotoIcon';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
@@ -46,8 +47,8 @@ export const Header: React.FC = () => {
             className="flex items-center gap-1.5 sm:gap-2 text-right hover:opacity-90 transition-opacity cursor-pointer"
             title="الواجهة الأولية وشروط الاستخدام"
           >
-            <div className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-sm shadow-sm shadow-amber-500/20 shrink-0">
-              🏍️
+            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30">
+              <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
             </div>
             <div>
               <span className="text-sm sm:text-base font-black tracking-tight text-white font-sans">Moto<span className="text-amber-400">Drive</span></span>
@@ -81,7 +82,7 @@ export const Header: React.FC = () => {
               ) : (
                 <>
                   {currentRole === 'driver' ? (
-                    <Bike className="w-3 h-3 text-amber-400 shrink-0" />
+                    <MotoIcon className="w-3.5 h-3.5 shrink-0" />
                   ) : (
                     <User className="w-3 h-3 text-amber-400 shrink-0" />
                   )}
@@ -126,32 +127,19 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-black hidden sm:inline">SOS</span>
             </button>
 
-            {/* User Guide Button */}
+            {/* Terms of Service Button */}
             <button
-              id="user-guide-header-btn"
+              id="terms-header-btn"
               onClick={() => {
                 window.dispatchEvent(
-                  new CustomEvent('open-user-guide', { detail: { tab: 'passenger' } })
+                  new CustomEvent('open-legal', { detail: { tab: 'terms' } })
                 );
               }}
-              className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1 text-amber-300 transition-colors cursor-pointer"
-              title="دليل استخدام التطبيق والمراجعة"
+              className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              title="شروط الاستخدام والسياسات القانونية"
             >
-              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[10px] font-bold hidden sm:inline">الدليل</span>
-            </button>
-
-            {/* Android App Button */}
-            <button
-              id="android-header-btn"
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent('open-android-modal'));
-              }}
-              className="h-8 px-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 flex items-center gap-1 text-emerald-300 transition-colors cursor-pointer"
-              title="تطبيق الأندرويد الحقيقي وتثبيته"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-[10px] font-bold hidden sm:inline">أندرويد</span>
+              <FileText className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[10px] font-bold hidden sm:inline">شروط الاستخدام</span>
             </button>
 
             {/* Owner/Admin In-App Message Action Button */}

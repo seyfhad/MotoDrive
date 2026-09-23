@@ -6,6 +6,7 @@ import {
   signUpWithEmailPass,
 } from '../../services/authService';
 import { UserRole } from '../../types';
+import { MotoIcon } from '../shared/MotoIcon';
 import {
   X,
   ShieldCheck,
@@ -13,7 +14,6 @@ import {
   User,
   CheckCircle2,
   Sparkles,
-  Bike,
   Mail,
   Phone,
   ArrowRight,
@@ -287,8 +287,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 }}
                 className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 border-slate-800 hover:border-amber-500/80 text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer"
               >
-                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shadow-md">
-                  <Bike className="w-7 h-7" />
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 overflow-hidden flex items-center justify-center p-1.5 mb-3 group-hover:scale-110 transition-all shadow-md">
+                  <img src="/icon.jpg" alt="سائق" className="w-full h-full object-cover rounded-xl" />
                 </div>
                 <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">سائق</span>
               </button>
@@ -301,7 +301,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-2 rounded-2xl">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-black">
-                  {selectedRole === 'driver' ? <Bike className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                  {selectedRole === 'driver' ? <MotoIcon className="w-4 h-4" /> : <User className="w-4 h-4" />}
                 </div>
                 <span className="text-xs font-black text-amber-400">
                   {selectedRole === 'driver' ? 'حساب سائق' : 'حساب راكب'}

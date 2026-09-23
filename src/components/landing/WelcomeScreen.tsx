@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogIn, ArrowLeft, Shield, FileText, CheckCircle2, Bike, Sparkles, MapPin, Zap, BookOpen, Smartphone } from 'lucide-react';
+import { LogIn, ArrowLeft, Shield, FileText, CheckCircle2, Sparkles, MapPin, Zap } from 'lucide-react';
 
 interface WelcomeScreenProps {
   onOpenLogin: () => void;
@@ -24,9 +24,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       {/* Top Header / Brand Badge */}
       <div className="relative z-10 flex items-center justify-between pt-2">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-lg shadow-lg shadow-amber-500/20">
-            🏍️
+        <div className="flex items-center gap-2.5">
+          <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0">
+            <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
@@ -120,34 +120,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           <span>ممتثل لسياسات Google Cloud والمعايير القانونية الجزائرية</span>
         </div>
 
-        {/* Footer Buttons: User Guide, Privacy Policy & Terms of Service */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {/* زر تطبيق الأندرويد */}
+        {/* Footer Buttons: Terms of Service & Privacy Policy */}
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          {/* زر شروط الاستخدام */}
           <button
             type="button"
-            id="welcome-android-btn"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('open-android-modal'));
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-xs font-bold transition-all cursor-pointer"
+            id="welcome-terms-btn"
+            onClick={() => onOpenLegal('terms')}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-200 hover:text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm"
           >
-            <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>تطبيق الأندرويد</span>
-          </button>
-
-          {/* زر دليل الاستخدام والمراجعة */}
-          <button
-            type="button"
-            id="welcome-guide-btn"
-            onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent('open-user-guide', { detail: { tab: 'passenger' } })
-              );
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>دليل الاستخدام والمراجعة</span>
+            <FileText className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>شروط الاستخدام</span>
           </button>
 
           {/* زر سياسة الخصوصية */}
@@ -155,21 +138,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             type="button"
             id="welcome-privacy-btn"
             onClick={() => onOpenLegal('privacy')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 text-xs font-semibold transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 text-xs font-semibold transition-all cursor-pointer"
           >
             <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>سياسة الخصوصية</span>
-          </button>
-
-          {/* زر شروط الاستخدام */}
-          <button
-            type="button"
-            id="welcome-terms-btn"
-            onClick={() => onOpenLegal('terms')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 text-xs font-semibold transition-all cursor-pointer"
-          >
-            <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span>شروط الاستخدام</span>
           </button>
         </div>
 

@@ -7,7 +7,6 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
-  Bike,
   Shield,
   RefreshCw,
   Edit3,
@@ -19,6 +18,7 @@ import {
   Send,
   Loader2,
 } from 'lucide-react';
+import { MotoIcon } from '../../components/shared/MotoIcon';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
 export const DriverPendingApprovalView: React.FC = () => {
@@ -418,7 +418,7 @@ export const DriverPendingApprovalView: React.FC = () => {
       {/* Driver & Motorcycle Details Card */}
       <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2 text-xs">
         <h4 className="font-bold text-white flex items-center gap-1.5">
-          <Bike className="w-3.5 h-3.5 text-amber-400" />
+          <MotoIcon className="w-4 h-4 text-amber-400" />
           <span>بيانات الدراجة النارية المسجلة:</span>
         </h4>
         <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">

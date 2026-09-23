@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
+import { MotoIcon } from '../shared/MotoIcon';
 import {
-  Bike,
   Check,
   X,
   RefreshCw,
@@ -103,7 +103,7 @@ export const AdminDriversPanel: React.FC = () => {
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg">
         <div>
           <h2 className="text-base font-black text-white flex items-center gap-2">
-            <Bike className="w-5 h-5 text-amber-400" />
+            <MotoIcon className="w-5 h-5 text-amber-400" />
             <span>طلبات انضمام السائقين (Supabase)</span>
             {pendingCount > 0 && (
               <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">

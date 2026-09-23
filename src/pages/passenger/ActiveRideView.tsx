@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Ride, RideOffer } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight } from 'lucide-react';
+import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight, BadgeCheck } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ActiveRideViewProps {
@@ -167,8 +167,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
                           className="w-11 h-11 rounded-full border-2 border-amber-500 object-cover shrink-0"
                         />
                         <div>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-sm font-black text-white">{offer.driverName}</span>
+                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20" title="هوية موثقة ومعتمدة">
+                              <BadgeCheck className="w-3 h-3 text-emerald-400" />
+                              <span>موثق ✓</span>
+                            </span>
                             <span className="flex items-center text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded">
                               ⭐ {(offer.driverRating ?? 5.0).toFixed(1)}
                             </span>
@@ -520,8 +524,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
             className="w-12 h-12 rounded-full border-2 border-amber-500 object-cover"
           />
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-white">{ride.driverName}</span>
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                <BadgeCheck className="w-3 h-3 text-emerald-400" />
+                <span>هوية موثقة ومعتمدة ✓</span>
+              </span>
               <span className="flex items-center gap-0.5 text-xs text-amber-400 font-semibold bg-amber-500/10 px-1.5 py-0.2 rounded">
                 ⭐ {ride.driverRating?.toFixed(1) || '4.9'}
               </span>

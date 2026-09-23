@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { User, Phone, Mail, Shield, AlertTriangle, MessageSquare, LogOut, Check, ChevronLeft, CheckCircle2, Sparkles } from 'lucide-react';
 import { GoogleSignInButton } from '../../components/auth/GoogleSignInButton';
 import { signOutUser } from '../../services/authService';
+import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const PassengerProfile: React.FC = () => {
   const { activePassenger, setActivePassenger, currentUser, setCurrentUser, passengers, complaints, broadcastNotification } = useApp();
@@ -11,6 +12,12 @@ export const PassengerProfile: React.FC = () => {
   const [emergencyPhone, setEmergencyPhone] = useState(activePassenger.emergencyContact?.phone || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoadingProfile(false), 350);
+    return () => clearTimeout(timer);
+  }, []);
 
   const passengerComplaints = complaints.filter(c => c.userId === activePassenger.id);
 
@@ -38,6 +45,14 @@ export const PassengerProfile: React.FC = () => {
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
   };
+
+  if (isLoadingProfile) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-4 pb-24" id="passenger-profile-screen">
+        <ProfileSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-4 pb-24" id="passenger-profile-screen">
@@ -220,33 +235,19 @@ export const PassengerProfile: React.FC = () => {
           <span className="text-[10px] text-amber-400 font-mono">v1.2.0 Production</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('open-user-guide', {
-                  detail: { tab: 'passenger' },
-                }),
-              )
-            }
-            className="p-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-center transition-colors cursor-pointer"
-          >
-            دليل الاستخدام 📖
-          </button>
-
+        <div className="grid grid-cols-2 gap-2 pt-1">
           <button
             type="button"
             onClick={() =>
               window.dispatchEvent(
                 new CustomEvent('open-legal', {
-                  detail: { tab: 'privacy' },
+                  detail: { tab: 'terms' },
                 }),
               )
             }
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
+            className="p-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-center transition-colors cursor-pointer"
           >
-            حول التطبيق
+            شروط الاستخدام 📄
           </button>
 
           <button
@@ -261,20 +262,6 @@ export const PassengerProfile: React.FC = () => {
             className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
           >
             سياسة الخصوصية
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('open-legal', {
-                  detail: { tab: 'terms' },
-                }),
-              )
-            }
-            className="p-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 rounded-xl text-slate-300 hover:text-white font-semibold text-center transition-colors cursor-pointer"
-          >
-            شروط الاستخدام
           </button>
         </div>
       </div>

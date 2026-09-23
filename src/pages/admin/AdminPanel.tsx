@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { AdminDriversPanel } from '../../components/admin/AdminDriversPanel';
+import { MotoIcon } from '../../components/shared/MotoIcon';
 import {
   ShieldCheck,
-  Bike,
   Users,
   BarChart3,
   LogOut,
@@ -67,7 +67,7 @@ export const AdminPanel: React.FC = () => {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Bike className="w-4 h-4" />
+            <MotoIcon className="w-4 h-4" />
             <span>طلبات السائقين</span>
           </button>
 

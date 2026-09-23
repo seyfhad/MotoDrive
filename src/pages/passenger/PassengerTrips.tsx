@@ -1,12 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { History, Calendar, MapPin, Star, AlertCircle, FileText, Download } from 'lucide-react';
+import { History, Calendar, MapPin, Star, AlertCircle, FileText, Download, RefreshCw } from 'lucide-react';
 import { Ride } from '../../types';
+import { TripCardSkeleton } from '../../components/shared/Skeleton';
+import { supabaseService } from '../../services/supabaseService';
 
 export const PassengerTrips: React.FC = () => {
   const { activePassenger, rides } = useApp();
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // جلب وتحديث السجل مع Supabase مع إظهار تأثير التحميل الهيكلي (Loading Skeleton)
+  const loadTripsData = async () => {
+    setIsLoading(true);
+    try {
+      await supabaseService.getRides(activePassenger.id, 'passenger');
+    } catch (e) {
+      console.warn('Supabase fetch notice:', e);
+    } finally {
+      // إعطاء وقت كافٍ لتأثير الـ Skeleton لتقليل ارتباك المستخدم والانتقال بسلاسة
+      setTimeout(() => setIsLoading(false), 450);
+    }
+  };
+
+  useEffect(() => {
+    loadTripsData();
+  }, [activePassenger.id]);
 
   const passengerRides = rides.filter(r => r.passengerId === activePassenger.id);
 
@@ -22,10 +42,20 @@ export const PassengerTrips: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-white">سجل رحلاتي</h2>
-          <p className="text-xs text-slate-400">جميع الرحلات السابقة وتفاصيل الفواتير</p>
+          <p className="text-xs text-slate-400">جميع الرحلات السابقة وتفاصيل الفواتير عبر Supabase</p>
         </div>
-        <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-          <History className="w-5 h-5" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadTripsData}
+            disabled={isLoading}
+            className="w-9 h-9 rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-amber-400 flex items-center justify-center transition-colors active:scale-95 disabled:opacity-50"
+            title="تحديث البيانات من السحابة"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
+          </button>
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <History className="w-5 h-5" />
+          </div>
         </div>
       </div>
 
@@ -57,9 +87,16 @@ export const PassengerTrips: React.FC = () => {
         </button>
       </div>
 
-      {/* Trips List */}
+      {/* Trips List with Loading Skeletons */}
       <div className="space-y-3">
-        {filteredRides.length === 0 ? (
+        {isLoading ? (
+          // Shimmering Loading Skeletons while querying Supabase
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <TripCardSkeleton />
+            <TripCardSkeleton />
+            <TripCardSkeleton />
+          </div>
+        ) : filteredRides.length === 0 ? (
           <div className="text-center py-16 bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6">
             <div className="text-3xl mb-2">📋</div>
             <h3 className="text-sm font-bold text-slate-300">لا توجد رحلات في هذا القسم</h3>

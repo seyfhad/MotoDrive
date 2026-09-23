@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Driver, DriverApprovalStatus } from '../../types';
+import { MotoIcon } from '../../components/shared/MotoIcon';
 import {
-  Bike,
   CheckCircle2,
   XCircle,
   Clock,
@@ -104,7 +104,7 @@ export const AdminDrivers: React.FC = () => {
       {filteredDrivers.length === 0 ? (
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-12 text-center space-y-3">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto text-2xl">
-            <Bike className="w-7 h-7" />
+            <MotoIcon className="w-7 h-7" />
           </div>
           <h3 className="text-sm font-bold text-white">لا يوجد سائقون في هذه القائمة حالياً</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">

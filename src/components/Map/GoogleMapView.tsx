@@ -297,10 +297,10 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           >
             <div className="relative -translate-x-1/2 -translate-y-1/2">
               <div
-                className="w-12 h-12 rounded-full bg-amber-500 border-3 border-slate-950 shadow-2xl flex items-center justify-center text-slate-950 text-xl font-bold transition-transform duration-500"
+                className="w-12 h-12 rounded-full bg-slate-950 border-3 border-amber-500 shadow-2xl overflow-hidden flex items-center justify-center p-1 transition-transform duration-500"
                 style={{ transform: `rotate(${activeDriverHeading}deg)` }}
               >
-                🛵
+                <img src="/icon.jpg" alt="سائقك" className="w-full h-full object-cover rounded-full" />
               </div>
               <div className="absolute -inset-1 rounded-full bg-amber-400/40 animate-ping pointer-events-none"></div>
               <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow">
@@ -321,8 +321,8 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
               onClick={() => setSelectedDriver(driver)}
             >
               <div className="relative -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform duration-300 hover:scale-125">
-                <div className="w-9 h-9 rounded-full bg-slate-900 border-2 border-amber-500 shadow-lg flex items-center justify-center text-amber-400 text-sm">
-                  🏍️
+                <div className="w-9 h-9 rounded-full bg-slate-900 border-2 border-amber-500 shadow-lg overflow-hidden flex items-center justify-center p-0.5">
+                  <img src="/icon.jpg" alt="دراجة" className="w-full h-full object-cover rounded-full" />
                 </div>
                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border border-slate-950"></div>
               </div>
@@ -336,8 +336,9 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
             onCloseClick={() => setSelectedDriver(null)}
           >
             <div className="text-right p-1 font-sans text-slate-900 min-w-[160px]" dir="rtl">
-              <div className="font-bold text-sm text-slate-950 flex items-center gap-1">
-                <span>🏍️</span> <span>{selectedDriver.name}</span>
+              <div className="font-bold text-sm text-slate-950 flex items-center gap-1.5">
+                <img src="/icon.jpg" alt="دراجة" className="w-4 h-4 rounded-md object-cover shrink-0" />
+                <span>{selectedDriver.name}</span>
               </div>
               <div className="text-xs text-slate-600 mt-0.5">
                 {selectedDriver.motorcycle?.brand || ''} {selectedDriver.motorcycle?.model || ''}

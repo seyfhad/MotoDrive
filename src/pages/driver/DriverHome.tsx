@@ -1,14 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { DriverIncomingRideModal } from './DriverIncomingRideModal';
 import { DriverActiveRide } from './DriverActiveRide';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw, Bike } from 'lucide-react';
+import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw } from 'lucide-react';
+import { MotoIcon } from '../../components/shared/MotoIcon';
 import { updateFirestoreDriverLocation } from '../../services/firestoreService';
 import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 import { DriverPendingApprovalView } from './DriverPendingApprovalView';
+import {
+  DriverDashboardSkeleton,
+  DriverTripHistorySkeleton,
+  StatCardSkeleton,
+} from '../../components/shared/Skeleton';
+import { supabaseService } from '../../services/supabaseService';
 
 export const DriverHome: React.FC = () => {
   const {
@@ -25,6 +32,19 @@ export const DriverHome: React.FC = () => {
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    supabaseService.getDriverEarnings(activeDriver.id).catch(() => {}).finally(() => {
+      if (isMounted) {
+        setTimeout(() => setIsSyncingSupabase(false), 400);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDriver.id]);
 
   // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق
   if (activeDriver.status !== 'approved') {
@@ -128,6 +148,11 @@ export const DriverHome: React.FC = () => {
         {/* If Active Trip -> Show Active Ride Workflow */}
         {currentDriverRide ? (
           <DriverActiveRide ride={currentDriverRide} />
+        ) : isSyncingSupabase ? (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <DriverDashboardSkeleton />
+            <DriverTripHistorySkeleton count={3} />
+          </div>
         ) : (
           <>
             {/* Driver Approval Warning if Pending */}
@@ -170,11 +195,27 @@ export const DriverHome: React.FC = () => {
 
                 <div className="flex items-center gap-1.5">
                   <button
+                    onClick={() => {
+                      setIsSyncingSupabase(true);
+                      Promise.all([
+                        supabaseService.getDriverEarnings(activeDriver.id),
+                        supabaseService.getRides(activeDriver.id, 'driver'),
+                      ]).finally(() => {
+                        setTimeout(() => setIsSyncingSupabase(false), 450);
+                      });
+                    }}
+                    className="p-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-amber-400 rounded-xl text-xs transition-colors"
+                    title="تحديث البيانات من السحابة"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+
+                  <button
                     onClick={() => setShowRegisterModal(true)}
                     className="p-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-400 text-xs font-bold flex items-center gap-1 transition-all"
                     title="تسجيل دراجة نارية وسائق إضافي"
                   >
-                    <Bike className="w-3.5 h-3.5" />
+                    <MotoIcon className="w-4 h-4 text-amber-400" />
                     <span className="text-[10px]">إضافة دراجة</span>
                   </button>
 
@@ -226,8 +267,8 @@ export const DriverHome: React.FC = () => {
                 </div>
               )}
 
-              {/* Today's KPI Dashboard - Section 21 & Section 50 */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
+              {/* Today's KPI Dashboard */}
+              <div className="grid grid-cols-2 gap-3 pt-2 animate-in fade-in duration-300">
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-1">
                   <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
                     <History className="w-3.5 h-3.5 text-amber-400" />

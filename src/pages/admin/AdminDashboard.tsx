@@ -3,7 +3,6 @@ import { useApp } from '../../contexts/AppContext';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import {
   Users,
-  Bike,
   Activity,
   CheckCircle2,
   TrendingUp,
@@ -14,6 +13,7 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react';
+import { MotoIcon } from '../../components/shared/MotoIcon';
 
 interface AdminDashboardProps {
   onNavigateTab: (tab: string) => void;
@@ -120,7 +120,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateTab })
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold">السائقين المسجلين</span>
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
-              <Bike className="w-4 h-4" />
+              <MotoIcon className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-white">{totalDriversCount}</div>
