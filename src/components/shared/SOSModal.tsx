@@ -44,7 +44,7 @@ export const SOSModal: React.FC<SOSModalProps> = ({ onClose, activeRide }) => {
           </div>
           <div>
             <h3 className="text-lg font-black text-red-400">زر الطوارئ والمساعدة (SOS)</h3>
-            <p className="text-xs text-slate-400">خدمات المساعدة والسلامة في الجزائر</p>
+            <p className="text-xs text-slate-400">خدمات المساعدة والسلامة الفورية</p>
           </div>
         </div>
 

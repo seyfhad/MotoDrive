@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
+import { supabase } from '../supabaseClient';
 import {
   UserRole,
   UserProfile,
@@ -184,7 +185,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // --------------------------------------------------------------------------
-  // 1. FIREBASE AUTH & USER PROFILE INITIALIZATION
+  // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
   useEffect(() => {
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
@@ -225,7 +226,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    return () => unsubscribe();
+    // 1b. Supabase OAuth listener (Restores Facebook session upon callback)
+    const { data: sbAuthListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session?.user) {
+        const sbUser = session.user;
+        const displayName =
+          sbUser.user_metadata?.full_name ||
+          sbUser.user_metadata?.name ||
+          sbUser.email?.split('@')[0] ||
+          'مستخدم فيسبوك';
+        const photoUrl =
+          sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture;
+
+        const profile: UserProfile = {
+          id: sbUser.id,
+          name: displayName,
+          phone: sbUser.user_metadata?.phone || '0550123456',
+          email: sbUser.email || undefined,
+          photoUrl: photoUrl || undefined,
+          role: 'passenger',
+          status: 'active',
+          cancellationCount: 0,
+          createdAt: sbUser.created_at || new Date().toISOString(),
+        };
+
+        setActivePassenger(profile);
+        setCurrentUser({
+          uid: sbUser.id,
+          displayName: displayName,
+          email: sbUser.email || undefined,
+          photoURL: photoUrl || undefined,
+        } as any);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      sbAuthListener.subscription.unsubscribe();
+    };
   }, []);
 
   // --------------------------------------------------------------------------

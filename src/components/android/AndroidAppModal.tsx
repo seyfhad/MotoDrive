@@ -329,7 +329,7 @@ export const AndroidAppModal: React.FC<AndroidAppModalProps> = ({ isOpen, onClos
                   <div>
                     <h4 className="font-bold text-white text-xs">العمل دون اتصال (Offline Service Worker)</h4>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      تخزين مؤقت عالي السرعة يضمن فتح التطبيق فوراً حتى في حالات ضعف شبكة الهاتف في الجزائر.
+                      تخزين مؤقت عالي السرعة يضمن فتح التطبيق فوراً حتى في حالات ضعف شبكة الهاتف.
                     </p>
                   </div>
                 </div>

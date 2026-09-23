@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.motodrive.dz',
-  appName: 'MotoDrive موتو درايف الجزائر',
+  appName: 'MotoDrive',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

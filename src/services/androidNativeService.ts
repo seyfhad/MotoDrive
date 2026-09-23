@@ -23,7 +23,14 @@ class AndroidNativeService {
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
 
-    this.isInstalledState = isStandalone;
+    const isNativeCapacitor = Capacitor.isNativePlatform();
+
+    if (isStandalone || isNativeCapacitor) {
+      document.documentElement.classList.add('is-capacitor');
+      document.body.classList.add('is-capacitor');
+    }
+
+    this.isInstalledState = isStandalone || isNativeCapacitor;
 
     // Listen for Android beforeinstallprompt
     window.addEventListener('beforeinstallprompt', (e: Event) => {

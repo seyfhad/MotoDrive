@@ -159,7 +159,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
               </a>
 
               <a
-                href={`https://wa.me/213662688714?text=${encodeURIComponent('السلام عليكم، أتواصل معكم بخصوص تطبيق MotoDrive الجزائر')}`}
+                href={`https://wa.me/213662688714?text=${encodeURIComponent('السلام عليكم، أتواصل معكم بخصوص تطبيق MotoDrive')}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-emerald-600/20"

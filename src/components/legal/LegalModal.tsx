@@ -34,7 +34,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
 
           <div className="flex items-center gap-2">
             <div>
-              <h2 className="text-base sm:text-lg font-black text-white">MotoDrive الجزائر - الشروط والخصوصية</h2>
+              <h2 className="text-base sm:text-lg font-black text-white">MotoDrive - الشروط والخصوصية</h2>
               <p className="text-[11px] text-amber-400 font-medium">الامتثال القانوني وسياسة حماية البيانات والمعلومات</p>
             </div>
             <div className="w-9 h-9 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center text-sm font-bold">
@@ -77,10 +77,10 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-300 space-y-1">
                 <div className="font-bold flex items-center gap-1.5 text-xs">
                   <Shield className="w-4 h-4 text-amber-400" />
-                  <span>التزام MotoDrive بحماية خصوصية المستخدمين في الجزائر</span>
+                  <span>التزام MotoDrive بحماية خصوصية المستخدمين</span>
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  تلتزم منصة MotoDrive بالمعايير الصارمة لحماية المعطيات ذات الطابع الشخصي وفقاً للقانون الجزائري.
+                  تلتزم منصة MotoDrive بالمعايير الصارمة لحماية المعطيات ذات الطابع الشخصي والخصوصية.
                 </p>
               </div>
 
@@ -123,7 +123,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({
                   <span>شروط وقواعد استخدام منصة MotoDrive</span>
                 </div>
                 <p className="text-[11px] text-slate-400">
-                  تحدد هذه الاتفاقية حقوق والتزامات كل من الركاب وسائقي الدراجات النارية في الجمهورية الجزائرية.
+                  تحدد هذه الاتفاقية حقوق والتزامات كل من الركاب وسائقي الدراجات النارية عبر المنصة.
                 </p>
               </div>
 

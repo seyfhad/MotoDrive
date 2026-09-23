@@ -117,7 +117,7 @@ export const DriverIdentityVerificationCard: React.FC<DriverIdentityVerification
           </div>
           <p className="text-[11px] text-slate-400">
             {isApproved
-              ? 'تم التحقق من مطابقة الهوية ومراجعة السوابق والوثائق من طرف إدارة MotoDrive الجزائر'
+              ? 'تم التحقق من مطابقة الهوية ومراجعة السوابق والوثائق من طرف إدارة MotoDrive'
               : 'جاري فحص وتدقيق الوثائق الرسمية من طرف فريق التحقق المعتمد'}
           </p>
         </div>

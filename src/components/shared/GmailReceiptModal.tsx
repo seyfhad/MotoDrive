@@ -71,7 +71,7 @@ export const GmailReceiptModal: React.FC<GmailReceiptModalProps> = ({
           subject: customSubject,
           htmlBody: `
             <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
-              <h2 style="color: #f59e0b;">MotoDrive - موتو درايف</h2>
+              <h2 style="color: #f59e0b;">MotoDrive</h2>
               <div style="background: #1e293b; padding: 16px; border-radius: 12px; font-size: 14px; line-height: 1.6;">
                 ${customMessage.replace(/\n/g, '<br/>')}
               </div>

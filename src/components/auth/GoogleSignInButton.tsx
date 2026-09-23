@@ -44,7 +44,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       }
 
       broadcastNotification(
-        'مرحباً بك في موتو درايف',
+        'مرحباً بك في MotoDrive',
         `تم تسجيل دخولك بنجاح كـ ${user.displayName || user.email || 'مستخدم'}`
       );
 

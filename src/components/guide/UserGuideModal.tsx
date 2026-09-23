@@ -117,7 +117,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                 <div>
                   <h3 className="font-extrabold text-amber-300 text-sm">كيف تحجز رحلة دراجة نارية في 5 خطوات بسيطة؟</h3>
                   <p className="text-[11px] text-slate-300 mt-0.5">
-                    تطبيق MotoDrive يوفر تجربة تنقل سريعة وآمنة باختيارك السعر المناسب في الجزائر.
+                    تطبيق MotoDrive يوفر تجربة تنقل سريعة وآمنة باختيارك السعر المناسب.
                   </p>
                 </div>
               </div>
@@ -391,7 +391,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs">
-          <div className="text-slate-400 text-[11px]">MotoDrive الجزائر • الإصدار V1.0</div>
+          <div className="text-slate-400 text-[11px]">MotoDrive • الإصدار V1.0</div>
           <button
             type="button"
             onClick={onClose}

@@ -1,7 +1,7 @@
 {
-  "name": "MotoDrive - موتو درايف الجزائر",
+  "name": "MotoDrive",
   "short_name": "MotoDrive",
-  "description": "تطبيق حجز ونقل الركاب بالدراجات النارية في الجزائر",
+  "description": "تطبيق حجز ونقل الركاب بالدراجات النارية",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

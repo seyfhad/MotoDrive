@@ -59,7 +59,13 @@ export const PushNotificationToast: React.FC = () => {
   };
 
   return (
-    <div className="fixed top-2 inset-x-0 z-[100] max-w-md mx-auto px-3 pointer-events-none space-y-2" dir="rtl">
+    <div
+      className="fixed inset-x-0 z-[100] max-w-md mx-auto px-3 pointer-events-none space-y-2 transition-all"
+      style={{
+        top: 'calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.75rem)',
+      }}
+      dir="rtl"
+    >
       {/* 1. Permission Prompt Banner (if not yet granted) */}
       {showPermissionBanner && permissionStatus === 'default' && (
         <div className="pointer-events-auto bg-slate-900/95 border border-amber-500/40 rounded-2xl p-3 shadow-2xl backdrop-blur-md flex items-center justify-between gap-3 text-right animate-in slide-in-from-top-4">

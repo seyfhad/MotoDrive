@@ -15,6 +15,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   return (
     <div
       className="min-h-screen w-full flex flex-col justify-between p-5 sm:p-7 bg-slate-950 text-slate-100 relative overflow-hidden text-right"
+      style={{
+        paddingTop: 'max(var(--safe-area-top, 0px), 1.25rem)',
+        paddingBottom: 'max(var(--safe-area-bottom, 0px), 1.25rem)',
+      }}
       id="motodrive-welcome-screen"
       dir="rtl"
     >
@@ -23,7 +27,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Top Header / Brand Badge */}
-      <div className="relative z-10 flex items-center justify-between pt-2">
+      <div className="relative z-10 flex items-center justify-between pt-1">
         <div className="flex items-center gap-2.5">
           <div className="w-11 h-11 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0">
             <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
@@ -32,9 +36,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <div className="flex items-center gap-1.5">
               <span className="text-xl font-black tracking-tight text-white font-sans">
                 Moto<span className="text-amber-400">Drive</span>
-              </span>
-              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
-                الجزائر 🇩🇿
               </span>
             </div>
             <p className="text-[10px] text-slate-400">منصة النقل الذكي بالدراجات النارية</p>
@@ -57,7 +58,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-sm">
-            أول تطبيق جزائري يربط الركاب بسائقي الدراجات النارية لتفادي الازدحام المروري، مع نظام تسعير حر وتتبع فوري بالـ GPS.
+            أول تطبيق يربط الركاب بسائقي الدراجات النارية لتفادي الازدحام المروري، مع نظام تسعير حر وتتبع فوري بالـ GPS.
           </p>
         </div>
 
@@ -114,10 +115,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
       {/* Footer with Mandatory Legal & Privacy Buttons for Google Cloud */}
       <div className="relative z-10 pt-4 border-t border-slate-900 space-y-3">
-        {/* Google Cloud & Algerian Compliance Badge */}
+        {/* Google Cloud Compliance Badge */}
         <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span>ممتثل لسياسات Google Cloud والمعايير القانونية الجزائرية</span>
+          <span>ممتثل لسياسات Google Cloud والمعايير القانونية</span>
         </div>
 
         {/* Footer Buttons: Terms of Service & Privacy Policy */}

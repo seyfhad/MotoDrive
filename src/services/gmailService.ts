@@ -101,7 +101,7 @@ export const sendRideReceiptEmail = async (
   const htmlBody = `
     <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #f8fafc; border-radius: 16px; overflow: hidden; border: 1px solid #334155;">
       <div style="background: linear-gradient(to right, #f59e0b, #d97706); padding: 24px; text-align: center; color: #0f172a;">
-        <h1 style="margin: 0; font-size: 24px; font-weight: 900;">MotoDrive - موتو درايف</h1>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 900;">MotoDrive</h1>
         <p style="margin: 4px 0 0 0; font-size: 14px; font-weight: bold;">إيصال رحلة رسمية برقم #${ride.id.slice(-6).toUpperCase()}</p>
       </div>
 
@@ -132,7 +132,7 @@ export const sendRideReceiptEmail = async (
         }
 
         <p style="text-align: center; font-size: 12px; color: #64748b; margin-top: 24px;">
-          شكراً لاستخدامك منصة MotoDrive لنقل الأشخاص بالدراجات النارية في الجزائر! 🚀
+          شكراً لاستخدامك منصة MotoDrive لنقل الأشخاص بالدراجات النارية! 🚀
         </p>
       </div>
     </div>

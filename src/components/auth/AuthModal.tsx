@@ -7,6 +7,8 @@ import {
 } from '../../services/authService';
 import { UserRole } from '../../types';
 import { MotoIcon } from '../shared/MotoIcon';
+import { FacebookSignInButton } from './FacebookSignInButton';
+import { GoogleSignInButton } from './GoogleSignInButton';
 import {
   X,
   ShieldCheck,
@@ -47,7 +49,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   } = useApp();
 
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
-  const [step, setStep] = useState<'role_selection' | 'auth_form'>('role_selection');
+  const [step, setStep] = useState<'role_selection' | 'auth_form' | 'verification_status'>('role_selection');
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // Email Auth State
@@ -59,10 +61,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [supabaseNotice, setSupabaseNotice] = useState<string | null>(null);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [resendStatusMsg, setResendStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
       setErrorMsg(null);
+      setSupabaseNotice(null);
+      setResendStatusMsg(null);
       setStep('role_selection');
     }
   }, [isOpen]);
@@ -85,10 +92,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Direct Email Auth (Sign In / Sign Up with Firebase Email Link Verification)
+  const handleResendLink = async () => {
+    const cleanEmail = emailInput.trim().toLowerCase();
+    if (!cleanEmail) return;
+    try {
+      setResendingEmail(true);
+      setResendStatusMsg(null);
+      const res = await resendVerificationEmail(cleanEmail);
+      setResendStatusMsg(res.message);
+      if (res.success) {
+        broadcastNotification('تم إعادة إرسال الرابط', res.message);
+      }
+    } catch (err: any) {
+      setResendStatusMsg(err?.message || 'تعذر إعادة إرسال الرابط.');
+    } finally {
+      setResendingEmail(false);
+    }
+  };
+
+  // Direct Email Auth
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
+    setSupabaseNotice(null);
 
     const cleanEmail = emailInput.trim().toLowerCase();
     const cleanPass = passwordInput.trim();
@@ -104,7 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       setLoading(true);
-      let res;
+      let res: any;
 
       if (emailTab === 'signin') {
         res = await signInWithEmailPass(cleanEmail, cleanPass);
@@ -145,18 +171,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       if (emailTab === 'signup') {
+        setSupabaseNotice(res.supabaseNotice || null);
+        setStep('verification_status');
         broadcastNotification(
-          'تم إرسال رابط التأكيد بنجاح 📧',
-          `أهلاً بك ${profile.name}! لقد أرسلنا رابط تأكيد الحساب إلى بريدك (${cleanEmail}). يرجى تفقّد بريدك والضغط على رابط التفعيل.`
+          'تم إنشاء الحساب بنجاح 📧',
+          `أهلاً بك ${profile.name}! لقد تم تجهيز حسابك. تفقّد بريدك والرسائل غير المرغوب فيها (Spam) للتحقق.`
         );
       } else {
         broadcastNotification(
           'تم تسجيل الدخول بنجاح',
           `أهلاً بك مجدداً ${profile.name}!`
         );
+        if (onSuccess) onSuccess();
+        onClose();
       }
-      if (onSuccess) onSuccess();
-      onClose();
     } catch (err: any) {
       console.error('Email Auth Error:', err);
       setErrorMsg(err?.message || 'حدث خطأ أثناء الاتصال. يرجى مراجعة البيانات.');
@@ -253,6 +281,76 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           </div>
+        ) : step === 'verification_status' ? (
+          /* Step 3: Dedicated Email Verification Status Screen */
+          <div className="space-y-4 py-2 animate-in fade-in duration-300 text-right">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
+                <Mail className="w-6 h-6 animate-bounce" />
+              </div>
+
+              <div className="text-center space-y-1">
+                <h4 className="text-sm font-black text-white">التحقق من البريد الإلكتروني</h4>
+                <p className="text-xs text-amber-300 font-mono" dir="ltr">
+                  {emailInput}
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1.5 text-xs text-amber-200 leading-relaxed">
+                <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                  <Sparkles className="w-4 h-4 shrink-0" />
+                  <span>يرجى تفقّد بريدك الإلكتروني:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300">
+                  <li>افتح صندوق الوارد (Inbox).</li>
+                  <li>تفقّد مجلد الرسائل غير المرغوب فيها (Spam / Junk).</li>
+                  <li>اضغط على رابط تفعيل الحساب لإكمال ربطه.</li>
+                </ul>
+              </div>
+
+              {supabaseNotice && (
+                <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-300 leading-relaxed">
+                  <span className="font-bold text-amber-400">تنبيه المالك / النظام: </span>
+                  <span>{supabaseNotice}</span>
+                </div>
+              )}
+
+              {resendStatusMsg && (
+                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-[11px] font-medium text-center">
+                  {resendStatusMsg}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleResendLink}
+                disabled={resendingEmail}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {resendingEmail ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4 text-amber-400" />
+                    <span>إعادة إرسال رابط التأكيد</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSuccess) onSuccess();
+                  onClose();
+                }}
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors shadow-lg shadow-amber-500/20"
+              >
+                المتابعة والدخول إلى التطبيق الآن
+              </button>
+            </div>
+          </div>
         ) : step === 'role_selection' ? (
           /* Step 1: Medium-Sized Icon Cards for Role Selection (راكب / سائق) */
           <div className="space-y-4 py-2 animate-in fade-in duration-300">
@@ -321,126 +419,98 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
 
-            {/* Direct Email / Password Authentication Form */}
-            <form onSubmit={handleEmailSubmit} className="space-y-3 pt-1">
-              <div className="bg-slate-950/80 border border-slate-800 p-0.5 rounded-xl grid grid-cols-2 gap-1 text-[11px] font-bold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmailTab('signup');
-                    setErrorMsg(null);
-                  }}
-                  className={`py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
-                    emailTab === 'signup'
-                      ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>إنشاء حساب جديد</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmailTab('signin');
-                    setErrorMsg(null);
-                  }}
-                  className={`py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all ${
-                    emailTab === 'signin'
-                      ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 font-bold'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>تسجيل الدخول</span>
-                </button>
+            {/* Facebook OAuth Registration & Login as Primary Option */}
+            <div className="space-y-3 pt-1">
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-right space-y-1">
+                <span className="text-xs font-bold text-blue-400 block">تسجيل الحساب عبر فيسبوك (Facebook)</span>
+                <p className="text-[11px] text-slate-300 leading-snug">
+                  سجّل حسابك فوراً بضغطة زر دون الحاجة للانتظار أو تأكيد رابط الإيميل.
+                </p>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">البريد الإلكتروني:</label>
-                <div className="relative">
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={e => setEmailInput(e.target.value)}
-                    placeholder="مثال: user@gmail.com"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                    required
-                  />
-                  <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              {/* Facebook OAuth Button */}
+              <FacebookSignInButton
+                role={selectedRole}
+                onSuccess={() => {
+                  if (onSuccess) onSuccess();
+                  onClose();
+                }}
+              />
+
+              {/* Google OAuth Button */}
+              <GoogleSignInButton
+                role={selectedRole}
+                variant="dark"
+                onSuccess={() => {
+                  if (onSuccess) onSuccess();
+                  onClose();
+                }}
+              />
+
+              <div className="relative py-2 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-800" />
                 </div>
+                <span className="relative px-3 bg-slate-900 text-[11px] text-slate-500 font-bold">
+                  أو الدخول بكلمة المرور مباشرة
+                </span>
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate-300 mb-1">كلمة المرور:</label>
-                <div className="relative">
-                  <input
-                    type="password"
-                    value={passwordInput}
-                    onChange={e => setPasswordInput(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                    required
-                    minLength={6}
-                  />
-                  <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                </div>
-              </div>
-
-              {emailTab === 'signup' && (
-                <>
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">الاسم الكامل:</label>
+              {/* Direct Password Login without email confirmation flow */}
+              <form onSubmit={handleEmailSubmit} className="space-y-2.5">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">البريد الإلكتروني / الحساب:</label>
+                  <div className="relative">
                     <input
-                      type="text"
-                      value={emailNameInput}
-                      onChange={e => setEmailNameInput(e.target.value)}
-                      placeholder="اسمك الكامل"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                      type="email"
+                      value={emailInput}
+                      onChange={e => setEmailInput(e.target.value)}
+                      placeholder="user@example.com"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
                       required
                     />
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1">رقم الهاتف:</label>
-                    <div className="relative">
-                      <input
-                        type="tel"
-                        value={emailPhoneInput}
-                        onChange={e => setEmailPhoneInput(e.target.value)}
-                        placeholder="مثال: 0550123456"
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                        required
-                        dir="ltr"
-                      />
-                      <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                    </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">كلمة المرور:</label>
+                  <div className="relative">
+                    <input
+                      type="password"
+                      value={passwordInput}
+                      onChange={e => setPasswordInput(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
+                      required
+                      minLength={6}
+                    />
+                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
                   </div>
-                </>
-              )}
+                </div>
 
-              {errorMsg && (
-                <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
-                  {errorMsg}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                ) : (
-                  <>
-                    <span>{emailTab === 'signup' ? 'إنشاء الحساب والتسجيل' : 'تسجيل الدخول'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
+                {errorMsg && (
+                  <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
+                    {errorMsg}
+                  </p>
                 )}
-              </button>
-            </form>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
+                  ) : (
+                    <>
+                      <span>تسجيل الدخول المباشر</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         )}
       </div>

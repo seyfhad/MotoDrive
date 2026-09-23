@@ -38,7 +38,13 @@ export const Header: React.FC = () => {
 
   return (
     <>
-      <header className="bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 px-3.5 py-2 sm:px-4 sm:py-2.5" id="app-main-header">
+      <header
+        className="bg-slate-950/95 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 px-3.5 pb-2 sm:px-4 sm:pb-2.5"
+        style={{
+          paddingTop: 'calc(var(--safe-area-top, env(safe-area-inset-top, 0px)) + 0.5rem)',
+        }}
+        id="app-main-header"
+      >
         <div className="w-full flex items-center justify-between gap-2">
           {/* Brand Icon & Name */}
           <button

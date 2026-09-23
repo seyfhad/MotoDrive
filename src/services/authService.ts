@@ -17,6 +17,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { supabase } from '../supabaseClient';
 import { UserProfile, DriverProfile, UserRole } from '../types';
 
 // Utility to search existing UserProfile & DriverProfile by Phone
@@ -105,7 +106,7 @@ export const subscribeToAuth = (
       } else {
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
-          name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
+          name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
           phone: firebaseUser.phoneNumber || '0550123456',
           email: firebaseUser.email || undefined,
           photoUrl: firebaseUser.photoURL || undefined,
@@ -131,7 +132,7 @@ export const subscribeToAuth = (
       console.warn('Auth subscriber profile fetch warning (using offline fallback profile):', err?.message || err);
       const fallbackProfile: UserProfile = {
         id: firebaseUser.uid,
-        name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم موتو درايف'),
+        name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
         phone: firebaseUser.phoneNumber || '0550123456',
         email: firebaseUser.email || undefined,
         photoUrl: firebaseUser.photoURL || undefined,
@@ -408,10 +409,66 @@ export const signInWithPhone = async (phone: string, name?: string, role: UserRo
   return authenticateWithPhoneAndPin(phone, '123456', name, role);
 };
 
+export const resendVerificationEmail = async (
+  email: string
+): Promise<{ success: boolean; message: string; supabaseError?: string }> => {
+  const cleanEmail = email.trim().toLowerCase();
+  let sbSuccess = false;
+  let fbSuccess = false;
+  let sbErr = '';
+  let fbErr = '';
+
+  // 1. Supabase Resend
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: cleanEmail,
+    });
+    if (error) {
+      console.warn('Supabase resend email error:', error.message);
+      sbErr = error.message;
+    } else {
+      sbSuccess = true;
+    }
+  } catch (err: any) {
+    console.warn('Supabase resend exception:', err?.message || err);
+    sbErr = err?.message || 'تعذر الاتصال بـ Supabase';
+  }
+
+  // 2. Firebase Resend
+  try {
+    if (auth.currentUser && (auth.currentUser.email === cleanEmail || !auth.currentUser.email)) {
+      await sendEmailVerification(auth.currentUser);
+      fbSuccess = true;
+    }
+  } catch (err: any) {
+    console.warn('Firebase resend exception:', err?.message || err);
+    fbErr = err?.message || 'تعذر الإرسال عبر Firebase';
+  }
+
+  if (sbSuccess || fbSuccess) {
+    return {
+      success: true,
+      message: 'تم إرسال رابط التأكيد بنجاح! يرجى مراجعة البريد الوارد ومجلد الرسائل غير المرغوب فيها (Spam / Junk).',
+    };
+  }
+
+  let errorDetail = sbErr || fbErr || 'تعذر إرسال بريد التأكيد';
+  if (errorDetail.toLowerCase().includes('rate limit') || errorDetail.includes('over_email_send_rate_limit')) {
+    errorDetail = 'تم تجاوز حد إرسال الإيميلات في Supabase (3 رسائل في الساعة للنسخة التجريبية المجانية). يمكن المتابعة مباشرة والدخول للتطبيق.';
+  }
+
+  return {
+    success: false,
+    message: errorDetail,
+    supabaseError: sbErr,
+  };
+};
+
 export const signInWithEmailPass = async (
   email: string,
   pass: string
-): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null; supabaseNotice?: string }> => {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = pass.trim();
 
@@ -420,6 +477,23 @@ export const signInWithEmailPass = async (
   }
   if (!cleanPass || cleanPass.length < 6) {
     throw new Error('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
+  }
+
+  // Attempt Supabase SignIn
+  let supabaseNotice: string | undefined;
+  try {
+    const { error: sbErr } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password: cleanPass,
+    });
+    if (sbErr) {
+      console.warn('Supabase signIn notice:', sbErr.message);
+      if (sbErr.message.includes('Email not confirmed')) {
+        supabaseNotice = 'تنبيه: البريد غير مؤكد في Supabase. يمكنك إعادة إرسال الرابط أو الدخول مباشرة.';
+      }
+    }
+  } catch (err: any) {
+    console.warn('Supabase signIn exception:', err?.message || err);
   }
 
   let user: FirebaseUser | null = null;
@@ -450,11 +524,19 @@ export const signInWithEmailPass = async (
       throw new Error('كلمة المرور غير صحيحة. يرجى التأكد من كلمة المرور وإعادة المحاولة.');
     }
 
-    return { user, profile: existingProfile, driver: existingDriver };
+    return { user, profile: existingProfile, driver: existingDriver, supabaseNotice };
   }
 
   throw new Error('لم يتم العثور على حساب بهذا البريد الإلكتروني. يرجى إنشاء حساب جديد أولاً.');
 };
+
+export interface SignUpResponse {
+  user: FirebaseUser;
+  profile: UserProfile;
+  driver: DriverProfile | null;
+  emailVerificationSent: boolean;
+  supabaseNotice?: string;
+}
 
 export const signUpWithEmailPass = async (
   email: string,
@@ -462,7 +544,7 @@ export const signUpWithEmailPass = async (
   name: string,
   phone: string,
   role: UserRole = 'passenger'
-): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
+): Promise<SignUpResponse> => {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = pass.trim();
   const cleanName = name.trim();
@@ -492,15 +574,48 @@ export const signUpWithEmailPass = async (
     throw new Error('رقم الهاتف هذا مسجل بالفعل بحساب آخر. يرجى تسجيل الدخول بنفس الرقم.');
   }
 
+  // 1. Register with Supabase Auth
+  let sbEmailSent = false;
+  let supabaseNotice: string | undefined;
+  try {
+    const { data: sbData, error: sbErr } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: cleanPass,
+      options: {
+        data: {
+          name: cleanName,
+          phone: cleanPhone,
+          role,
+        },
+      },
+    });
+
+    if (sbErr) {
+      console.warn('Supabase signUp warning:', sbErr.message);
+      if (sbErr.message.toLowerCase().includes('rate limit') || sbErr.message.includes('over_email_send_rate_limit')) {
+        supabaseNotice = 'تم بلوغ الحد الأقصى لإرسال الإيميلات في Supabase (3 رسائل/ساعة لمشاريع Free Tier). يمكنك الدخول مباشرة أو إعداد Custom SMTP في لوحة Supabase.';
+      } else {
+        supabaseNotice = sbErr.message;
+      }
+    } else if (sbData?.user) {
+      sbEmailSent = true;
+    }
+  } catch (err: any) {
+    console.warn('Supabase signUp network notice:', err?.message || err);
+    supabaseNotice = err?.message;
+  }
+
+  // 2. Register with Firebase Auth
   let user: FirebaseUser;
+  let fbEmailSent = false;
   try {
     const cred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
     user = cred.user;
     await updateProfile(user, { displayName: cleanName }).catch(() => {});
-    // Trigger Firebase Email Verification link
-    await sendEmailVerification(user).catch(err => {
-      console.warn('Firebase Email Verification send notice:', err);
+    await sendEmailVerification(user).catch(verErr => {
+      console.warn('Firebase sendEmailVerification notice:', verErr);
     });
+    fbEmailSent = true;
   } catch (err: any) {
     console.warn('Firebase createUser notice:', err?.code || err?.message);
     if (auth.currentUser) {
@@ -585,7 +700,13 @@ export const signUpWithEmailPass = async (
     }
   }
 
-  return { user, profile, driver };
+  return {
+    user,
+    profile,
+    driver,
+    emailVerificationSent: Boolean(sbEmailSent || fbEmailSent),
+    supabaseNotice,
+  };
 };
 
 export const signInWithDirectGmail = async (email: string, name?: string, phone?: string, role: UserRole = 'passenger') => {
@@ -695,7 +816,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   } else {
     profile = {
       id: user.uid,
-      name: user.displayName || 'مستخدم موتو درايف',
+      name: user.displayName || 'مستخدم MotoDrive',
       phone: user.phoneNumber || '0550123456',
       email: user.email || undefined,
       photoUrl: user.photoURL || undefined,
@@ -752,7 +873,28 @@ export const signUpWithEmail = async (email: string, pass: string, name: string,
 
 export const signOutUser = async () => {
   cachedAccessToken = null;
+  await supabase.auth.signOut().catch(() => {});
   await fbSignOut(auth);
+};
+
+export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
+  const redirectUrl = window.location.origin;
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: {
+      redirectTo: redirectUrl,
+      queryParams: {
+        role,
+      },
+    },
+  });
+
+  if (error) {
+    console.error('Facebook OAuth Error:', error.message);
+    throw new Error(error.message || 'تعذر الاتصال بـ فيسبوك. يرجى التحقق من إعدادات Supabase Facebook Client ID.');
+  }
+
+  return data;
 };
 
 export const resendFirebaseEmailVerification = async (): Promise<void> => {
