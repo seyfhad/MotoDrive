@@ -1,4 +1,4 @@
-name: Build Android APK
+Name: Build Android APK
 on:
   push:
     branches: [ main, master ]
@@ -29,6 +29,7 @@ jobs:
       - name: Install Capacitor & Android platform
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
+          rm -rf android
           npx cap add android
           npx cap sync android
           if [ -f google-services.json ]; then cp google-services.json android/app/; fi
