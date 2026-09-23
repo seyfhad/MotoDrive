@@ -1,24 +1,33 @@
+import { FacebookLogin } from '@capacitor-community/facebook-login';
 import { supabase } from '../supabaseClient';
 import { UserRole } from '../types';
-import { FACEBOOK_REDIRECT_URI, openFacebookOAuth } from './deepLinkService';
 
 export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
-  const isNative = window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:' || window.location.protocol === 'http:' && window.location.hostname === 'localhost';
-  const redirectTo = isNative ? FACEBOOK_REDIRECT_URI : window.location.origin;
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: {
-      redirectTo,
-      skipBrowserRedirect: true,
-      queryParams: { role },
-    },
-  });
+  try {
+    const FACEBOOK_PERMISSIONS = ['email', 'public_profile'];
+    
+    // فتح نافذة فيسبوك الأصلية (Native) مباشرة
+    const result = await FacebookLogin.login({ permissions: FACEBOOK_PERMISSIONS });
 
-  if (error) {
-    console.error('Facebook OAuth Error:', error.message);
-    throw new Error(error.message || 'تعذر الاتصال بفيسبوك. تحقق من إعدادات Facebook Provider في Supabase.');
+    if (result && result.accessToken) {
+      const token = result.accessToken.token;
+      
+      // إرسال الـ Token مباشرة إلى Supabase مع الـ role في الـ data أو الـ options
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'facebook',
+        token: token,
+        options: {
+          data: { role }
+        }
+      });
+
+      if (error) throw error;
+      return data;
+    } else {
+      throw new Error('فشل الحصول على رمز الوصول من فيسبوك.');
+    }
+  } catch (error: any) {
+    console.error('Facebook Native Login Error:', error);
+    throw new Error(error.message || 'تعذر تسجيل الدخول بفيسبوك.');
   }
-  if (!data?.url) throw new Error('لم يُرجع Supabase رابط مصادقة صالحاً.');
-  await openFacebookOAuth(data.url);
-  return data;
 };
