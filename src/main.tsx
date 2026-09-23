@@ -3,22 +3,13 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import './services/androidNativeService';
+import './services/deepLinkBootstrap';
 
-// Tier 1 Google Maps Platform quota monitoring
-(window as any).gm_authFailure = () => {
-  window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
-};
+(window as any).gm_authFailure = () => window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
 const origError = console.error;
 console.error = (...args: unknown[]) => {
   origError.apply(console, args);
   const msg = args.map((a) => String(a)).join(' ');
-  if (msg.includes('OverQuotaMapError') || msg.includes('QuotaExceededError')) {
-    window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
-  }
+  if (msg.includes('OverQuotaMapError') || msg.includes('QuotaExceededError')) window.dispatchEvent(new CustomEvent('gmp-quota-exceeded'));
 };
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
