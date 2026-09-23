@@ -29,8 +29,8 @@ jobs:
       - name: Install Capacitor & Android platform
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init MotoDrive com.motodrive.app --web-dir dist
           npx cap add android
+          npx cap sync android
           if [ -f google-services.json ]; then cp google-services.json android/app/; fi
 
       - name: Generate Native App Icons
