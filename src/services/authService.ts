@@ -16,6 +16,7 @@ import {
   sendEmailVerification,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
+import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
 import { supabase } from '../supabaseClient';
 import { UserProfile, DriverProfile, UserRole } from '../types';
@@ -755,11 +756,13 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   } catch (err: any) {
     console.warn('Google Popup SignIn notice:', err?.code || err?.message);
     
-    // If popup is blocked or running inside Android WebView/APK, fallback to redirect or handle error
+    // If popup is blocked on WEB, fallback to redirect.
+    // On Native APK (Capacitor), NEVER call signInWithRedirect as it replaces window.location and opens web browser
+    const isNative = Capacitor.isNativePlatform();
     if (
-      err?.code === 'auth/popup-blocked' ||
-      err?.code === 'auth/operation-not-supported-in-this-environment' ||
-      err?.code === 'auth/disallowed-useragent'
+      !isNative &&
+      (err?.code === 'auth/popup-blocked' ||
+        err?.code === 'auth/operation-not-supported-in-this-environment')
     ) {
       try {
         await signInWithRedirect(auth, provider);

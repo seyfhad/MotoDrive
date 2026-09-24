@@ -29,10 +29,27 @@ jobs:
       - name: Install Capacitor & Android platform
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
+          # Preserve release files before recreating android directory
+          mkdir -p /tmp/keystore_backup
+          if [ -f release.keystore ]; then cp release.keystore /tmp/keystore_backup/; fi
+          if [ -f android/app/release.keystore ]; then cp android/app/release.keystore /tmp/keystore_backup/; fi
+          if [ -f release-signing.properties ]; then cp release-signing.properties /tmp/keystore_backup/; fi
+
           rm -rf android
           npx cap add android
           npx cap sync android
+
           if [ -f google-services.json ]; then cp google-services.json android/app/; fi
+
+          # Restore keystore & release-signing properties
+          if [ -f /tmp/keystore_backup/release.keystore ]; then
+            cp /tmp/keystore_backup/release.keystore android/app/release.keystore
+            cp /tmp/keystore_backup/release.keystore android/release.keystore
+          fi
+          if [ -f /tmp/keystore_backup/release-signing.properties ]; then
+            cp /tmp/keystore_backup/release-signing.properties release-signing.properties
+            cp /tmp/keystore_backup/release-signing.properties android/release-signing.properties
+          fi
 
       - name: Generate Native App Icons
         run: |
@@ -60,21 +77,54 @@ jobs:
           ./gradlew assembleDebug
           ./gradlew assembleRelease
 
-      - name: Sign Release APK if Keystore Secret Provided
+      - name: Sign Release APK (Guaranteed Signed APK)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
         run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks android/app/release.keystore \
-            --ks-pass pass:"$KEYSTORE_PASSWORD" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass pass:"$KEY_PASSWORD" \
-            --out android/app/build/outputs/apk/release/app-release-signed.apk \
-            android/app/build/outputs/apk/release/app-release-unsigned.apk
+          # 1. Check if custom secret keystore is provided
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Using GitHub secret keystore..."
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            KS_PASS="$KEYSTORE_PASSWORD"
+            KS_ALIAS="$KEY_ALIAS"
+            K_PASS="$KEY_PASSWORD"
+          # 2. Check if local repo release.keystore exists
+          elif [ -f android/app/release.keystore ]; then
+            echo "Using repository release.keystore..."
+            KS_PASS="MotoDrive2026SecureKey!"
+            KS_ALIAS="motodrive-key"
+            K_PASS="MotoDrive2026SecureKey!"
+          # 3. Otherwise generate a fresh release keystore on the fly
+          else
+            echo "Generating build release keystore on the fly..."
+            keytool -genkey -v -keystore android/app/release.keystore \
+              -alias motodrive-key -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "MotoDrive2026SecureKey!" -keypass "MotoDrive2026SecureKey!" \
+              -dname "CN=MotoDrive, OU=Mobile, O=MotoDrive, L=Algiers, S=Algiers, C=DZ"
+            KS_PASS="MotoDrive2026SecureKey!"
+            KS_ALIAS="motodrive-key"
+            K_PASS="MotoDrive2026SecureKey!"
+          fi
+
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+          echo "Using apksigner at: $APKSIGNER"
+
+          # Sign the release APK if app-release-unsigned.apk exists
+          if [ -f android/app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            $APKSIGNER sign --ks android/app/release.keystore \
+              --ks-pass pass:"$KS_PASS" \
+              --ks-key-alias "$KS_ALIAS" \
+              --key-pass pass:"$K_PASS" \
+              --out android/app/build/outputs/apk/release/app-release-signed.apk \
+              android/app/build/outputs/apk/release/app-release-unsigned.apk
+            
+            # Remove unsigned APK so only signed APK remains
+            rm -f android/app/build/outputs/apk/release/app-release-unsigned.apk
+            cp android/app/build/outputs/apk/release/app-release-signed.apk android/app/build/outputs/apk/release/app-release.apk
+          fi
 
       - name: Extract Android Signing Report (SHA-1 & SHA-256)
         run: |
