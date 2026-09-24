@@ -26,56 +26,40 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Install Capacitor & Android platform
+      - name: Sync Capacitor Android platform
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-          # Preserve release files before recreating android directory
-          mkdir -p /tmp/keystore_backup
-          if [ -f release.keystore ]; then cp release.keystore /tmp/keystore_backup/; fi
-          if [ -f android/app/release.keystore ]; then cp android/app/release.keystore /tmp/keystore_backup/; fi
-          if [ -f release-signing.properties ]; then cp release-signing.properties /tmp/keystore_backup/; fi
+          # Copy google-services.json to android/app if available
+          if [ -f google-services.json ]; then 
+            cp google-services.json android/app/google-services.json
+          fi
 
-          rm -rf android
-          npx cap add android
+          # Ensure keystore & signing properties are in place
+          if [ -f release.keystore ]; then
+            cp release.keystore android/app/release.keystore
+          elif [ -f android/app/release.keystore ]; then
+            cp android/app/release.keystore release.keystore
+          fi
+
+          if [ -f release-signing.properties ]; then
+            cp release-signing.properties android/release-signing.properties
+          fi
+
+          # Sync web assets and plugins to android without deleting custom config
           npx cap sync android
-
-          if [ -f google-services.json ]; then cp google-services.json android/app/; fi
-
-          # Restore keystore & release-signing properties
-          if [ -f /tmp/keystore_backup/release.keystore ]; then
-            cp /tmp/keystore_backup/release.keystore android/app/release.keystore
-            cp /tmp/keystore_backup/release.keystore android/release.keystore
-          fi
-          if [ -f /tmp/keystore_backup/release-signing.properties ]; then
-            cp /tmp/keystore_backup/release-signing.properties release-signing.properties
-            cp /tmp/keystore_backup/release-signing.properties android/release-signing.properties
-          fi
 
       - name: Generate Native App Icons
         run: |
           npm install -g @capacitor/assets
           mkdir -p assets
           cp icon.jpg assets/icon.png
-          npx @capacitor/assets generate --android
-
-      - name: Fix Kotlin Version Conflict
-        run: |
-          echo "
-          configurations.all {
-              resolutionStrategy.eachDependency { details ->
-                  if (details.requested.group == 'org.jetbrains.kotlin') {
-                      details.useVersion '1.8.22'
-                  }
-              }
-          }
-          " >> android/app/build.gradle
+          npx @capacitor/assets generate --android || true
 
       - name: Build Debug and Release APKs using Gradle
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease --stacktrace
 
       - name: Sign Release APK (Guaranteed Signed APK)
         env:

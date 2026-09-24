@@ -62,18 +62,31 @@ async function consumeCallback(urlStr: string): Promise<void> {
   console.log('Consuming OAuth callback URL:', urlStr);
   if (!isOAuthCallbackUrl(urlStr)) return;
 
+  // Immediately close In-App Browser / Custom Tab to prevent about:blank hang
+  if (Capacitor.isNativePlatform()) {
+    await Browser.close().catch(() => undefined);
+  }
+
   try {
     const { code, accessToken, refreshToken, error } = parseOAuthUrlParams(urlStr);
 
     if (error) {
       console.error('OAuth Callback Error from Provider:', error);
-      await Browser.close().catch(() => undefined);
+      if (Capacitor.isNativePlatform()) {
+        await Browser.close().catch(() => undefined);
+      }
       return;
     }
 
+    let sbUser: any = null;
+
     if (code) {
-      const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-      if (exchangeError) console.warn('Supabase code exchange notice:', exchangeError.message);
+      const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+      if (exchangeError) {
+        console.warn('Supabase code exchange notice:', exchangeError.message);
+      } else if (exchangeData?.user) {
+        sbUser = exchangeData.user;
+      }
     } else if (accessToken) {
       if (refreshToken) {
         const { error: sessionError } = await supabase.auth.setSession({
@@ -90,7 +103,7 @@ async function consumeCallback(urlStr: string): Promise<void> {
           .catch(() => {});
       }
 
-      // Also try linking to Firebase Auth with Facebook Credential
+      // Also link to Firebase Auth with Facebook Credential
       try {
         const credential = FacebookAuthProvider.credential(accessToken);
         await signInWithCredential(auth, credential);
@@ -99,10 +112,18 @@ async function consumeCallback(urlStr: string): Promise<void> {
       }
     }
 
-    // Retrieve active Supabase OAuth user profile
-    const { data: userData } = await supabase.auth.getUser();
-    if (userData?.user) {
-      const sbUser = userData.user;
+    // Retrieve active Supabase OAuth user profile if not already retrieved
+    if (!sbUser) {
+      const { data: userData } = await supabase.auth.getUser();
+      sbUser = userData?.user;
+    }
+
+    if (!sbUser) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      sbUser = sessionData?.session?.user;
+    }
+
+    if (sbUser) {
       const displayName =
         sbUser.user_metadata?.full_name ||
         sbUser.user_metadata?.name ||
@@ -147,15 +168,25 @@ async function consumeCallback(urlStr: string): Promise<void> {
   } catch (err) {
     console.error('Error during consumeCallback execution:', err);
   } finally {
-    // ALWAYS close the In-App Browser popover so app returns to native interface instantly
-    await Browser.close().catch(() => undefined);
-    if (typeof window !== 'undefined' && window.history) {
-      window.history.replaceState({}, document.title, '/');
+    // Close In-App Browser if on native platform
+    if (Capacitor.isNativePlatform()) {
+      await Browser.close().catch(() => undefined);
+    }
+    // Clean URL parameters on web
+    if (typeof window !== 'undefined' && window.history && (window.location.search.includes('code=') || window.location.hash.includes('access_token='))) {
+      window.history.replaceState({}, document.title, window.location.pathname || '/');
     }
   }
 }
 
 export async function initializeDeepLinks(): Promise<void> {
+  // 1. Process URL on startup (Web or Native WebView)
+  if (typeof window !== 'undefined' && isOAuthCallbackUrl(window.location.href)) {
+    console.log('Processing OAuth callback on startup from window.location.href');
+    await consumeCallback(window.location.href);
+  }
+
+  // 2. Native Capacitor App URL open listeners
   if (initialized || !Capacitor.isNativePlatform()) return;
   initialized = true;
 

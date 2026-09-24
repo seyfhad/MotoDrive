@@ -16,12 +16,31 @@ export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
       console.log('Attempting native Facebook login via Capacitor plugin...');
       await FacebookLogin.initialize({ appId: FACEBOOK_APP_ID });
 
-      const result = await FacebookLogin.login({
-        permissions: ['email', 'public_profile'],
-      });
+      // First check if an access token is already available
+      let fbToken: string | null = null;
+      try {
+        const currentTokenRes = await FacebookLogin.getCurrentAccessToken();
+        if (currentTokenRes?.accessToken?.token && !currentTokenRes.accessToken.isExpired) {
+          fbToken = currentTokenRes.accessToken.token;
+        }
+      } catch (tokenErr) {
+        console.warn('Facebook getCurrentAccessToken check notice:', tokenErr);
+      }
 
-      if (result.accessToken?.token) {
-        const fbToken = result.accessToken.token;
+      if (!fbToken) {
+        const result = await FacebookLogin.login({
+          permissions: ['email', 'public_profile'],
+        });
+
+        if (result.accessToken === null) {
+          // User explicitly cancelled the Facebook login dialog
+          throw new Error('تم إلغاء عملية تسجيل الدخول بواسطة المستخدم');
+        }
+
+        fbToken = result.accessToken?.token || null;
+      }
+
+      if (fbToken) {
         console.log('Native Facebook login succeeded, token obtained.');
 
         // Fetch user information via Facebook Graph API
@@ -52,7 +71,7 @@ export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
 
         const userId =
           fbAuthUser?.uid ||
-          (graphData.id ? `fb_${graphData.id}` : (result.accessToken.userId ? `fb_${result.accessToken.userId}` : `fb_${Date.now()}`));
+          (graphData.id ? `fb_${graphData.id}` : `fb_${Date.now()}`);
         const displayName = fbAuthUser?.displayName || graphData.name || 'مستخدم فيسبوك';
         const email = fbAuthUser?.email || graphData.email || undefined;
         const photoUrl = fbAuthUser?.photoURL || graphData.picture?.data?.url || undefined;
@@ -101,6 +120,9 @@ export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
         return { user: fbAuthUser || auth.currentUser, profile };
       }
     } catch (nativeErr: any) {
+      if (nativeErr?.message && nativeErr.message.includes('إلغاء')) {
+        throw nativeErr;
+      }
       console.warn('Native Facebook SDK login notice (proceeding with fallback):', nativeErr?.message || nativeErr);
     }
   }

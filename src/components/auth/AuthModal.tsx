@@ -89,6 +89,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const handleQuickGuest = async () => {
+    try {
+      setLoading(true);
+      setErrorMsg(null);
+      const guestName = selectedRole === 'driver' ? 'سائق تجريبي' : 'مستخدم تجريبي';
+      const guestPhone = '0550123456';
+      const { signInQuickGuest } = await import('../../services/authService');
+      const res = await signInQuickGuest(guestName, guestPhone, selectedRole);
+      setCurrentUser(res.user);
+      setActivePassenger(res.profile);
+      setCurrentRole(selectedRole);
+      broadcastNotification('تم تسجيل الدخول بنجاح', `مرحباً بك كـ ${selectedRole === 'driver' ? 'سائق' : 'راكب'} تجريبي!`);
+      if (onSuccess) onSuccess();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'تعذر تسجيل الدخول السريع');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Direct Email Auth
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -355,6 +376,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   onClose();
                 }}
               />
+
+              {/* Instant Quick Guest Demo Login */}
+              <button
+                type="button"
+                onClick={handleQuickGuest}
+                disabled={loading}
+                className="w-full py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-400" />
+                <span>دخول فوري بضغطة واحدة (بدون كلمة مرور)</span>
+              </button>
 
               <div className="relative py-2 flex items-center justify-center">
                 <div className="absolute inset-0 flex items-center">
