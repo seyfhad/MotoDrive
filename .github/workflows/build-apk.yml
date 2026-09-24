@@ -3,8 +3,12 @@ name: Build Android APK
 on:
   push:
     branches:
+      - main
       - fix/facebook-native-oauth
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -12,18 +16,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: fix/facebook-native-oauth
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Install dependencies explicitly
+      - name: Install dependencies
         run: |
           npm install
-          npm install @capacitor-community/facebook-login --save
+          npm install @capacitor-community/facebook-login@^6.0.0 --save
+
+      - name: Type-check
+        run: npm run lint
 
       - name: Build Web App
         run: npm run build
@@ -31,17 +37,15 @@ jobs:
       - name: Set up Java for Android Build
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '21'
 
-      - name: Install Capacitor & Android platform
-        run: |
-          npx cap sync android
-          if [ -f google-services.json ]; then cp google-services.json android/app/; fi
+      - name: Sync Capacitor
+        run: npx cap sync android
 
       - name: Build APK using Gradle
+        working-directory: android
         run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
