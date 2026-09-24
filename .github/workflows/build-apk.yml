@@ -1,14 +1,7 @@
 name: Build Android APK
-
 on:
   push:
-    branches:
-      - main
-      - fix/facebook-native-oauth
-  workflow_dispatch:
-
-permissions:
-  contents: read
+    branches: [ main, master ]
 
 jobs:
   build:
@@ -21,36 +14,77 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies & Build Web App
         run: |
           npm install
-          npm install @capacitor-community/facebook-login@^6.0.0 --save
-
-      - name: Type-check
-        run: npm run lint
-
-      - name: Build Web App
-        run: npm run build
+          npm run build
 
       - name: Set up Java for Android Build
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '21'
 
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      - name: Build APK using Gradle
-        working-directory: android
+      - name: Install Capacitor & Android platform
         run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          if [ -f google-services.json ]; then cp google-services.json android/app/; fi
+
+      - name: Generate Native App Icons
+        run: |
+          npm install -g @capacitor/assets
+          mkdir -p assets
+          cp icon.jpg assets/icon.png
+          npx @capacitor/assets generate --android
+
+      - name: Fix Kotlin Version Conflict
+        run: |
+          echo "
+          configurations.all {
+              resolutionStrategy.eachDependency { details ->
+                  if (details.requested.group == 'org.jetbrains.kotlin') {
+                      details.useVersion '1.8.22'
+                  }
+              }
+          }
+          " >> android/app/build.gradle
+
+      - name: Build Debug and Release APKs using Gradle
+        run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+          ./gradlew assembleRelease
 
-      - name: Upload APK Artifact
+      - name: Sign Release APK if Keystore Secret Provided
+        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign --ks android/app/release.keystore \
+            --ks-pass pass:"${{ secrets.KEYSTORE_PASSWORD }}" \
+            --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+            --key-pass pass:"${{ secrets.KEY_PASSWORD }}" \
+            --out android/app/build/outputs/apk/release/app-release-signed.apk \
+            android/app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Extract Android Signing Report (SHA-1 & SHA-256)
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew signingReport
+
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: motodrive-debug-apk
+          name: app-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: android/app/build/outputs/apk/release/*.apk

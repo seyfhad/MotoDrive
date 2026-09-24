@@ -1,9 +1,115 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (request.auth.token != null && request.auth.token.email == 'seyfhad@gmail.com') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    // Default deny catch-all
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // System Config & Pricing
+    match /system_config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Service Areas
+    match /service_areas/{areaId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /serviceAreas/{areaId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Promo Codes
+    match /promo_codes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||
+        resource.data.id == request.auth.uid ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Drivers collection
+    match /drivers/{driverId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.id == request.auth.uid ||
+        request.auth.uid == driverId ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Rides collection
+    match /rides/{rideId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.passengerId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        resource.data.driverId == null ||
+        isAdmin()
+      );
+      allow delete: if isSignedIn() && (resource.data.passengerId == request.auth.uid || isAdmin());
+
+      // Ride Offers subcollection
+      match /offers/{offerId} {
+        allow read: if isSignedIn();
+        allow create, update: if isSignedIn();
+        allow delete: if isSignedIn() && (resource.data.driverId == request.auth.uid || isAdmin());
+      }
+    }
+
+    // Ratings collection
+    match /ratings/{ratingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (resource.data.fromUserId == request.auth.uid || isAdmin());
+    }
+
+    // Complaints collection
+    match /complaints/{complaintId} {
+      allow read: if isSignedIn() && (
+        resource.data.complainantId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (resource.data.complainantId == request.auth.uid || isAdmin());
+    }
+
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }
-

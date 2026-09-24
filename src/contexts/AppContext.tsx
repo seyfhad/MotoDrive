@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   collection,
   doc,
+  getDoc,
   query,
   where,
   orderBy,
@@ -171,19 +172,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Track GPS location watcher
   const geoWatchIdRef = useRef<number | null>(null);
 
-  // Auto-purge initial lingering test documents in Firestore as requested by user
-  useEffect(() => {
-    clearAllTestDataFromFirestore().then(() => {
-      setRides([]);
-      setDrivers([]);
-      setPassengers([]);
-      setComplaints([]);
-      setRatings([]);
-    }).catch(err => {
-      console.warn('Auto purge initial test data notice:', err);
-    });
-  }, []);
-
   // --------------------------------------------------------------------------
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
@@ -226,8 +214,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 1b. Supabase OAuth listener (Restores Facebook session upon callback)
-    const { data: sbAuthListener } = supabase.auth.onAuthStateChange((event, session) => {
+    // 1b. Supabase OAuth listener (Restores Facebook session & syncs with Firestore)
+    const { data: sbAuthListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         const sbUser = session.user;
         const displayName =
@@ -238,19 +226,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const photoUrl =
           sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture;
 
-        const profile: UserProfile = {
-          id: sbUser.id,
-          name: displayName,
-          phone: sbUser.user_metadata?.phone || '0550123456',
-          email: sbUser.email || undefined,
-          photoUrl: photoUrl || undefined,
-          role: 'passenger',
-          status: 'active',
-          cancellationCount: 0,
-          createdAt: sbUser.created_at || new Date().toISOString(),
-        };
+        // Try reading existing Firestore document for Facebook user
+        try {
+          const userDocRef = doc(db, 'users', sbUser.id);
+          const userSnap = await getDoc(userDocRef);
 
-        setActivePassenger(profile);
+          if (userSnap.exists()) {
+            const existingProfile = userSnap.data() as UserProfile;
+            setActivePassenger(existingProfile);
+
+            if (existingProfile.role === 'admin' || sbUser.email === 'seyfhad@gmail.com') {
+              setCurrentRole('admin');
+              localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
+            } else if (existingProfile.role === 'driver') {
+              setCurrentRole('driver');
+              localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
+            }
+          } else {
+            // First time Facebook login: store initial profile in Firestore
+            const initialProfile: UserProfile = {
+              id: sbUser.id,
+              name: displayName,
+              phone: sbUser.user_metadata?.phone || '0550123456',
+              email: sbUser.email || undefined,
+              photoUrl: photoUrl || undefined,
+              role: sbUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
+              status: 'active',
+              cancellationCount: 0,
+              createdAt: sbUser.created_at || new Date().toISOString(),
+            };
+
+            await setDoc(userDocRef, {
+              ...initialProfile,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }).catch(err => console.warn('Supabase Facebook profile sync warning:', err));
+
+            setActivePassenger(initialProfile);
+          }
+
+          // Auto-restore driver profile if user is a driver
+          getDriverByUserIdOrPhone(sbUser.id, '0550123456', sbUser.email)
+            .then(driverProfile => {
+              if (driverProfile) setActiveDriver(driverProfile);
+            })
+            .catch(() => {});
+        } catch (err) {
+          console.warn('Firestore Facebook profile check notice:', err);
+        }
+
         setCurrentUser({
           uid: sbUser.id,
           displayName: displayName,

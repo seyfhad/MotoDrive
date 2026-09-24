@@ -49,7 +49,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   } = useApp();
 
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
-  const [step, setStep] = useState<'role_selection' | 'auth_form' | 'verification_status'>('role_selection');
+  const [step, setStep] = useState<'role_selection' | 'auth_form'>('role_selection');
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   // Email Auth State
@@ -62,14 +62,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [supabaseNotice, setSupabaseNotice] = useState<string | null>(null);
-  const [resendingEmail, setResendingEmail] = useState(false);
-  const [resendStatusMsg, setResendStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
       setErrorMsg(null);
       setSupabaseNotice(null);
-      setResendStatusMsg(null);
       setStep('role_selection');
     }
   }, [isOpen]);
@@ -89,24 +86,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       console.error('Sign-out error:', err);
     } finally {
       setIsSigningOut(false);
-    }
-  };
-
-  const handleResendLink = async () => {
-    const cleanEmail = emailInput.trim().toLowerCase();
-    if (!cleanEmail) return;
-    try {
-      setResendingEmail(true);
-      setResendStatusMsg(null);
-      const res = await resendVerificationEmail(cleanEmail);
-      setResendStatusMsg(res.message);
-      if (res.success) {
-        broadcastNotification('تم إعادة إرسال الرابط', res.message);
-      }
-    } catch (err: any) {
-      setResendStatusMsg(err?.message || 'تعذر إعادة إرسال الرابط.');
-    } finally {
-      setResendingEmail(false);
     }
   };
 
@@ -278,76 +257,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-colors"
               >
                 متابعة استخدام التطبيق
-              </button>
-            </div>
-          </div>
-        ) : step === 'verification_status' ? (
-          /* Step 3: Dedicated Email Verification Status Screen */
-          <div className="space-y-4 py-2 animate-in fade-in duration-300 text-right">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/30">
-                <Mail className="w-6 h-6 animate-bounce" />
-              </div>
-
-              <div className="text-center space-y-1">
-                <h4 className="text-sm font-black text-white">التحقق من البريد الإلكتروني</h4>
-                <p className="text-xs text-amber-300 font-mono" dir="ltr">
-                  {emailInput}
-                </p>
-              </div>
-
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1.5 text-xs text-amber-200 leading-relaxed">
-                <div className="font-bold flex items-center gap-1.5 text-amber-400">
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  <span>يرجى تفقّد بريدك الإلكتروني:</span>
-                </div>
-                <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300">
-                  <li>افتح صندوق الوارد (Inbox).</li>
-                  <li>تفقّد مجلد الرسائل غير المرغوب فيها (Spam / Junk).</li>
-                  <li>اضغط على رابط تفعيل الحساب لإكمال ربطه.</li>
-                </ul>
-              </div>
-
-              {supabaseNotice && (
-                <div className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-[11px] text-slate-300 leading-relaxed">
-                  <span className="font-bold text-amber-400">تنبيه المالك / النظام: </span>
-                  <span>{supabaseNotice}</span>
-                </div>
-              )}
-
-              {resendStatusMsg && (
-                <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-[11px] font-medium text-center">
-                  {resendStatusMsg}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={handleResendLink}
-                disabled={resendingEmail}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {resendingEmail ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-                ) : (
-                  <>
-                    <Mail className="w-4 h-4 text-amber-400" />
-                    <span>إعادة إرسال رابط التأكيد</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (onSuccess) onSuccess();
-                  onClose();
-                }}
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-colors shadow-lg shadow-amber-500/20"
-              >
-                المتابعة والدخول إلى التطبيق الآن
               </button>
             </div>
           </div>
