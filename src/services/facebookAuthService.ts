@@ -16,15 +16,10 @@ export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
     const { data, error } = await supabase.auth.signInWithIdToken({
       provider: 'facebook',
       token,
-      options: {
-        data: { role },
-      },
+      options: { data: { role } },
     });
 
-    if (error) {
-      throw error;
-    }
-
+    if (error) throw error;
     return data;
   } catch (error: unknown) {
     console.error('Facebook Native Login Error:', error);
