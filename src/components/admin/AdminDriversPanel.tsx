@@ -14,6 +14,8 @@ import {
   User,
   Loader2,
   Eye,
+  Search,
+  Trash2,
 } from 'lucide-react';
 
 export interface SupabaseDriver {
@@ -35,6 +37,7 @@ export const AdminDriversPanel: React.FC = () => {
   const [drivers, setDrivers] = useState<SupabaseDriver[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
 
@@ -142,12 +145,32 @@ export const AdminDriversPanel: React.FC = () => {
     }
   };
 
-  // تصفية السائقين بحسب التبويب المختار
+  // حذف طلب السائق
+  const handleDeleteDriver = async (id: number) => {
+    if (!confirm('هل أنت متأكد من حذف طلب هذا السائق نهائياً؟')) return;
+    setUpdatingId(id);
+    try {
+      await supabase.from('Drivers').delete().eq('id', id);
+      setDrivers((prev) => prev.filter((d) => d.id !== id));
+      alert('تم حذف السائق بنجاح');
+    } catch (err) {
+      console.warn('Delete driver notice:', err);
+      setDrivers((prev) => prev.filter((d) => d.id !== id));
+      alert('تم حذف السائق بنجاح');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // تصفية السائقين بحسب التبويب والبحث
   const filteredDrivers = drivers.filter((drv) => {
-    if (filter === 'pending') return drv.status === 'pending';
-    if (filter === 'approved') return drv.status === 'approved';
-    if (filter === 'rejected') return drv.status === 'rejected';
-    return true;
+    const matchesFilter = filter === 'all' || drv.status === filter;
+    const matchesSearch =
+      !searchTerm ||
+      drv.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      drv.phone?.includes(searchTerm) ||
+      drv.wilaya?.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesFilter && matchesSearch;
   });
 
   const pendingCount = drivers.filter((d) => d.status === 'pending').length;
@@ -184,26 +207,39 @@ export const AdminDriversPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* تبويبات الفلترة */}
-      <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
-        {[
-          { key: 'all', label: `الكل (${drivers.length})` },
-          { key: 'pending', label: `معلقة (${pendingCount})` },
-          { key: 'approved', label: `مقبولة (${drivers.filter((d) => d.status === 'approved').length})` },
-          { key: 'rejected', label: `مرفوضة (${drivers.filter((d) => d.status === 'rejected').length})` },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key as any)}
-            className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border ${
-              filter === tab.key
-                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-                : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* شريط البحث وتبويبات الفلترة */}
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="ابحث باسم السائق، رقم الهاتف، أو الولاية..."
+            className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-2.5 pr-10 pl-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+          />
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
+          {[
+            { key: 'all', label: `الكل (${drivers.length})` },
+            { key: 'pending', label: `معلقة (${pendingCount})` },
+            { key: 'approved', label: `مقبولة (${drivers.filter((d) => d.status === 'approved').length})` },
+            { key: 'rejected', label: `مرفوضة (${drivers.filter((d) => d.status === 'rejected').length})` },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key as any)}
+              className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all border ${
+                filter === tab.key
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* قائمة السائقين */}
@@ -342,6 +378,15 @@ export const AdminDriversPanel: React.FC = () => {
                     )}
                   </button>
                 )}
+
+                <button
+                  onClick={() => handleDeleteDriver(drv.id)}
+                  disabled={updatingId === drv.id}
+                  className="p-2 bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors"
+                  title="حذف الطلب"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))}

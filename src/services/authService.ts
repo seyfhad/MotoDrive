@@ -902,8 +902,24 @@ import { signInWithFacebookOAuth as executeFacebookAuth } from './facebookAuthSe
 export const signOutUser = async () => {
   cachedAccessToken = null;
   localStorage.removeItem('motodrive_user_session');
+  localStorage.removeItem('motodrive_user_role');
+  localStorage.removeItem('motodrive_current_role');
+  localStorage.removeItem('motodrive_current_user');
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('motodrive') || key.includes('sb-'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {
+    console.warn('Error clearing storage on sign out:', e);
+  }
   await supabase.auth.signOut().catch(() => {});
-  await fbSignOut(auth);
+  await fbSignOut(auth).catch(() => {});
+  window.dispatchEvent(new Event('motodrive_session_updated'));
 };
 
 export const signInWithFacebookOAuth = executeFacebookAuth;
