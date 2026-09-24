@@ -20,10 +20,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies & Build Web App
+      - name: Install dependencies explicitly
         run: |
           npm install
-          npm run build
+          npm install @capacitor-community/facebook-login --save
+
+      - name: Build Web App
+        run: npm run build
 
       - name: Set up Java for Android Build
         uses: actions/setup-java@v4
@@ -33,7 +36,6 @@ jobs:
 
       - name: Install Capacitor & Android platform
         run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
           npx cap sync android
           if [ -f google-services.json ]; then cp google-services.json android/app/; fi
 
