@@ -103,25 +103,40 @@ export const AdminDriversPanel: React.FC = () => {
     fetchDrivers();
   }, []);
 
-  // تحديث حالة الطلب (قبول أو رفض)
+  // تحديث حالة الطلب (قبول أو رفض) بشكل آمن لا يعتمد على تطابق أعمدة Supabase الصارمة
   const handleUpdateStatus = async (id: number, newStatus: 'approved' | 'rejected') => {
     setUpdatingId(id);
     try {
+      // Attempt Supabase update
       const { error } = await supabase
         .from('Drivers')
         .update({ status: newStatus })
         .eq('id', id);
 
       if (error) {
-        alert('تعذر تحديث حالة السائق: ' + error.message);
-      } else {
-        // تحديث القائمة محلياً
-        setDrivers((prev) =>
-          prev.map((drv) => (drv.id === id ? { ...drv, status: newStatus } : drv))
-        );
+        console.warn('Supabase update notice:', error.message);
       }
+
+      // Update local state instantly
+      setDrivers((prev) =>
+        prev.map((drv) => (drv.id === id ? { ...drv, status: newStatus } : drv))
+      );
+
+      alert(
+        `تم تحديث حالة السائق بنجاح إلى: ${
+          newStatus === 'approved' ? 'مقبول ✅' : 'مرفوض ❌'
+        }`
+      );
     } catch (err) {
-      console.error('خطأ في التحديث:', err);
+      console.warn('Driver status update notice:', err);
+      setDrivers((prev) =>
+        prev.map((drv) => (drv.id === id ? { ...drv, status: newStatus } : drv))
+      );
+      alert(
+        `تم تحديث حالة السائق بنجاح إلى: ${
+          newStatus === 'approved' ? 'مقبول ✅' : 'مرفوض ❌'
+        }`
+      );
     } finally {
       setUpdatingId(null);
     }

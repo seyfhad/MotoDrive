@@ -218,6 +218,9 @@ export async function searchAlgeriaPlaces(
   return localMatches.slice(0, 60);
 }
 
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
+
 export interface RobustLocationResult {
   coords: Coordinates;
   isFallback: boolean;
@@ -225,7 +228,7 @@ export interface RobustLocationResult {
 }
 
 /**
- * High-reliability geolocation getter for browser, webview, mobile, and iframe environments
+ * High-reliability geolocation getter for browser, webview, mobile, and iframe environments with Capacitor native permission support
  */
 export async function getRobustUserLocation(): Promise<RobustLocationResult> {
   const defaultCoords: Coordinates = {
@@ -235,6 +238,46 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
     address: 'ساحة البريد المركزي، الجزائر العاصمة',
   };
 
+  // 1. Native Capacitor Platform Support with explicit permission request
+  if (Capacitor.isNativePlatform()) {
+    try {
+      console.log('Requesting native geolocation permissions...');
+      const permResult = await Geolocation.requestPermissions();
+      if (permResult.location === 'denied' || permResult.coarseLocation === 'denied') {
+        return {
+          coords: defaultCoords,
+          isFallback: true,
+          message: '⚠️ تم رفض إذن الوصول إلى الموقع من قبل المستخدم. يرجى السماح بالتطبيق بالوصول لموقعك من إعدادات الهاتف.',
+        };
+      }
+
+      console.log('Fetching native GPS position...');
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 60000,
+      });
+
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      const address = await reverseGeocodeCoords(latitude, longitude);
+
+      return {
+        coords: {
+          lat: latitude,
+          lng: longitude,
+          name: address || 'موقعي الحالي (GPS)',
+          address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+        },
+        isFallback: false,
+        message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
+      };
+    } catch (nativeErr: any) {
+      console.warn('Native geolocation failed, trying fallback:', nativeErr);
+    }
+  }
+
+  // 2. Web / Fallback Geolocation
   if (!navigator || !navigator.geolocation) {
     return {
       coords: defaultCoords,
@@ -250,8 +293,7 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
   };
 
   try {
-    // المحاولة الأولى: طلب الموقع السريع بالاعتماد على أجهزة الهاتف والشبكة بدون فرض الدقة المفرطة لمنع Timeout
-    const pos = await tryPosition({ enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 });
+    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     const { latitude, longitude } = pos.coords;
     const address = await reverseGeocodeCoords(latitude, longitude);
     return {
@@ -265,7 +307,6 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
       message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
     };
   } catch (err1) {
-    // المحاولة الثانية الاحتياطية: مهلة أطول وقبول آخر موقع مخزن لمنع توقف التطبيق
     try {
       const pos = await tryPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: Infinity });
       const { latitude, longitude } = pos.coords;
