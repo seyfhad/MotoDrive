@@ -25,7 +25,7 @@ export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   const handleFacebookSignIn = async () => {
     try {
       setLoading(true); setErrorMsg(null);
-      await signInWithFacebookOAuth(role);
+      await signInWithFacebookOAuth(role as UserRole);
       broadcastNotification('جاري التوجيه إلى Facebook', 'سيتم فتح صفحة المصادقة في المتصفح الآمن.');
       onSuccess?.();
     } catch (err: any) {

@@ -1,29 +1,27 @@
-import { FacebookLogin } from '@capacitor-community/facebook-login';
 import { supabase } from '../supabaseClient';
 import { UserRole } from '../types';
+import { openFacebookOAuth } from './deepLinkService';
 
 export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
-  try {
-    const result = await FacebookLogin.login({
-      permissions: ['email', 'public_profile'],
-    });
+  const redirectUrl = typeof window !== 'undefined' ? window.location.origin : 'com.motodrive.dz://auth/callback';
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'facebook',
+    options: {
+      redirectTo: redirectUrl,
+      queryParams: {
+        role,
+      },
+    },
+  });
 
-    const token = result.accessToken?.token;
-    if (!token) {
-      throw new Error('فشل الحصول على رمز الوصول من فيسبوك.');
-    }
-
-    const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: 'facebook',
-      token,
-      options: { data: { role } },
-    });
-
-    if (error) throw error;
-    return data;
-  } catch (error: unknown) {
-    console.error('Facebook Native Login Error:', error);
-    const message = error instanceof Error ? error.message : 'تعذر تسجيل الدخول بفيسبوك.';
-    throw new Error(message);
+  if (error) {
+    console.error('Facebook OAuth Error:', error.message);
+    throw new Error(error.message || 'تعذر الاتصال بـ فيسبوك. يرجى التحقق من إعدادات Supabase Facebook Provider.');
   }
+
+  if (data?.url) {
+    await openFacebookOAuth(data.url);
+  }
+
+  return data;
 };
