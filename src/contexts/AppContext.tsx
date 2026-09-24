@@ -176,11 +176,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
   useEffect(() => {
+    // 1a. Hydrate cached local user session for instant startup
+    try {
+      const cachedSessionStr = localStorage.getItem('motodrive_user_session');
+      if (cachedSessionStr) {
+        const cachedSession = JSON.parse(cachedSessionStr);
+        if (cachedSession?.user) {
+          const cachedUser = cachedSession.user;
+          setActivePassenger(cachedUser);
+          setCurrentUser({
+            uid: cachedUser.id,
+            displayName: cachedUser.name,
+            email: cachedUser.email,
+            photoURL: cachedUser.photoUrl,
+          } as any);
+
+          if (cachedUser.role === 'admin' || cachedUser.email === 'seyfhad@gmail.com') {
+            setCurrentRole('admin');
+          } else if (cachedUser.role === 'driver') {
+            setCurrentRole('driver');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error hydrating cached user session:', e);
+    }
+
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
       if (firebaseUser && userProfile) {
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
+
+        // Save active session to local storage for fast boot
+        localStorage.setItem(
+          'motodrive_user_session',
+          JSON.stringify({ user: userProfile, timestamp: Date.now() })
+        );
 
         // Auto-restore DriverProfile if user has one in Firestore
         getDriverByUserIdOrPhone(userProfile.id, userProfile.phone, userProfile.email)

@@ -874,31 +874,17 @@ export const signUpWithEmail = async (email: string, pass: string, name: string,
   return { user, profile };
 };
 
+import { signInWithFacebookOAuth as executeFacebookAuth } from './facebookAuthService';
+
 export const signOutUser = async () => {
   cachedAccessToken = null;
+  localStorage.removeItem('motodrive_user_session');
   await supabase.auth.signOut().catch(() => {});
   await fbSignOut(auth);
 };
 
-export const signInWithFacebookOAuth = async (role: UserRole = 'passenger') => {
-  const redirectUrl = window.location.origin;
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'facebook',
-    options: {
-      redirectTo: redirectUrl,
-      queryParams: {
-        role,
-      },
-    },
-  });
+export const signInWithFacebookOAuth = executeFacebookAuth;
 
-  if (error) {
-    console.error('Facebook OAuth Error:', error.message);
-    throw new Error(error.message || 'تعذر الاتصال بـ فيسبوك. يرجى التحقق من إعدادات Supabase Facebook Client ID.');
-  }
-
-  return data;
-};
 
 export const resendFirebaseEmailVerification = async (): Promise<void> => {
   if (auth.currentUser) {
