@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Bell, AlertTriangle, User, LogOut, Send, FileText } from 'lucide-react';
+import { Bell, AlertTriangle, User, LogOut, Send, FileText, ShieldCheck } from 'lucide-react';
 import { MotoIcon } from './MotoIcon';
 import { SOSModal } from './SOSModal';
 import { RegisterDriverModal } from './RegisterDriverModal';
@@ -150,15 +150,33 @@ export const Header: React.FC = () => {
 
             {/* Owner/Admin In-App Message Action Button */}
             {isOwner && (
-              <button
-                id="header-admin-inapp-message-btn"
-                onClick={() => setShowAdminMessageModal(true)}
-                className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors"
-                title="إرسال رسالة لحساب مستخدم (داخل التطبيق)"
-              >
-                <Send className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[10px] font-bold hidden sm:inline">إرسال إشعار</span>
-              </button>
+              <>
+                <button
+                  id="header-admin-panel-btn"
+                  onClick={() => {
+                    setCurrentRole(currentRole === 'admin' ? 'passenger' : 'admin');
+                  }}
+                  className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 transition-all font-bold text-xs ${
+                    currentRole === 'admin'
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                      : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/30 text-amber-300'
+                  }`}
+                  title="لوحة تحكم الإدارة"
+                >
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span>{currentRole === 'admin' ? 'وضع المستخدم' : 'لوحة الإدارة'}</span>
+                </button>
+
+                <button
+                  id="header-admin-inapp-message-btn"
+                  onClick={() => setShowAdminMessageModal(true)}
+                  className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors"
+                  title="إرسال رسالة لحساب مستخدم (داخل التطبيق)"
+                >
+                  <Send className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[10px] font-bold hidden sm:inline">إرسال إشعار</span>
+                </button>
+              </>
             )}
 
             {/* Notification Bell */}
