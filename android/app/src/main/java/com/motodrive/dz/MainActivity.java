@@ -2,7 +2,7 @@ package com.motodrive.dz;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
-import com.capacitorcommunity.facebooklogin.FacebookLogin;
+import com.getcapacitor.community.facebooklogin.FacebookLogin;
 
 public class MainActivity extends BridgeActivity {
     @Override

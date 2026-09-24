@@ -24,14 +24,23 @@ export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
   const { broadcastNotification } = useApp();
   const handleFacebookSignIn = async () => {
     try {
-      setLoading(true); setErrorMsg(null);
-      await signInWithFacebookOAuth(role as UserRole);
-      broadcastNotification('جاري التوجيه إلى Facebook', 'سيتم فتح صفحة المصادقة في المتصفح الآمن.');
-      onSuccess?.();
+      setLoading(true);
+      setErrorMsg(null);
+      const res: any = await signInWithFacebookOAuth(role as UserRole);
+      if (res && (res.profile || res.user)) {
+        broadcastNotification('تم تسجيل الدخول بنجاح', `مرحباً بك، ${res.profile?.name || 'مستخدم فيسبوك'}!`);
+        onSuccess?.();
+      } else {
+        broadcastNotification('جاري المتابعة مع Facebook', 'يرجى إكمال المصادقة للمتابعة.');
+      }
     } catch (err: any) {
-      const message = err?.message || 'فشل الاتصال بفيسبوك. تحقق من إعدادات Supabase Facebook Provider.';
-      console.error('Facebook Sign-In Error:', err); setErrorMsg(message); onError?.(message);
-    } finally { setLoading(false); }
+      const message = err?.message || 'فشل الاتصال بفيسبوك. يرجى المحاولة مرة أخرى.';
+      console.error('Facebook Sign-In Error:', err);
+      setErrorMsg(message);
+      onError?.(message);
+    } finally {
+      setLoading(false);
+    }
   };
   const styles = variant === 'outline'
     ? 'bg-transparent hover:bg-blue-600/20 text-blue-400 border border-blue-500 shadow-sm'

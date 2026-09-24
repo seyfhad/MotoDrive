@@ -4,7 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { supabase } from '../supabaseClient';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, FacebookAuthProvider, signInWithCredential } from 'firebase/auth';
 import { UserProfile } from '../types';
 
 export const FACEBOOK_REDIRECT_URI = 'com.motodrive.dz://auth/callback';
@@ -74,12 +74,29 @@ async function consumeCallback(urlStr: string): Promise<void> {
     if (code) {
       const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
       if (exchangeError) console.warn('Supabase code exchange notice:', exchangeError.message);
-    } else if (accessToken && refreshToken) {
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (sessionError) console.warn('Supabase setSession notice:', sessionError.message);
+    } else if (accessToken) {
+      if (refreshToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (sessionError) console.warn('Supabase setSession notice:', sessionError.message);
+      } else {
+        await supabase.auth
+          .setSession({
+            access_token: accessToken,
+            refresh_token: accessToken,
+          })
+          .catch(() => {});
+      }
+
+      // Also try linking to Firebase Auth with Facebook Credential
+      try {
+        const credential = FacebookAuthProvider.credential(accessToken);
+        await signInWithCredential(auth, credential);
+      } catch (fbErr) {
+        console.warn('Firebase Facebook credential callback notice:', fbErr);
+      }
     }
 
     // Retrieve active Supabase OAuth user profile
@@ -123,6 +140,9 @@ async function consumeCallback(urlStr: string): Promise<void> {
       if (!auth.currentUser) {
         await signInAnonymously(auth).catch(() => {});
       }
+
+      // Broadcast instant session update to AppContext
+      window.dispatchEvent(new CustomEvent('motodrive_session_updated'));
     }
   } catch (err) {
     console.error('Error during consumeCallback execution:', err);

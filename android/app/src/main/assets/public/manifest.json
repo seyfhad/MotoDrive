@@ -1,25 +1,58 @@
 {
+  "id": "/",
   "name": "MotoDrive",
   "short_name": "MotoDrive",
-  "description": "تطبيق حجز ونقل الركاب بالدراجات النارية",
+  "description": "تطبيق حجز ونقل الركاب بالدراجات النارية - سرعة، أمان، وأسعار مناسبة",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
   "background_color": "#020617",
-  "theme_color": "#f59e0b",
+  "theme_color": "#020617",
   "lang": "ar",
   "dir": "rtl",
-  "categories": ["travel", "transportation"],
+  "categories": ["travel", "transportation", "maps"],
   "icons": [
     {
       "src": "/assets/aistudio/pwa-icon.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/assets/aistudio/pwa-icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/aistudio/pwa-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "حجز رحلة جديدة",
+      "short_name": "احجز رحلة",
+      "description": "طلب سائق دراجة نارية الآن",
+      "url": "/?role=passenger",
+      "icons": [{ "src": "/assets/aistudio/pwa-icon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "لوحة السائق",
+      "short_name": "السائق",
+      "description": "استقبال طلبات الرحلات القريبة",
+      "url": "/?role=driver",
+      "icons": [{ "src": "/assets/aistudio/pwa-icon.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "com.motodrive.dz"
     }
   ]
 }
