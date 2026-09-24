@@ -1,8 +1,38 @@
 apply plugin: 'com.android.application'
 
+def keystorePropertiesFile = rootProject.file('release-signing.properties')
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.motodrive.dz"
     compileSdk = rootProject.ext.compileSdkVersion
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                def kFile = file(keystoreProperties['storeFile'])
+                if (!kFile.exists()) {
+                    kFile = rootProject.file(keystoreProperties['storeFile'])
+                }
+                if (!kFile.exists()) {
+                    kFile = file('release.keystore')
+                }
+                storeFile kFile
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            } else if (System.getenv("KEYSTORE_PASSWORD") != null) {
+                storeFile file('release.keystore')
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KEY_ALIAS")
+                keyPassword System.getenv("KEY_PASSWORD")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId "com.motodrive.dz"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -20,6 +50,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropertiesFile.exists() || System.getenv("KEYSTORE_PASSWORD") != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

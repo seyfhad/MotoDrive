@@ -1,0 +1,7 @@
+# MotoDrive Release Signing Configuration Properties Example
+# Place this file at the root directory or inside the android/ folder as 'release-signing.properties'
+
+storeFile=release.keystore
+storePassword=YOUR_KEYSTORE_PASSWORD
+keyAlias=YOUR_KEY_ALIAS
+keyPassword=YOUR_KEY_PASSWORD
