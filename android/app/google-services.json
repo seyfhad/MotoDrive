@@ -1,0 +1,100 @@
+{
+  "project_info": {
+    "project_number": "491913533758",
+    "project_id": "moto24-ccc5b",
+    "storage_bucket": "moto24-ccc5b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:491913533758:android:6090d7c92abc6b3a95b46f",
+        "android_client_info": {
+          "package_name": "com.motodrive.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "491913533758-5tnl73isj38diobstd127548p5e1gidf.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motodrive.app",
+            "certificate_hash": "ab0091429f969f5aab8e41545aa1828fa7e9eab6"
+          }
+        },
+        {
+          "client_id": "491913533758-bdh8ag433773hfau4qf8ruhc4jbc5pnj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motodrive.app",
+            "certificate_hash": "4f9e772ec5ace7862b4785c3a72fe601f0b114e5"
+          }
+        },
+        {
+          "client_id": "491913533758-1he3v1129mqrbprhtm4viepps7s1ijh2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEZoBQ_aQmbpKdbdSLBsHi0bmQp7ZGQxE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "491913533758-1he3v1129mqrbprhtm4viepps7s1ijh2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:491913533758:android:90cf5d763bb3114a95b46f",
+        "android_client_info": {
+          "package_name": "com.motodrive.dz"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "491913533758-drdqrhuqnquig271mg6hmq9u1iar7ghl.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motodrive.dz",
+            "certificate_hash": "4f9e772ec5ace7862b4785c3a72fe601f0b114e5"
+          }
+        },
+        {
+          "client_id": "491913533758-m3sf95b79l6k0jb142h4974oo42b20lg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.motodrive.dz",
+            "certificate_hash": "ab0091429f969f5aab8e41545aa1828fa7e9eab6"
+          }
+        },
+        {
+          "client_id": "491913533758-1he3v1129mqrbprhtm4viepps7s1ijh2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEZoBQ_aQmbpKdbdSLBsHi0bmQp7ZGQxE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "491913533758-1he3v1129mqrbprhtm4viepps7s1ijh2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
