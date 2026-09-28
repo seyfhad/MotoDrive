@@ -20,19 +20,25 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // System Config & Pricing
+    // System Config & Pricing (public read for tariff display)
     match /system_config/{configId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Service Areas
+    // Health & Connection Test
+    match /test/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Service Areas (public read for coverage inspection)
     match /service_areas/{areaId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdmin();
     }
     match /serviceAreas/{areaId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
@@ -62,6 +68,7 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         resource.data.id == request.auth.uid ||
         request.auth.uid == driverId ||
+        driverId == 'driver-' + request.auth.uid ||
         isAdmin()
       );
       allow delete: if isAdmin();

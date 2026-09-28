@@ -27,16 +27,19 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { setActivePassenger, setCurrentRole, setCurrentUser, broadcastNotification } = useApp();
+  const { setActivePassenger, setActiveDriver, setCurrentRole, setCurrentUser, broadcastNotification } = useApp();
 
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
-      const { user, profile } = await signInWithGoogle((role || 'passenger') as UserRole);
+      const { user, profile, driver } = await signInWithGoogle((role || 'passenger') as UserRole);
 
       setCurrentUser(user);
       setActivePassenger(profile);
+      if (driver) {
+        setActiveDriver(driver);
+      }
       if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
         setCurrentRole('admin');
       } else {

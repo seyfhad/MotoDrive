@@ -7,7 +7,11 @@ service firebase.storage {
     }
     
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isAuthenticated() && (
+        request.auth.uid == userId ||
+        request.auth.uid == userId.replace('driver-', '') ||
+        userId == 'driver-' + request.auth.uid
+      );
     }
     
     function isAdmin() {
@@ -18,20 +22,33 @@ service firebase.storage {
       );
     }
 
-    // Driver verification documents (Permis, Carte Grise, Assurance, Casier)
+    // Driver verification documents (Permis, Carte Grise, Assurance, Casier, Motorcycle photos)
     match /driver_documents/{driverId}/{fileName} {
-      allow read: if isOwner(driverId) || isAdmin();
-      allow write: if isOwner(driverId) 
-                   && request.resource.size < 10 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp)|application/pdf');
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+                     isOwner(driverId) ||
+                     driverId == request.auth.uid ||
+                     driverId == 'driver-' + request.auth.uid ||
+                     isAdmin()
+                   )
+                   && request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)|application/pdf');
     }
 
     // User profile avatars
     match /avatars/{userId}/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isOwner(userId) 
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow read: if true;
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin())
+                   && request.resource.size < 8 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)');
+    }
+
+    // User personal files & attachments
+    match /user_files/{userId}/{fileName} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin())
+                   && request.resource.size < 15 * 1024 * 1024
+                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)|application/pdf');
     }
   }
 }

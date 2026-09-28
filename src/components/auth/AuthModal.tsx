@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import {
-  signOutUser,
-  signInWithEmailPass,
-  signUpWithEmailPass,
-} from '../../services/authService';
+import { signOutUser, signInQuickGuest } from '../../services/authService';
 import { UserRole } from '../../types';
 import { MotoIcon } from '../shared/MotoIcon';
-import { FacebookSignInButton } from './FacebookSignInButton';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import {
   X,
@@ -17,12 +12,8 @@ import {
   CheckCircle2,
   Sparkles,
   Mail,
-  Phone,
   ArrowRight,
-  Loader2,
-  Lock,
-  UserPlus,
-  LogIn,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -42,34 +33,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     activePassenger,
     currentUser,
     setCurrentUser,
-    setActivePassenger,
-    setActiveDriver,
-    setCurrentRole,
     broadcastNotification,
   } = useApp();
 
   const [selectedRole, setSelectedRole] = useState<UserRole>(defaultRole);
-  const [step, setStep] = useState<'role_selection' | 'auth_form'>('role_selection');
+  const [step, setStep] = useState<'role_selection' | 'google_auth'>('google_auth');
   const [isSigningOut, setIsSigningOut] = useState(false);
-
-  // Email Auth State
-  const [emailTab, setEmailTab] = useState<'signin' | 'signup'>('signup');
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [emailNameInput, setEmailNameInput] = useState('');
-  const [emailPhoneInput, setEmailPhoneInput] = useState('');
-
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [supabaseNotice, setSupabaseNotice] = useState<string | null>(null);
+
+  const [normalName, setNormalName] = useState('راكب MotoDrive');
+  const [normalPhone, setNormalPhone] = useState('0550123456');
+  const [isSubmittingNormal, setIsSubmittingNormal] = useState(false);
+
+  const handleNormalQuickLogin = async () => {
+    try {
+      setIsSubmittingNormal(true);
+      setErrorMsg(null);
+      const cleanName = normalName.trim() || 'راكب MotoDrive';
+      const cleanPhone = normalPhone.trim() || '0550123456';
+
+      const { user } = await signInQuickGuest(cleanName, cleanPhone, 'passenger');
+      setCurrentUser(user);
+      broadcastNotification('مرحباً بك!', `تم الدخول بنجاح كراكب باسم: ${cleanName}`);
+      if (onSuccess) onSuccess();
+      onClose();
+    } catch (err: any) {
+      console.error('Normal quick login error:', err);
+      setErrorMsg('حدث خطأ أثناء الدخول المباشر. يرجى إعادة المحاولة.');
+    } finally {
+      setIsSubmittingNormal(false);
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) {
       setErrorMsg(null);
-      setSupabaseNotice(null);
-      setStep('role_selection');
+    } else {
+      setSelectedRole(defaultRole || 'passenger');
+      setStep('google_auth');
     }
-  }, [isOpen]);
+  }, [isOpen, defaultRole]);
 
   if (!isOpen) return null;
 
@@ -89,115 +92,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleQuickGuest = async () => {
-    try {
-      setLoading(true);
-      setErrorMsg(null);
-      const guestName = selectedRole === 'driver' ? 'سائق تجريبي' : 'مستخدم تجريبي';
-      const guestPhone = '0550123456';
-      const { signInQuickGuest } = await import('../../services/authService');
-      const res = await signInQuickGuest(guestName, guestPhone, selectedRole);
-      setCurrentUser(res.user);
-      setActivePassenger(res.profile);
-      setCurrentRole(selectedRole);
-      broadcastNotification('تم تسجيل الدخول بنجاح', `مرحباً بك كـ ${selectedRole === 'driver' ? 'سائق' : 'راكب'} تجريبي!`);
-      if (onSuccess) onSuccess();
-      onClose();
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'تعذر تسجيل الدخول السريع');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Direct Email Auth
-  const handleEmailSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setSupabaseNotice(null);
-
-    const cleanEmail = emailInput.trim().toLowerCase();
-    const cleanPass = passwordInput.trim();
-
-    if (!cleanEmail || !cleanEmail.includes('@')) {
-      setErrorMsg('يرجى إدخال بريد إلكتروني صحيح (مثال: user@gmail.com)');
-      return;
-    }
-    if (!cleanPass || cleanPass.length < 6) {
-      setErrorMsg('كلمة المرور يجب أن تتكون من 6 أحرف على الأقل');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      let res: any;
-
-      if (emailTab === 'signin') {
-        res = await signInWithEmailPass(cleanEmail, cleanPass);
-      } else {
-        if (!emailNameInput.trim()) {
-          setErrorMsg('يرجى إدخال الاسم الكامل');
-          setLoading(false);
-          return;
-        }
-        if (!emailPhoneInput.trim() || emailPhoneInput.trim().length < 8) {
-          setErrorMsg('يرجى إدخال رقم هاتف صحيح (مثال: 0550123456)');
-          setLoading(false);
-          return;
-        }
-        res = await signUpWithEmailPass(
-          cleanEmail,
-          cleanPass,
-          emailNameInput.trim(),
-          emailPhoneInput.trim(),
-          selectedRole
-        );
-      }
-
-      const { user, profile, driver } = res;
-
-      setCurrentUser(user);
-      setActivePassenger(profile);
-      if (driver) {
-        setActiveDriver(driver);
-      }
-
-      if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
-        setCurrentRole('admin');
-      } else if (driver || profile.role === 'driver') {
-        setCurrentRole('driver');
-      } else {
-        setCurrentRole(selectedRole);
-      }
-
-      if (emailTab === 'signup') {
-        setSupabaseNotice(res.supabaseNotice || null);
-        setStep('verification_status');
-        broadcastNotification(
-          'تم إنشاء الحساب بنجاح 📧',
-          `أهلاً بك ${profile.name}! لقد تم تجهيز حسابك. تفقّد بريدك والرسائل غير المرغوب فيها (Spam) للتحقق.`
-        );
-      } else {
-        broadcastNotification(
-          'تم تسجيل الدخول بنجاح',
-          `أهلاً بك مجدداً ${profile.name}!`
-        );
-        if (onSuccess) onSuccess();
-        onClose();
-      }
-    } catch (err: any) {
-      console.error('Email Auth Error:', err);
-      setErrorMsg(err?.message || 'حدث خطأ أثناء الاتصال. يرجى مراجعة البيانات.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200"
       id="auth-modal-overlay"
-      onClick={e => {
+      onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
@@ -213,16 +112,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             onClick={onClose}
             id="auth-modal-close-btn"
-            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            aria-label="إغلاق"
           >
             <X className="w-4 h-4" />
           </button>
           <div className="text-center">
             <h3 className="text-base font-black text-white flex items-center gap-1.5 justify-center">
-              <span>تسجيل الدخول / حساب جديد</span>
+              <span>تسجيل الدخول عبر Google</span>
               <Sparkles className="w-4 h-4 text-amber-400" />
             </h3>
-            <p className="text-[11px] text-slate-400">اختر نوع الحساب للمتابعة</p>
+            <p className="text-[11px] text-slate-400">حساب آمن ومباشر بواسطة Firebase Auth</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
             <ShieldCheck className="w-4 h-4" />
@@ -267,7 +167,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 id="auth-modal-signout-btn"
                 onClick={handleSignOut}
                 disabled={isSigningOut}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-300 text-xs font-bold transition-all disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-300 text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
                 <span>{isSigningOut ? 'جاري تسجيل الخروج...' : 'تسجيل الخروج من الحساب'}</span>
@@ -275,183 +175,173 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <button
                 onClick={onClose}
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-colors"
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-colors cursor-pointer"
               >
                 متابعة استخدام التطبيق
               </button>
             </div>
           </div>
         ) : step === 'role_selection' ? (
-          /* Step 1: Medium-Sized Icon Cards for Role Selection (راكب / سائق) */
+          /* Step 1: Role Selection Cards */
           <div className="space-y-4 py-2 animate-in fade-in duration-300">
             <p className="text-xs text-slate-300 text-center font-semibold">
-              اختر نوع صفة الحساب للانتقال إلى التسجيل:
+              اختر نوع الحساب للمتابعة بالتسجيل عبر Google:
             </p>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Passenger Card (راكب) */}
+              {/* Passenger Card */}
               <button
                 type="button"
                 onClick={() => {
                   setSelectedRole('passenger');
-                  setStep('auth_form');
+                  setStep('google_auth');
                   setErrorMsg(null);
                 }}
-                className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 border-slate-800 hover:border-amber-500/80 text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer"
+                className={`flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 ${
+                  selectedRole === 'passenger' ? 'border-amber-500 shadow-amber-500/20' : 'border-slate-800'
+                } text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer`}
               >
                 <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shadow-md">
                   <User className="w-7 h-7" />
                 </div>
-                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">راكب</span>
+                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">
+                  حساب راكب
+                </span>
+                <span className="text-[10px] text-slate-400 mt-1">طلب الرحلات والتنقل</span>
               </button>
 
-              {/* Driver Card (سائق) */}
+              {/* Driver Card */}
               <button
                 type="button"
                 onClick={() => {
                   setSelectedRole('driver');
-                  setStep('auth_form');
+                  setStep('google_auth');
                   setErrorMsg(null);
                 }}
-                className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 border-slate-800 hover:border-amber-500/80 text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer"
+                className={`flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-950 hover:bg-slate-800 border-2 ${
+                  selectedRole === 'driver' ? 'border-amber-500 shadow-amber-500/20' : 'border-slate-800'
+                } text-white transition-all transform hover:-translate-y-1 shadow-lg group cursor-pointer`}
               >
-                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 overflow-hidden flex items-center justify-center p-1.5 mb-3 group-hover:scale-110 transition-all shadow-md">
-                  <img src="/icon.jpg" alt="سائق" className="w-full h-full object-cover rounded-xl" />
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all shadow-md">
+                  <MotoIcon className="w-7 h-7" />
                 </div>
-                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">سائق</span>
+                <span className="text-sm font-black text-white group-hover:text-amber-400 transition-colors">
+                  حساب سائق
+                </span>
+                <span className="text-[10px] text-slate-400 mt-1">قبول الرحلات والأرباح</span>
               </button>
             </div>
           </div>
         ) : (
-          /* Step 2: Sign-In / Sign-Up Form for Selected Role */
-          <div className="space-y-3 animate-in fade-in duration-300">
-            {/* Top Bar showing current role & back button */}
-            <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-2 rounded-2xl">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-black">
-                  {selectedRole === 'driver' ? <MotoIcon className="w-4 h-4" /> : <User className="w-4 h-4" />}
-                </div>
-                <span className="text-xs font-black text-amber-400">
-                  {selectedRole === 'driver' ? 'حساب سائق' : 'حساب راكب'}
-                </span>
-              </div>
+          /* Step 2: Authentication & Quick Normal Entry Options */
+          <div className="space-y-4 animate-in fade-in duration-300">
+            {/* Mode Switcher Tab */}
+            <div className="bg-slate-950 border border-slate-800 p-1.5 rounded-2xl flex items-center justify-between gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRole('passenger');
+                  setErrorMsg(null);
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedRole === 'passenger'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>دخول كراكب</span>
+              </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  setStep('role_selection');
+                  setSelectedRole('driver');
                   setErrorMsg(null);
                 }}
-                className="text-[11px] font-bold text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1"
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  selectedRole === 'driver'
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white'
+                }`}
               >
-                <span>تغييرالصفة</span>
-                <ArrowRight className="w-3 h-3" />
+                <MotoIcon className="w-3.5 h-3.5" />
+                <span>دخول كسائق</span>
               </button>
             </div>
 
-            {/* Facebook OAuth Registration & Login as Primary Option */}
-            <div className="space-y-3 pt-1">
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-right space-y-1">
-                <span className="text-xs font-bold text-blue-400 block">تسجيل الحساب عبر فيسبوك (Facebook)</span>
-                <p className="text-[11px] text-slate-300 leading-snug">
-                  سجّل حسابك فوراً بضغطة زر دون الحاجة للانتظار أو تأكيد رابط الإيميل.
-                </p>
-              </div>
-
-              {/* Facebook OAuth Button */}
-              <FacebookSignInButton
-                role={selectedRole}
-                onSuccess={() => {
-                  if (onSuccess) onSuccess();
-                  onClose();
-                }}
-              />
-
-              {/* Google OAuth Button */}
-              <GoogleSignInButton
-                role={selectedRole}
-                variant="dark"
-                onSuccess={() => {
-                  if (onSuccess) onSuccess();
-                  onClose();
-                }}
-              />
-
-              {/* Instant Quick Guest Demo Login */}
-              <button
-                type="button"
-                onClick={handleQuickGuest}
-                disabled={loading}
-                className="w-full py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-emerald-400" />
-                <span>دخول فوري بضغطة واحدة (بدون كلمة مرور)</span>
-              </button>
-
-              <div className="relative py-2 flex items-center justify-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-800" />
+            {selectedRole === 'passenger' ? (
+              /* Passenger Quick Normal Entry Form */
+              <div className="space-y-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-xs pb-1 border-b border-slate-800">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>الدخول العادي السريع كراكب (بدون Google)</span>
                 </div>
-                <span className="relative px-3 bg-slate-900 text-[11px] text-slate-500 font-bold">
-                  أو الدخول بكلمة المرور مباشرة
-                </span>
-              </div>
 
-              {/* Direct Password Login without email confirmation flow */}
-              <form onSubmit={handleEmailSubmit} className="space-y-2.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">البريد الإلكتروني / الحساب:</label>
-                  <div className="relative">
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">الاسم الكامل:</label>
                     <input
-                      type="email"
-                      value={emailInput}
-                      onChange={e => setEmailInput(e.target.value)}
-                      placeholder="user@example.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                      required
+                      type="text"
+                      id="normal-login-name-input"
+                      placeholder="مثال: أحمد بلقاسم"
+                      value={normalName}
+                      onChange={(e) => setNormalName(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                     />
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">رقم الهاتف:</label>
+                    <input
+                      type="tel"
+                      id="normal-login-phone-input"
+                      placeholder="0550123456"
+                      value={normalPhone}
+                      onChange={(e) => setNormalPhone(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-left"
+                      dir="ltr"
+                    />
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-300 mb-1">كلمة المرور:</label>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      value={passwordInput}
-                      onChange={e => setPasswordInput(e.target.value)}
-                      placeholder="••••••••"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2 px-3 pl-9 text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/80 transition-colors"
-                      required
-                      minLength={6}
-                    />
-                    <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                  </div>
-                </div>
-
-                {errorMsg && (
-                  <p className="text-[11px] text-red-400 text-center font-medium bg-red-500/10 py-1.5 px-3 rounded-xl border border-red-500/20">
-                    {errorMsg}
-                  </p>
-                )}
 
                 <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  type="button"
+                  id="submit-normal-login-btn"
+                  onClick={handleNormalQuickLogin}
+                  disabled={isSubmittingNormal}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50"
                 >
-                  {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  ) : (
-                    <>
-                      <span>تسجيل الدخول المباشر</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
+                  {isSubmittingNormal ? 'جاري الدخول...' : '🚀 الدخول المباشر كراكب الآن'}
                 </button>
-              </form>
-            </div>
+              </div>
+            ) : (
+              /* Driver Submission Info Card */
+              <div className="space-y-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl">
+                <div className="flex items-center gap-2 text-amber-400 font-bold text-xs pb-1 border-b border-slate-800">
+                  <MotoIcon className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>تسجيل سائق جديد بطلب المالك</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  يقوم السائق بإرسال اسمه ورقم هاتفه ومعلومات دراجته وصور الوثائق. تبقى الدراجة والاسم ثابتة ومقفلة للراكب فور اعتماد المالك.
+                </p>
+                <button
+                  type="button"
+                  id="open-driver-register-from-modal-btn"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('open-driver-registration'));
+                  }}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+                >
+                  📝 إرسال بيانات السائق والوثائق للمالك
+                </button>
+              </div>
+            )}
+
+            {/* Privacy & Security Note */}
+            <p className="text-[10px] text-slate-500 text-center leading-normal pt-2">
+              بالتسجيل فإنك توافق على شروط الخدمة وسياسة الخصوصية الخاصة بـ MotoDrive.
+            </p>
           </div>
         )}
       </div>

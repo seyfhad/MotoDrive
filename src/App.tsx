@@ -28,12 +28,14 @@ import { DriverPendingApprovalView } from './pages/driver/DriverPendingApprovalV
 // Admin Views
 import { AdminPanel } from './pages/admin/AdminPanel';
 
+import { signInQuickGuest } from './services/authService';
+
 const GOOGLE_MAPS_API_KEY =
   (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) ||
   'AIzaSyBqJIpB6lQZNXKY_N6ptrBVV5_R84FpRWM';
 
 const AppContent: React.FC = () => {
-  const { currentRole, currentUser, activeDriver } = useApp();
+  const { currentRole, currentUser, setCurrentUser, activeDriver, logout } = useApp();
   const [activeTab, setActiveTab] = useState('home');
   const [isSOSOpen, setIsSOSOpen] = useState(false);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
@@ -44,13 +46,22 @@ const AppContent: React.FC = () => {
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
 
-  // Check URL parameters on mount (Google Cloud Verification links support ?page=privacy & ?page=terms)
+  // Check URL parameters on mount (?page=privacy & ?mode=admin support)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const page = params.get('page');
+    const mode = params.get('mode') || params.get('admin');
+
     if (page === 'privacy' || page === 'terms' || page === 'gcp-guide') {
       setLegalTab(page as any);
       setIsLegalOpen(true);
+    }
+
+    if (mode === 'admin' || mode === '1') {
+      const savedRole = localStorage.getItem('motodrive_v3_role');
+      if (savedRole === 'admin') {
+        // Auto-open AdminPanel for Owner
+      }
     }
   }, []);
 
@@ -106,6 +117,17 @@ const AppContent: React.FC = () => {
     };
   }, []);
 
+  // Listen to open-welcome events to reliably return to WelcomeScreen
+  useEffect(() => {
+    const handleOpenWelcome = async () => {
+      await logout();
+    };
+    window.addEventListener('open-welcome', handleOpenWelcome);
+    return () => {
+      window.removeEventListener('open-welcome', handleOpenWelcome);
+    };
+  }, [logout]);
+
   // Request geolocation permission on app start
   useEffect(() => {
     if (navigator.geolocation) {
@@ -149,9 +171,14 @@ const AppContent: React.FC = () => {
 
   // Render Driver Tabs
   const renderDriverView = () => {
-    // Strictly block access if driver status is not approved by the owner
+    // Always allow driver to access documents upload tab to upload and manage Carte Grise and License
+    if (activeTab === 'documents') {
+      return <DriverDocumentsUpload />;
+    }
+
+    // Strictly block access to ride requests / earnings if driver status is not approved by the owner
     if (activeDriver.status !== 'approved') {
-      return <DriverPendingApprovalView />;
+      return <DriverPendingApprovalView onOpenDocuments={() => setActiveTab('documents')} />;
     }
 
     switch (activeTab) {
@@ -171,14 +198,22 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Initial Welcome Screen (Mandatory Login as explicitly requested by user)
+  // Initial Welcome Screen (Quick guest entry or full login)
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center selection:bg-amber-500 selection:text-slate-950 w-full overflow-x-hidden" dir="rtl">
         <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60">
           <WelcomeScreen
             onOpenLogin={() => setIsAuthModalOpen(true)}
-            onContinueAsGuest={() => setIsAuthModalOpen(true)}
+            onContinueAsGuest={async () => {
+              try {
+                const { user } = await signInQuickGuest('راكب MotoDrive', '0550123456', 'passenger');
+                setCurrentUser(user);
+              } catch (err) {
+                console.error('Quick guest login error:', err);
+                setIsAuthModalOpen(true);
+              }
+            }}
             onOpenLegal={(tab) => {
               setLegalTab(tab);
               setIsLegalOpen(true);
@@ -225,8 +260,8 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main Responsive Mobile Frame (fits mobile 100%, and frames as phone on wide screens) */}
-      <div className="w-full max-w-md min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20">
+      {/* Main Responsive Frame (max-w-md for mobile passenger/driver, max-w-5xl for full admin management) */}
+      <div className={`w-full ${currentRole === 'admin' ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
         {/* Push Notification System Top Toast & Permission Banner */}
         <PushNotificationToast />
 

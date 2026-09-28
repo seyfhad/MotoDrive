@@ -18,7 +18,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
-import { supabase } from '../../supabaseClient';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ContactUsModalProps {
   isOpen: boolean;
@@ -54,20 +55,18 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
 
     setIsSubmitting(true);
     try {
-      // 1. Try recording message to Supabase if table exists
+      // 1. Record message to Firestore support_messages collection
       try {
-        await supabase.from('SupportMessages').insert([
-          {
-            name: name.trim() || 'مستخدم مجهول',
-            phone: phone.trim() || supportPhone,
-            email: email.trim(),
-            subject: subject,
-            message: message.trim(),
-            created_at: new Date().toISOString(),
-          },
-        ]);
+        await addDoc(collection(db, 'support_messages'), {
+          name: name.trim() || 'مستخدم مجهول',
+          phone: phone.trim() || supportPhone,
+          email: email.trim(),
+          subject: subject,
+          message: message.trim(),
+          createdAt: serverTimestamp(),
+        });
       } catch (err) {
-        console.warn('Supabase support message log fallback:', err);
+        console.warn('Firestore support message log notice:', err);
       }
 
       // 2. Broadcast local in-app notification to confirm receipt

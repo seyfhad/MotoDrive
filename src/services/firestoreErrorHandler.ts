@@ -44,6 +44,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path,
   };
 
+  const isOfflineOrUnavailable =
+    errInfo.error.includes('unavailable') ||
+    errInfo.error.includes('offline') ||
+    errInfo.error.includes('Could not reach Cloud Firestore backend');
+
+  if (isOfflineOrUnavailable) {
+    console.info(`Firestore operating in resilient offline/cache mode for [${path || 'operation'}].`);
+    return;
+  }
+
   if (operationType === OperationType.GET || operationType === OperationType.LIST) {
     console.warn(`Firestore read notice [${path}]:`, errInfo.error);
     return;

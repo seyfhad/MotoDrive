@@ -7,6 +7,7 @@ import { RegisterDriverModal } from './RegisterDriverModal';
 import { UserProfileModal } from './UserProfileModal';
 import { AuthModal } from '../auth/AuthModal';
 import { AdminInAppMessageModal } from './AdminInAppMessageModal';
+import { AdminPasscodeModal } from '../admin/AdminPasscodeModal';
 import { pushNotificationService } from '../../services/pushNotificationService';
 
 export const Header: React.FC = () => {
@@ -31,10 +32,19 @@ export const Header: React.FC = () => {
   const [showUserProfile, setShowUserProfile] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAdminMessageModal, setShowAdminMessageModal] = useState(false);
+  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
+
+  React.useEffect(() => {
+    const handleOpenDriverReg = () => setShowRegisterDriver(true);
+    window.addEventListener('open-driver-registration', handleOpenDriverReg);
+    return () => window.removeEventListener('open-driver-registration', handleOpenDriverReg);
+  }, []);
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
   const isTripActive = Boolean(currentPassengerRide || currentDriverRide);
-  const isOwner = currentUser?.email === 'seyfhad@gmail.com' || currentRole === 'admin';
+  const isOwner =
+    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com';
 
   return (
     <>
@@ -148,8 +158,8 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-bold hidden sm:inline">شروط الاستخدام</span>
             </button>
 
-            {/* Owner/Admin In-App Message Action Button */}
-            {isOwner && (
+            {/* Owner/Admin In-App Message Action Button or Passcode Login Button */}
+            {isOwner ? (
               <>
                 <button
                   id="header-admin-panel-btn"
@@ -177,6 +187,16 @@ export const Header: React.FC = () => {
                   <span className="text-[10px] font-bold hidden sm:inline">إرسال إشعار</span>
                 </button>
               </>
+            ) : (
+              <button
+                id="header-passcode-admin-btn"
+                onClick={() => setShowPasscodeModal(true)}
+                className="h-8 px-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 text-xs font-bold transition-all cursor-pointer"
+                title="دخول المالك بالشيفرة السرية"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px]">دخول المالك</span>
+              </button>
             )}
 
             {/* Notification Bell */}
@@ -270,6 +290,10 @@ export const Header: React.FC = () => {
       <AdminInAppMessageModal
         isOpen={showAdminMessageModal}
         onClose={() => setShowAdminMessageModal(false)}
+      />
+      <AdminPasscodeModal
+        isOpen={showPasscodeModal}
+        onClose={() => setShowPasscodeModal(false)}
       />
     </>
   );

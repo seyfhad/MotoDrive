@@ -41,21 +41,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateTab })
   );
 
   const handlePurgeData = async () => {
-    if (
-      !window.confirm(
-        'هل أنت تأكد من رغبتك في مسح كافة الطلبات والسائقين والركاب والبيانات الاختبارية الحالية من قاعدة البيانات؟'
-      )
-    ) {
-      return;
-    }
-
     setIsPurging(true);
     setPurgeSuccessMsg(null);
     try {
       const res = await purgeAllTestData();
       setPurgeSuccessMsg(`تم مسح وتصفير كافة البيانات والطلبات الوهمية بنجاح! (${res.deletedCount} مستند)`);
     } catch (e: any) {
-      alert('حدث خطأ أثناء مسح البيانات: ' + (e?.message || e));
+      console.error('Error purging data:', e);
     } finally {
       setIsPurging(false);
     }

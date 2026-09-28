@@ -128,7 +128,7 @@ const ALGERIA_WILAYAS = [
 ];
 
 export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
-  const { setCurrentRole, setActiveDriver, broadcastNotification, currentUser } = useApp();
+  const { setCurrentRole, activeDriver, setActiveDriver, broadcastNotification, currentUser } = useApp();
 
   // Basic Information
   const [name, setName] = useState(currentUser?.displayName || '');
@@ -156,18 +156,47 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
   if (!isOpen) return null;
 
-  // Helper to read file to base64
+  // Helper to read and compress file into lightweight optimized JPEG
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setter(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 900;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.65);
+            setter(compressed);
+          } else {
+            setter(reader.result as string);
+          }
+        };
+        img.onerror = () => {
+          setter(reader.result as string);
+        };
+        img.src = reader.result;
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -203,10 +232,15 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    const driverId = `drv_${Date.now()}`;
+    const driverId = currentUser?.uid
+      ? `driver-${currentUser.uid}`
+      : activeDriver.id && !activeDriver.id.includes('pending')
+      ? activeDriver.id
+      : `drv_${Date.now()}`;
+
     const newDriver: DriverProfile = {
       id: driverId,
-      userId: currentUser?.uid || `user_${driverId}`,
+      userId: currentUser?.uid || driverId.replace(/^driver-/, ''),
       name: name.trim(),
       phone: phone.trim(),
       email: currentUser?.email || undefined,

@@ -4,9 +4,12 @@ import { User, Phone, Mail, Shield, AlertTriangle, MessageSquare, LogOut, Check,
 import { GoogleSignInButton } from '../../components/auth/GoogleSignInButton';
 import { signOutUser } from '../../services/authService';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
+import { UserProfileModal } from '../../components/shared/UserProfileModal';
+import { Camera, FileText } from 'lucide-react';
 
 export const PassengerProfile: React.FC = () => {
   const { activePassenger, setActivePassenger, currentUser, setCurrentUser, passengers, complaints, broadcastNotification } = useApp();
+  const [showEditModal, setShowEditModal] = useState(false);
   const [editingEmergency, setEditingEmergency] = useState(false);
   const [emergencyName, setEmergencyName] = useState(activePassenger.emergencyContact?.name || '');
   const [emergencyPhone, setEmergencyPhone] = useState(activePassenger.emergencyContact?.phone || '');
@@ -62,16 +65,34 @@ export const PassengerProfile: React.FC = () => {
           <img
             src={activePassenger.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
             alt={activePassenger.name}
-            className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl"
+            className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl cursor-pointer hover:opacity-90 transition-opacity"
+            onClick={() => setShowEditModal(true)}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+            }}
           />
-          <span className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 border-2 border-slate-900 text-slate-950 flex items-center justify-center text-[10px] font-bold">
-            ✓
-          </span>
+          <button
+            type="button"
+            onClick={() => setShowEditModal(true)}
+            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-amber-500 text-slate-950 border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold shadow-md hover:bg-amber-400 cursor-pointer transition-transform hover:scale-105"
+            title="تغيير الصورة أو رفع وثيقة"
+          >
+            <Camera className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <div>
           <h3 className="text-lg font-black text-white">{activePassenger.name}</h3>
           <p className="text-xs text-slate-400 mt-0.5">{activePassenger.phone}</p>
+          <button
+            type="button"
+            onClick={() => setShowEditModal(true)}
+            className="mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-all cursor-pointer"
+          >
+            <Camera className="w-3.5 h-3.5" />
+            <span>تعديل الملف ورفع الصور / الوثائق</span>
+          </button>
         </div>
 
         {/* Switch demo passenger for testing */}
@@ -265,6 +286,11 @@ export const PassengerProfile: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <UserProfileModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+      />
     </div>
   );
 };

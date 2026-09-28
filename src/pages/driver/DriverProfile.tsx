@@ -92,15 +92,24 @@ export const DriverProfile: React.FC = () => {
 
       {/* Motorcycle Specs */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
-          <MotoIcon className="w-5 h-5 text-amber-400" />
-          <h4 className="text-sm font-bold text-white">دراجتي النارية</h4>
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <MotoIcon className="w-5 h-5 text-amber-400" />
+            <h4 className="text-sm font-bold text-white">دراجتي النارية</h4>
+          </div>
+          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <span>🔒 موثقة ومقفولة</span>
+          </span>
         </div>
 
         <div className="space-y-2 text-xs">
           <div className="flex items-center justify-between text-slate-300">
-            <span className="text-slate-500">النوع والموديل:</span>
-            <span className="font-bold text-white">{activeDriver.motorcycle.brand} {activeDriver.motorcycle.model} ({activeDriver.motorcycle.year})</span>
+            <span className="text-slate-500">اسم السائق الثابت:</span>
+            <span className="font-bold text-white">{activeDriver.name}</span>
+          </div>
+          <div className="flex items-center justify-between text-slate-300">
+            <span className="text-slate-500">نوع واسم الدراجة:</span>
+            <span className="font-bold text-amber-300">{activeDriver.motorcycle.brand} {activeDriver.motorcycle.model} ({activeDriver.motorcycle.year})</span>
           </div>
           <div className="flex items-center justify-between text-slate-300">
             <span className="text-slate-500">اللون:</span>
@@ -114,6 +123,11 @@ export const DriverProfile: React.FC = () => {
             <span className="text-slate-500">الولاية والبلدية:</span>
             <span>{activeDriver.wilaya} - {activeDriver.municipality}</span>
           </div>
+        </div>
+
+        <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[10px] text-slate-400 flex items-center gap-1.5">
+          <span>🛡️</span>
+          <span>اسم السائق واسم الدراجة ثابتان على شاشة الركاب ولا يمكن السائق تغييرهما بعد اعتماد المالك.</span>
         </div>
       </div>
 

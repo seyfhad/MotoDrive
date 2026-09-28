@@ -12,7 +12,6 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
-import { supabase } from '../supabaseClient';
 import {
   UserRole,
   UserProfile,
@@ -167,10 +166,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active profiles (fresh guest state by default)
   const [activePassenger, setActivePassenger] = useState<UserProfile>(() => GUEST_PASSENGER);
-  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => DEFAULT_PENDING_DRIVER);
+  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => {
+    try {
+      const saved = localStorage.getItem('motodrive_active_driver');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return DEFAULT_PENDING_DRIVER;
+  });
 
   // Track GPS location watcher
   const geoWatchIdRef = useRef<number | null>(null);
+
+  // Notification Helper with Push Notifications & Audio Chime
+  const addNotification = useCallback((
+    recipientId: string,
+    recipientRole: UserRole,
+    title: string,
+    body: string,
+    type: AppNotification['type'] = 'ride_update',
+    data?: Record<string, any>
+  ) => {
+    const newNotif: AppNotification = {
+      id: 'NOTIF-' + Math.random().toString(36).substring(2, 9),
+      recipientId,
+      recipientRole,
+      title,
+      body,
+      type,
+      data,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+
+    // Send Push Notification & Play Audio Chime
+    let soundType: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general' = 'general';
+    if (title.includes('طلب') || title.includes('رحلة') || title.includes('عرض')) {
+      soundType = 'new_ride';
+    } else if (title.includes('وصل') || title.includes('أقترب') || title.includes('اقترب')) {
+      soundType = 'driver_arriving';
+    } else if (title.includes('إدارة') || title.includes('قبول') || title.includes('رفض') || title.includes('تحديث')) {
+      soundType = 'admin_update';
+    }
+
+    pushNotificationService.sendPushNotification(title, body, {
+      soundType,
+      data,
+    });
+  }, []);
 
   // --------------------------------------------------------------------------
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
@@ -253,80 +298,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 1b. Supabase OAuth listener (Restores Facebook session & syncs with Firestore)
-    const { data: sbAuthListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const sbUser = session.user;
-        const displayName =
-          sbUser.user_metadata?.full_name ||
-          sbUser.user_metadata?.name ||
-          sbUser.email?.split('@')[0] ||
-          'مستخدم فيسبوك';
-        const photoUrl =
-          sbUser.user_metadata?.avatar_url || sbUser.user_metadata?.picture;
-
-        // Try reading existing Firestore document for Facebook user
-        try {
-          const userDocRef = doc(db, 'users', sbUser.id);
-          const userSnap = await getDoc(userDocRef);
-
-          if (userSnap.exists()) {
-            const existingProfile = userSnap.data() as UserProfile;
-            setActivePassenger(existingProfile);
-
-            if (existingProfile.role === 'admin' || sbUser.email === 'seyfhad@gmail.com') {
-              setCurrentRole('admin');
-              localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
-            } else if (existingProfile.role === 'driver') {
-              setCurrentRole('driver');
-              localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
-            }
-          } else {
-            // First time Facebook login: store initial profile in Firestore
-            const initialProfile: UserProfile = {
-              id: sbUser.id,
-              name: displayName,
-              phone: sbUser.user_metadata?.phone || '0550123456',
-              email: sbUser.email || undefined,
-              photoUrl: photoUrl || undefined,
-              role: sbUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
-              status: 'active',
-              cancellationCount: 0,
-              createdAt: sbUser.created_at || new Date().toISOString(),
-            };
-
-            await setDoc(userDocRef, {
-              ...initialProfile,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }).catch(err => console.warn('Supabase Facebook profile sync warning:', err));
-
-            setActivePassenger(initialProfile);
-          }
-
-          // Auto-restore driver profile if user is a driver
-          getDriverByUserIdOrPhone(sbUser.id, '0550123456', sbUser.email)
-            .then(driverProfile => {
-              if (driverProfile) setActiveDriver(driverProfile);
-            })
-            .catch(() => {});
-        } catch (err) {
-          console.warn('Firestore Facebook profile check notice:', err);
-        }
-
-        setCurrentUser({
-          uid: sbUser.id,
-          displayName: displayName,
-          email: sbUser.email || undefined,
-          photoURL: photoUrl || undefined,
-        } as any);
-      }
-    });
-
     return () => {
       window.removeEventListener('motodrive_session_updated', hydrateLocalSession);
       unsubscribe();
-      sbAuthListener.subscription.unsubscribe();
     };
   }, []);
 
@@ -334,105 +308,324 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 2. REAL-TIME FIRESTORE SUBSCRIPTIONS (RIDES, OFFERS, DRIVERS, PRICING)
   // --------------------------------------------------------------------------
   useEffect(() => {
-    // 2.1 Subscribe to System Pricing
+    // 2.1 Subscribe to System Pricing (public configuration)
     const pricingPath = 'system_config/pricing';
     const pricingDocRef = doc(db, 'system_config', 'pricing');
-    const unsubPricing = onSnapshot(pricingDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const rawData = docSnap.data() as Partial<PricingSettings>;
-        // Guarantee baseFare and minimumFare are at standard 120 DZD (not legacy 150 DZD)
-        const sanitized: PricingSettings = {
-          ...DEFAULT_PRICING,
-          ...rawData,
-          baseFare: 120,
-          minimumFare: 120,
-          peakMultiplier: rawData.peakMultiplier ?? (rawData as any).peakHourMultiplier ?? 1.0,
-          nightMultiplier: rawData.nightMultiplier ?? 1.0,
-        };
-        delete (sanitized as any).peakHourMultiplier;
-        setPricing(sanitized);
+    const unsubPricing = onSnapshot(
+      pricingDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const rawData = docSnap.data() as Partial<PricingSettings>;
+          // Guarantee baseFare and minimumFare are at standard 120 DZD (not legacy 150 DZD)
+          const sanitized: PricingSettings = {
+            ...DEFAULT_PRICING,
+            ...rawData,
+            baseFare: 120,
+            minimumFare: 120,
+            peakMultiplier: rawData.peakMultiplier ?? (rawData as any).peakHourMultiplier ?? 1.0,
+            nightMultiplier: rawData.nightMultiplier ?? 1.0,
+          };
+          delete (sanitized as any).peakHourMultiplier;
+          setPricing(sanitized);
 
-        // If Firestore had stale 150 DZD or deprecated keys, automatically update it
-        if (rawData.minimumFare !== 120 || rawData.baseFare !== 120 || (rawData as any).peakHourMultiplier !== undefined) {
-          saveSystemPricing(sanitized).catch(() => {});
+          // If Firestore had stale 150 DZD or deprecated keys, automatically update it
+          if (
+            rawData.minimumFare !== 120 ||
+            rawData.baseFare !== 120 ||
+            (rawData as any).peakHourMultiplier !== undefined
+          ) {
+            saveSystemPricing(sanitized).catch(() => {});
+          }
+        } else {
+          // Initialize default pricing in Firestore if missing
+          saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120 }).catch(
+            (err) => {
+              console.warn('Initial pricing set notice:', err);
+            }
+          );
         }
-      } else {
-        // Initialize default pricing in Firestore if missing
-        saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120 }).catch(err => {
-          console.warn('Initial pricing set notice:', err);
-        });
-      }
-    }, (err) => {
-      console.warn('Pricing snapshot notice:', err.message);
-      try {
-        handleFirestoreError(err, OperationType.GET, pricingPath);
-      } catch (e) {
-        // Logged standardized error
-      }
-    });
-
-    // 2.2 Subscribe to Real-Time Rides
-    const ridesPath = 'rides';
-    const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'));
-    const unsubRides = onSnapshot(ridesQuery, async (querySnap) => {
-      const fetchedRides: Ride[] = [];
-      
-      for (const rideDoc of querySnap.docs) {
-        const rideData = { id: rideDoc.id, ...rideDoc.data() } as Ride;
-        
-        // Fetch subcollection offers for active negotiating rides
-        if (['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(rideData.status)) {
+      },
+      (err) => {
+        if (err?.code !== 'unavailable') {
+          console.warn('Pricing snapshot notice:', err.message);
           try {
-            const offersQuery = query(collection(db, 'rides', rideDoc.id, 'offers'), orderBy('createdAt', 'asc'));
-            const offersSnap = await getDocs(offersQuery);
-            rideData.offers = offersSnap.docs.map(d => ({ id: d.id, ...d.data() } as RideOffer));
-          } catch (err) {
-            console.warn(`Error reading offers for ride ${rideDoc.id}:`, err);
+            handleFirestoreError(err, OperationType.GET, pricingPath);
+          } catch (e) {}
+        }
+      }
+    );
+
+    // 2.2 Subscribe to Real-Time Rides and Drivers once user is logged in
+    let unsubRides: (() => void) | undefined;
+    let unsubDrivers: (() => void) | undefined;
+
+    if (currentUser) {
+      const ridesPath = 'rides';
+      const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'));
+      unsubRides = onSnapshot(
+        ridesQuery,
+        async (querySnap) => {
+          const fetchedRides: Ride[] = [];
+          for (const rideDoc of querySnap.docs) {
+            const rideData = { id: rideDoc.id, ...rideDoc.data() } as Ride;
+            if (
+              ['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(
+                rideData.status
+              )
+            ) {
+              try {
+                const offersQuery = query(
+                  collection(db, 'rides', rideDoc.id, 'offers'),
+                  orderBy('createdAt', 'asc')
+                );
+                const offersSnap = await getDocs(offersQuery);
+                rideData.offers = offersSnap.docs.map(
+                  (d) => ({ id: d.id, ...d.data() } as RideOffer)
+                );
+              } catch (err) {
+                console.warn(`Error reading offers for ride ${rideDoc.id}:`, err);
+              }
+            }
+            fetchedRides.push(rideData);
+          }
+          setRides(fetchedRides);
+        },
+        (err) => {
+          if (err?.code !== 'unavailable') {
+            console.warn('Rides snapshot notice:', err.message);
+            try {
+              handleFirestoreError(err, OperationType.GET, ridesPath);
+            } catch (e) {}
           }
         }
-
-        fetchedRides.push(rideData);
-      }
-
-      setRides(fetchedRides);
-    }, (err) => {
-      console.warn('Rides snapshot notice:', err.message);
-      try {
-        handleFirestoreError(err, OperationType.GET, ridesPath);
-      } catch (e) {
-        // Logged standardized error
-      }
-    });
-
-    // 2.3 Subscribe to Real-Time Drivers
-    const driversPath = 'drivers';
-    const driversQuery = query(collection(db, 'drivers'));
-    const unsubDrivers = onSnapshot(driversQuery, (querySnap) => {
-      const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
-        d => ({ id: d.id, ...d.data() } as DriverProfile)
       );
-      setDrivers(fetchedDrivers);
-    }, (err) => {
-      console.warn('Drivers snapshot notice:', err.message);
-      try {
-        handleFirestoreError(err, OperationType.GET, driversPath);
-      } catch (e) {
-        // Logged standardized error
-      }
-    });
+
+      const driversPath = 'drivers';
+      const driversQuery = query(collection(db, 'drivers'));
+      unsubDrivers = onSnapshot(
+        driversQuery,
+        (querySnap) => {
+          const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
+            (d) => ({ id: d.id, ...d.data() } as DriverProfile)
+          );
+          setDrivers(fetchedDrivers);
+        },
+        (err) => {
+          if (err?.code !== 'unavailable') {
+            console.warn('Drivers snapshot notice:', err.message);
+            try {
+              handleFirestoreError(err, OperationType.GET, driversPath);
+            } catch (e) {}
+          }
+        }
+      );
+    }
 
     return () => {
       unsubPricing();
-      unsubRides();
-      unsubDrivers();
+      if (unsubRides) unsubRides();
+      if (unsubDrivers) unsubDrivers();
     };
-  }, []);
+  }, [currentUser]);
 
-  // Sync active driver/passenger references
+  // --------------------------------------------------------------------------
+  // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR CURRENT DRIVER PROFILE
+  // Ensures instant update of 'approved' status when approved by Admin without app restart
+  // --------------------------------------------------------------------------
+  const prevDriverStatusRef = useRef<DriverApprovalStatus | undefined>(activeDriver.status);
+
   useEffect(() => {
-    const foundD = drivers.find(d => d.id === activeDriver.id);
-    if (foundD) setActiveDriver(foundD);
-  }, [drivers, activeDriver.id]);
+    const uid = currentUser?.uid || activePassenger?.id;
+    const currentEmail = currentUser?.email || activePassenger?.email || activeDriver?.email;
+    const currentPhone = activePassenger?.phone || activeDriver?.phone;
+    const driverId =
+      activeDriver?.id && activeDriver.id !== 'driver-pending-1' ? activeDriver.id : null;
+
+    if (!uid && !driverId && !currentEmail && !currentPhone) {
+      return;
+    }
+
+    const unsubs: (() => void)[] = [];
+
+    const handleDriverSnapshotData = (driverData: DriverProfile) => {
+      const prevStatus = prevDriverStatusRef.current;
+      prevDriverStatusRef.current = driverData.status;
+
+      // Realtime notification when approved or rejected by admin
+      if (prevStatus !== 'approved' && driverData.status === 'approved') {
+        addNotification(
+          driverData.id,
+          'driver',
+          '🎉 تهانينا! تمت الموافقة على حسابك',
+          'تم قبول ملفك واعتماد وثائقك رسمياً من قبل الإدارة! يمكنك الآن تفعيل وضع (متصل) والبدء في استقبال طلبات الركاب.',
+          'admin_update'
+        );
+      } else if (prevStatus !== 'rejected' && driverData.status === 'rejected') {
+        addNotification(
+          driverData.id,
+          'driver',
+          '❌ تم رفض ملف التسجيل',
+          driverData.rejectionReason
+            ? `سبب الرفض: ${driverData.rejectionReason}`
+            : 'يرجى مراجعة وثائقك وإعادة رفعها للمراجعة.',
+          'admin_update'
+        );
+      }
+
+      setActiveDriver((prev) => {
+        const merged: DriverProfile = {
+          ...prev,
+          ...driverData,
+          status: driverData.status, // Instant status change to approved/pending/rejected
+          motorcycle: {
+            ...prev.motorcycle,
+            ...(driverData.motorcycle || {}),
+          },
+          documents: {
+            ...prev.documents,
+            ...(driverData.documents || {}),
+            status:
+              driverData.status === 'approved'
+                ? 'approved'
+                : driverData.documents?.status || prev.documents?.status || 'pending',
+          },
+        };
+
+        try {
+          localStorage.setItem('motodrive_active_driver', JSON.stringify(merged));
+        } catch (e) {}
+
+        return merged;
+      });
+
+      // Synchronize drivers list in state for Admin & map viewers
+      setDrivers((prevDrivers) => {
+        const idx = prevDrivers.findIndex(
+          (d) => d.id === driverData.id || (driverData.userId && d.userId === driverData.userId)
+        );
+        if (idx >= 0) {
+          const updated = [...prevDrivers];
+          updated[idx] = { ...updated[idx], ...driverData };
+          return updated;
+        }
+        return [...prevDrivers, driverData];
+      });
+    };
+
+    // 1. Direct document listener by driverId (e.g. 'driver-123')
+    if (driverId) {
+      try {
+        const docRef = doc(db, 'drivers', driverId);
+        const unsubDoc = onSnapshot(
+          docRef,
+          (snap) => {
+            if (snap.exists()) {
+              handleDriverSnapshotData({ id: snap.id, ...snap.data() } as DriverProfile);
+            }
+          },
+          (err) => {
+            console.warn('Realtime driver doc onSnapshot notice:', err);
+          }
+        );
+        unsubs.push(unsubDoc);
+      } catch (err) {
+        console.warn('Failed to listen to driver document:', err);
+      }
+    }
+
+    // 2. Query listener by userId to catch approvals even before driverId is locally known
+    if (uid) {
+      try {
+        const qUserId = query(collection(db, 'drivers'), where('userId', '==', uid));
+        const unsubUser = onSnapshot(
+          qUserId,
+          (snap) => {
+            if (!snap.empty) {
+              const first = snap.docs[0];
+              handleDriverSnapshotData({ id: first.id, ...first.data() } as DriverProfile);
+            }
+          },
+          (err) => {
+            console.warn('Realtime driver userId query onSnapshot notice:', err);
+          }
+        );
+        unsubs.push(unsubUser);
+      } catch (err) {
+        console.warn('Failed to listen to driver userId query:', err);
+      }
+
+      // Also listen to direct doc with prefix `driver-${uid}`
+      const prefixedId = `driver-${uid}`;
+      if (prefixedId !== driverId) {
+        try {
+          const unsubPrefixed = onSnapshot(
+            doc(db, 'drivers', prefixedId),
+            (snap) => {
+              if (snap.exists()) {
+                handleDriverSnapshotData({ id: snap.id, ...snap.data() } as DriverProfile);
+              }
+            },
+            () => {}
+          );
+          unsubs.push(unsubPrefixed);
+        } catch (e) {}
+      }
+    }
+
+    // 3. Fallback query by email if available
+    if (currentEmail && currentEmail.includes('@')) {
+      try {
+        const qEmail = query(
+          collection(db, 'drivers'),
+          where('email', '==', currentEmail.trim().toLowerCase())
+        );
+        const unsubEmail = onSnapshot(
+          qEmail,
+          (snap) => {
+            if (!snap.empty) {
+              const first = snap.docs[0];
+              handleDriverSnapshotData({ id: first.id, ...first.data() } as DriverProfile);
+            }
+          },
+          () => {}
+        );
+        unsubs.push(unsubEmail);
+      } catch (e) {}
+    }
+
+    return () => {
+      unsubs.forEach((u) => u());
+    };
+  }, [
+    currentUser?.uid,
+    currentUser?.email,
+    activePassenger?.id,
+    activePassenger?.phone,
+    activePassenger?.email,
+    activeDriver?.id,
+    activeDriver?.userId,
+    activeDriver?.email,
+    addNotification,
+  ]);
+
+  // Sync active driver/passenger references from the broad drivers collection
+  useEffect(() => {
+    const foundD = drivers.find(
+      (d) =>
+        d.id === activeDriver.id ||
+        (activeDriver.userId && d.userId === activeDriver.userId) ||
+        (activeDriver.email &&
+          d.email &&
+          d.email.toLowerCase() === activeDriver.email.toLowerCase())
+    );
+    if (foundD && foundD.status !== activeDriver.status) {
+      setActiveDriver((prev) => ({
+        ...prev,
+        ...foundD,
+        status: foundD.status,
+      }));
+    }
+  }, [drivers, activeDriver.id, activeDriver.userId, activeDriver.email, activeDriver.status]);
 
   // --------------------------------------------------------------------------
   // 3. REAL GPS TRACKING FOR ACTIVE DRIVER
@@ -484,44 +677,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const pendingDriverRideRequest = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
     ? rides.find(r => (r.status === 'searching' || r.status === 'offers_available')) || null
     : null;
-
-  // Notification Helper with Push Notifications & Audio Chime
-  const addNotification = useCallback((
-    recipientId: string,
-    recipientRole: UserRole,
-    title: string,
-    body: string,
-    type: AppNotification['type'] = 'ride_update',
-    data?: Record<string, any>
-  ) => {
-    const newNotif: AppNotification = {
-      id: 'NOTIF-' + Math.random().toString(36).substring(2, 9),
-      recipientId,
-      recipientRole,
-      title,
-      body,
-      type,
-      data,
-      isRead: false,
-      createdAt: new Date().toISOString(),
-    };
-    setNotifications(prev => [newNotif, ...prev]);
-
-    // Send Push Notification & Play Audio Chime
-    let soundType: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general' = 'general';
-    if (title.includes('طلب') || title.includes('رحلة') || title.includes('عرض')) {
-      soundType = 'new_ride';
-    } else if (title.includes('وصل') || title.includes('أقترب') || title.includes('اقترب')) {
-      soundType = 'driver_arriving';
-    } else if (title.includes('إدارة') || title.includes('قبول') || title.includes('رفض') || title.includes('تحديث')) {
-      soundType = 'admin_update';
-    }
-
-    pushNotificationService.sendPushNotification(title, body, {
-      soundType,
-      data,
-    });
-  }, []);
 
   // --------------------------------------------------------------------------
   // 4. PASSENGER REAL ACTIONS

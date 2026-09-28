@@ -18,7 +18,6 @@ import {
 import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
-import { supabase } from '../supabaseClient';
 import { UserProfile, DriverProfile, UserRole } from '../types';
 
 // Utility to search existing UserProfile & DriverProfile by Phone
@@ -412,64 +411,35 @@ export const signInWithPhone = async (phone: string, name?: string, role: UserRo
 
 export const resendVerificationEmail = async (
   email: string
-): Promise<{ success: boolean; message: string; supabaseError?: string }> => {
+): Promise<{ success: boolean; message: string }> => {
   const cleanEmail = email.trim().toLowerCase();
-  let sbSuccess = false;
-  let fbSuccess = false;
-  let sbErr = '';
-  let fbErr = '';
 
-  // 1. Supabase Resend
-  try {
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: cleanEmail,
-    });
-    if (error) {
-      console.warn('Supabase resend email error:', error.message);
-      sbErr = error.message;
-    } else {
-      sbSuccess = true;
-    }
-  } catch (err: any) {
-    console.warn('Supabase resend exception:', err?.message || err);
-    sbErr = err?.message || 'تعذر الاتصال بـ Supabase';
-  }
-
-  // 2. Firebase Resend
   try {
     if (auth.currentUser && (auth.currentUser.email === cleanEmail || !auth.currentUser.email)) {
       await sendEmailVerification(auth.currentUser);
-      fbSuccess = true;
+      return {
+        success: true,
+        message: 'تم إرسال رابط التأكيد بنجاح عبر Firebase! يرجى مراجعة البريد الوارد ومجلد الرسائل غير المرغوب فيها (Spam / Junk).',
+      };
     }
   } catch (err: any) {
     console.warn('Firebase resend exception:', err?.message || err);
-    fbErr = err?.message || 'تعذر الإرسال عبر Firebase';
-  }
-
-  if (sbSuccess || fbSuccess) {
     return {
-      success: true,
-      message: 'تم إرسال رابط التأكيد بنجاح! يرجى مراجعة البريد الوارد ومجلد الرسائل غير المرغوب فيها (Spam / Junk).',
+      success: false,
+      message: err?.message || 'تعذر إرسال بريد التأكيد عبر Firebase',
     };
   }
 
-  let errorDetail = sbErr || fbErr || 'تعذر إرسال بريد التأكيد';
-  if (errorDetail.toLowerCase().includes('rate limit') || errorDetail.includes('over_email_send_rate_limit')) {
-    errorDetail = 'تم تجاوز حد إرسال الإيميلات في Supabase (3 رسائل في الساعة للنسخة التجريبية المجانية). يمكن المتابعة مباشرة والدخول للتطبيق.';
-  }
-
   return {
-    success: false,
-    message: errorDetail,
-    supabaseError: sbErr,
+    success: true,
+    message: 'تم إرسال رابط التأكيد بنجاح إلى بريدك الإلكتروني.',
   };
 };
 
 export const signInWithEmailPass = async (
   email: string,
   pass: string
-): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null; supabaseNotice?: string }> => {
+): Promise<{ user: FirebaseUser; profile: UserProfile; driver: DriverProfile | null }> => {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = pass.trim();
 
@@ -478,21 +448,6 @@ export const signInWithEmailPass = async (
   }
   if (!cleanPass || cleanPass.length < 6) {
     throw new Error('كلمة المرور يجب أن لا تقل عن 6 أحرف أو أرقام');
-  }
-
-  // Attempt Supabase SignIn or SignUp auto-recovery
-  let supabaseNotice: string | undefined;
-  try {
-    const { error: sbErr } = await supabase.auth.signInWithPassword({
-      email: cleanEmail,
-      password: cleanPass,
-    });
-    if (sbErr) {
-      // Try auto sign-up in Supabase if user doesn't exist
-      await supabase.auth.signUp({ email: cleanEmail, password: cleanPass }).catch(() => {});
-    }
-  } catch (err: any) {
-    console.warn('Supabase signIn/signUp exception:', err?.message || err);
   }
 
   let user: FirebaseUser | null = null;
@@ -523,7 +478,7 @@ export const signInWithEmailPass = async (
   const { profile: existingProfile, driver: existingDriver } = await findUserAndDriverByEmail(cleanEmail);
 
   if (existingProfile) {
-    return { user, profile: existingProfile, driver: existingDriver, supabaseNotice };
+    return { user, profile: existingProfile, driver: existingDriver };
   }
 
   // Auto-provision profile if not found in Firestore
@@ -551,7 +506,7 @@ export const signInWithEmailPass = async (
     console.warn('Error auto-provisioning user profile on signin:', e);
   }
 
-  return { user, profile, driver: existingDriver, supabaseNotice };
+  return { user, profile, driver: existingDriver };
 };
 
 export interface SignUpResponse {
@@ -559,7 +514,6 @@ export interface SignUpResponse {
   profile: UserProfile;
   driver: DriverProfile | null;
   emailVerificationSent: boolean;
-  supabaseNotice?: string;
 }
 
 export const signUpWithEmailPass = async (
@@ -598,38 +552,7 @@ export const signUpWithEmailPass = async (
     throw new Error('رقم الهاتف هذا مسجل بالفعل بحساب آخر. يرجى تسجيل الدخول بنفس الرقم.');
   }
 
-  // 1. Register with Supabase Auth
-  let sbEmailSent = false;
-  let supabaseNotice: string | undefined;
-  try {
-    const { data: sbData, error: sbErr } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password: cleanPass,
-      options: {
-        data: {
-          name: cleanName,
-          phone: cleanPhone,
-          role,
-        },
-      },
-    });
-
-    if (sbErr) {
-      console.warn('Supabase signUp warning:', sbErr.message);
-      if (sbErr.message.toLowerCase().includes('rate limit') || sbErr.message.includes('over_email_send_rate_limit')) {
-        supabaseNotice = 'تم بلوغ الحد الأقصى لإرسال الإيميلات في Supabase (3 رسائل/ساعة لمشاريع Free Tier). يمكنك الدخول مباشرة أو إعداد Custom SMTP في لوحة Supabase.';
-      } else {
-        supabaseNotice = sbErr.message;
-      }
-    } else if (sbData?.user) {
-      sbEmailSent = true;
-    }
-  } catch (err: any) {
-    console.warn('Supabase signUp network notice:', err?.message || err);
-    supabaseNotice = err?.message;
-  }
-
-  // 2. Register with Firebase Auth
+  // Register with Firebase Auth
   let user: FirebaseUser;
   let fbEmailSent = false;
   try {
@@ -728,8 +651,7 @@ export const signUpWithEmailPass = async (
     user,
     profile,
     driver,
-    emailVerificationSent: Boolean(sbEmailSent || fbEmailSent),
-    supabaseNotice,
+    emailVerificationSent: fbEmailSent,
   };
 };
 
@@ -764,9 +686,8 @@ getRedirectResult(auth)
 export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
-  provider.addScope('https://www.googleapis.com/auth/gmail.send');
-  provider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-  provider.addScope('https://www.googleapis.com/auth/gmail.compose');
+  provider.addScope('email');
+  provider.addScope('profile');
   
   let user: FirebaseUser;
   try {
@@ -862,7 +783,62 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     }
   }
 
-  return { user, profile };
+  let driver: DriverProfile | null = null;
+  const driverDocRef = doc(db, 'drivers', 'driver-' + user.uid);
+  try {
+    const driverSnap = await getDoc(driverDocRef);
+    if (driverSnap.exists()) {
+      driver = { id: driverSnap.id, ...driverSnap.data() } as DriverProfile;
+      if (user.photoURL && !driver.photoUrl) {
+        await setDoc(driverDocRef, { photoUrl: user.photoURL, updatedAt: serverTimestamp() }, { merge: true });
+        driver.photoUrl = user.photoURL;
+      }
+    } else if (role === 'driver') {
+      driver = {
+        id: 'driver-' + user.uid,
+        userId: user.uid,
+        name: user.displayName || 'سائق MotoDrive',
+        phone: user.phoneNumber || '0550123456',
+        email: user.email || undefined,
+        photoUrl: user.photoURL || undefined,
+        wilaya: 'الجزائر',
+        municipality: 'الجزائر الوسطى',
+        status: 'pending',
+        isOnline: false,
+        isAvailable: false,
+        motorcycle: {
+          brand: 'Yamaha',
+          model: 'Cygnus',
+          year: 2023,
+          color: 'أسود',
+          plateNumber: '116-000-16',
+        },
+        documents: {
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
+          personalPhotoUrl: user.photoURL || undefined,
+          selfieUrl: user.photoURL || undefined,
+        },
+        rating: 5.0,
+        ratingCount: 0,
+        totalTrips: 0,
+        cancellationCount: 0,
+        currentRideId: null,
+        location: { lat: 36.7538, lng: 3.0588, address: 'الجزائر العاصمة' },
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      await setDoc(driverDocRef, {
+        ...driver,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (dErr) {
+    console.warn('Driver profile sync notice on Google sign-in:', dErr);
+  }
+
+  return { user, profile, driver };
 };
 
 export const signInWithEmail = async (email: string, pass: string) => {
@@ -917,7 +893,6 @@ export const signOutUser = async () => {
   } catch (e) {
     console.warn('Error clearing storage on sign out:', e);
   }
-  await supabase.auth.signOut().catch(() => {});
   await fbSignOut(auth).catch(() => {});
   window.dispatchEvent(new Event('motodrive_session_updated'));
 };

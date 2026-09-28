@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { auth } from '../../lib/firebase';
 import { resendFirebaseEmailVerification, reloadAndCheckEmailVerification } from '../../services/authService';
+import { getDriverByUserIdOrPhone } from '../../services/firestoreService';
 import {
   Clock,
   AlertCircle,
@@ -21,11 +22,45 @@ import {
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
-export const DriverPendingApprovalView: React.FC = () => {
-  const { activeDriver, currentUser, logout } = useApp();
+interface DriverPendingApprovalViewProps {
+  onOpenDocuments?: () => void;
+}
+
+export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps> = ({ onOpenDocuments }) => {
+  const { activeDriver, setActiveDriver, currentUser, logout } = useApp();
   const [showEditModal, setShowEditModal] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Robust Polling / Real-time check for driver approval status update
+  useEffect(() => {
+    let isMounted = true;
+    const checkApprovalStatus = async () => {
+      if (activeDriver?.id || currentUser?.uid || currentUser?.email || activeDriver?.email) {
+        try {
+          const latestDriver = await getDriverByUserIdOrPhone(
+            activeDriver?.userId || currentUser?.uid || activeDriver?.id || '',
+            activeDriver?.phone,
+            activeDriver?.email || currentUser?.email
+          );
+          if (isMounted && latestDriver && latestDriver.status && latestDriver.status !== activeDriver.status) {
+            setActiveDriver(latestDriver);
+            if (latestDriver.status === 'approved') {
+              window.location.reload(); // Instant refresh to load approved DriverHome
+            }
+          }
+        } catch (err) {
+          console.warn('Polling driver status notice:', err);
+        }
+      }
+    };
+
+    const interval = setInterval(checkApprovalStatus, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeDriver, currentUser, setActiveDriver]);
 
   // Email verification states - strictly require verified email for email accounts
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(() => {
@@ -287,11 +322,11 @@ export const DriverPendingApprovalView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => setShowEditModal(true)}
+            onClick={() => (onOpenDocuments ? onOpenDocuments() : setShowEditModal(true))}
             className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
           >
             <Camera className="w-4 h-4" />
-            <span>فتح صفحة رفع الوثائق المطلوبة الآن</span>
+            <span>رفع وحفظ وثائق السائق (Firebase Storage) 📄</span>
           </button>
         </div>
       ) : (
@@ -335,11 +370,11 @@ export const DriverPendingApprovalView: React.FC = () => {
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowEditModal(true)}
+                  onClick={() => (onOpenDocuments ? onOpenDocuments() : setShowEditModal(true))}
                   className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>تحديث وإعادة إرسال الوثائق المطلوبة</span>
+                  <span>تحديث وإعادة رفع الوثائق (Firebase Storage)</span>
                 </button>
               </div>
             </div>

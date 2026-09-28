@@ -1,6 +1,13 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { AdminDriversPanel } from '../../components/admin/AdminDriversPanel';
+import { AdminDashboard } from './AdminDashboard';
+import { AdminRides } from './AdminRides';
+import { AdminLiveMap } from './AdminLiveMap';
+import { AdminPricing } from './AdminPricing';
+import { AdminServiceAreas } from './AdminServiceAreas';
+import { AdminComplaints } from './AdminComplaints';
+import { AdminUsers } from './AdminUsers';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import {
   ShieldCheck,
@@ -9,135 +16,477 @@ import {
   LogOut,
   Bell,
   Settings,
+  MapPin,
+  Map,
+  DollarSign,
+  AlertTriangle,
+  Send,
+  Navigation,
+  RefreshCw,
+  UserCheck,
+  ChevronDown,
+  Layers,
+  X,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
-  const { setCurrentRole, broadcastNotification } = useApp();
-  const [activeTab, setActiveTab] = useState<'drivers' | 'stats' | 'settings'>('drivers');
+  const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
+  const [activeTab, setActiveTab] = useState<
+    'drivers' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'users'
+  >('drivers');
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
+
+  // Strict Owner Access Control
+  const isOwner =
+    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com';
+
+  // In-app modals replacing blocked window.confirm / window.prompt in iframes
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const [showBroadcastModal, setShowBroadcastModal] = useState(false);
+  const [broadcastTitle, setBroadcastTitle] = useState('إشعار من إدارة MotoDrive');
+  const [broadcastBody, setBroadcastBody] = useState('مرحباً بكم، تم تحديث أسعار وتغطية الرحلات!');
+  const [broadcastSuccess, setBroadcastSuccess] = useState(false);
+
+  if (!isOwner) {
+    return (
+      <div className="max-w-md mx-auto p-6 my-12 bg-slate-900 border border-red-500/30 rounded-3xl text-center space-y-4 shadow-2xl" dir="rtl">
+        <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto text-2xl">
+          🔒
+        </div>
+        <h3 className="text-lg font-black text-white">غير مصرح بالدخول للإدارة</h3>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          عذراً، لوحة التحكم الإدارية مخصصة حصرياً لمالك التطبيق الرئيسي (<span className="text-amber-400 font-mono">seyfhad@gmail.com</span>).
+        </p>
+        <button
+          onClick={() => setCurrentRole('passenger')}
+          className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+        >
+          العودة لوضع الراكب
+        </button>
+      </div>
+    );
+  }
+
+  const pendingDriversCount = drivers.filter(d => d.status === 'pending').length;
+  const activeComplaintsCount = complaints.filter(c => c.status !== 'resolved').length;
+  const activeRidesCount = rides.filter(
+    r => r.status === 'searching' || r.status === 'accepted' || r.status === 'driver_arriving' || r.status === 'trip_started'
+  ).length;
+
+  const handleSendBroadcast = () => {
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) return;
+    broadcastNotification(broadcastTitle.trim(), broadcastBody.trim());
+    setBroadcastSuccess(true);
+    setTimeout(() => {
+      setBroadcastSuccess(false);
+      setShowBroadcastModal(false);
+    }, 1800);
+  };
+
+  const confirmLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      sessionStorage.clear();
+      localStorage.removeItem('motodrive_user_session');
+      localStorage.removeItem('motodrive_v3_role');
+      localStorage.removeItem('motodz_v2_role');
+      localStorage.removeItem('motodrive_current_user');
+      localStorage.removeItem('motodrive_active_driver');
+      setCurrentRole('passenger');
+      await logout();
+      window.dispatchEvent(new CustomEvent('open-welcome'));
+    } catch (e) {
+      console.warn('Logout notice:', e);
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutConfirm(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans dir-rtl pb-12" dir="rtl">
-      {/* هيدر لوحة الإدارة */}
-      <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3">
-        <div className="max-w-md mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16 w-full" dir="rtl">
+      {/* 1. Header Bar with Operational Controls */}
+      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-xl">
+        <div className="w-full flex items-center justify-between gap-3">
+          {/* Logo & Brand */}
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/20">
-              <ShieldCheck className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/20 shrink-0">
+              <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-sm font-black text-white flex items-center gap-1.5">
-                <span>إدارة منصة MotoDrive</span>
+              <h1 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                <span>لوحة تحكم إدارة MotoDrive</span>
+                <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                  Firebase Live
+                </span>
               </h1>
-              <p className="text-[10px] text-slate-400">متابعة طلبات السائقين والعمليات المباشرة</p>
+              <p className="text-[11px] text-slate-400">التحكم الشامل بالسائقين، الأسعار، الرحلات والمستخدمين</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* Action Buttons: Broadcast, Role Switcher, Logout */}
+          <div className="flex items-center gap-2">
+            {/* إرسال إشعار عام */}
             <button
-              onClick={() => {
-                broadcastNotification('تنبيه الإدارة', 'تم إرسال إشعار عام لجميع مستخدمي التطبيق');
-                alert('تم إرسال الإشعار العام بنجاح');
-              }}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl border border-slate-700 transition-colors"
-              title="إشعار عام"
+              type="button"
+              onClick={() => setShowBroadcastModal(true)}
+              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 hover:text-amber-300 rounded-xl border border-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="إرسال إشعار فوري لجميع المستخدمين"
             >
               <Bell className="w-4 h-4" />
+              <span className="hidden sm:inline">إشعار عام</span>
             </button>
 
+            {/* القائمة المنسدلة لتبديل الدور */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowRoleMenu(!showRoleMenu)}
+                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+              >
+                <span>معاينة كـ</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+
+              {showRoleMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowRoleMenu(false)}
+                  />
+                  <div
+                    className="absolute left-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-1.5 space-y-1 z-50 text-xs animate-in fade-in"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        localStorage.setItem('motodz_v2_role', 'passenger');
+                        setCurrentRole('passenger');
+                        setShowRoleMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white flex items-center justify-between font-bold cursor-pointer transition-colors"
+                    >
+                      <span>وضع الراكب (Passenger)</span>
+                      <Users className="w-4 h-4 text-blue-400" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        localStorage.setItem('motodz_v2_role', 'driver');
+                        setCurrentRole('driver');
+                        setShowRoleMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white flex items-center justify-between font-bold cursor-pointer transition-colors"
+                    >
+                      <span>وضع السائق (Driver)</span>
+                      <MotoIcon className="w-4 h-4 text-amber-400" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        localStorage.setItem('motodz_v2_role', 'admin');
+                        setCurrentRole('admin');
+                        setShowRoleMenu(false);
+                      }}
+                      className="w-full text-right px-3 py-2.5 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-between font-black cursor-pointer"
+                    >
+                      <span>لوحة الإدارة (Admin)</span>
+                      <ShieldCheck className="w-4 h-4 text-amber-400" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* تسجيل الخروج */}
             <button
-              onClick={() => setCurrentRole('client')}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[11px] font-bold border border-slate-700 flex items-center gap-1 transition-colors"
+              type="button"
+              onClick={() => setShowLogoutConfirm(true)}
+              className="p-2 bg-red-500/10 hover:bg-red-500/20 active:scale-95 text-red-400 hover:text-red-300 rounded-xl border border-red-500/20 text-xs font-bold transition-all cursor-pointer flex items-center justify-center"
+              title="تسجيل الخروج من الحساب"
             >
-              <span>الخروج</span>
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
-      {/* المحتوى الرئيسي */}
-      <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* شريط التنقل بين التبويبات */}
-        <div className="flex items-center gap-1.5 bg-slate-900 p-1.5 rounded-2xl border border-slate-800 text-xs overflow-x-auto">
+      {/* 2. Main Navigation Bar with All 8 Admin Modules */}
+      <div className="bg-slate-900/60 border-b border-slate-800 px-4 py-2.5 overflow-x-auto scrollbar-none">
+        <div className="flex items-center gap-2 min-w-max">
+          {/* 1. طلبات السائقين */}
           <button
             onClick={() => setActiveTab('drivers')}
-            className={`flex-1 py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'drivers'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
             }`}
           >
-            <MotoIcon className="w-4 h-4" />
-            <span>طلبات السائقين</span>
+            <UserCheck className="w-4 h-4" />
+            <span>طلبات السائقين والوثائق</span>
+            {pendingDriversCount > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                activeTab === 'drivers' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
+              }`}>
+                {pendingDriversCount}
+              </span>
+            )}
           </button>
 
+          {/* 2. لوحة الإحصائيات الشاملة */}
           <button
-            onClick={() => setActiveTab('stats')}
-            className={`flex-1 py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
-              activeTab === 'stats'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
+            onClick={() => setActiveTab('dashboard')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            <span>الإحصائيات</span>
+            <span>الإحصائيات والبيانات</span>
           </button>
 
+          {/* 3. الرحلات المباشرة */}
           <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex-1 py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap ${
-              activeTab === 'settings'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                : 'text-slate-400 hover:text-white'
+            onClick={() => setActiveTab('rides')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'rides'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
             }`}
           >
-            <Settings className="w-4 h-4" />
-            <span>الإعدادات</span>
+            <MotoIcon className="w-4 h-4" />
+            <span>الرحلات ({rides.length})</span>
+            {activeRidesCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            )}
+          </button>
+
+          {/* 4. خريطة التتبع المباشر */}
+          <button
+            onClick={() => setActiveTab('map')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'map'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Map className="w-4 h-4" />
+            <span>خريطة التتبع الحي 🗺️</span>
+          </button>
+
+          {/* 5. التسعير والعمولة */}
+          <button
+            onClick={() => setActiveTab('pricing')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'pricing'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>التسعير والعمولة</span>
+          </button>
+
+          {/* 6. مناطق الخدمة والولايات */}
+          <button
+            onClick={() => setActiveTab('service_areas')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'service_areas'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <MapPin className="w-4 h-4" />
+            <span>مناطق الخدمة (58 ولاية)</span>
+          </button>
+
+          {/* 7. الشكاوى والدعم */}
+          <button
+            onClick={() => setActiveTab('complaints')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'complaints'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4" />
+            <span>الشكاوى والدعم</span>
+            {activeComplaintsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-red-500 text-white">
+                {activeComplaintsCount}
+              </span>
+            )}
+          </button>
+
+          {/* 8. حسابات الركاب والمستخدمين */}
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'users'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>المستخدمين ({passengers.length})</span>
           </button>
         </div>
+      </div>
 
-        {/* 1. تبويب إدارة السائقين المربوط بـ Supabase */}
+      {/* 3. Main Display Container */}
+      <main className="w-full p-4 sm:p-6">
         {activeTab === 'drivers' && <AdminDriversPanel />}
-
-        {/* 2. تبويب الإحصائيات */}
-        {activeTab === 'stats' && (
-          <div className="grid grid-cols-1 gap-3">
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>إجمالي الرحلات</span>
-                <BarChart3 className="w-4 h-4 text-amber-400" />
-              </div>
-              <p className="text-xl font-black text-white">0</p>
-              <p className="text-[10px] text-slate-500">لا توجد رحلات مسجلة حالياً</p>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-1">
-              <div className="flex items-center justify-between text-slate-400 text-xs">
-                <span>المستخدمين النشطين</span>
-                <Users className="w-4 h-4 text-amber-400" />
-              </div>
-              <p className="text-xl font-black text-white">1</p>
-              <p className="text-[10px] text-emerald-400">حساب المدير الحالي</p>
-            </div>
-          </div>
-        )}
-
-        {/* 3. تبويب الإعدادات */}
-        {activeTab === 'settings' && (
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl space-y-3 text-xs">
-            <h3 className="font-bold text-white border-b border-slate-800 pb-2">
-              إعدادات التسجيل
-            </h3>
-            <div className="flex items-center justify-between p-2.5 bg-slate-950/60 rounded-xl border border-slate-800">
-              <div>
-                <p className="font-bold text-white">استقبال طلبات السائقين</p>
-                <p className="text-[10px] text-slate-400">السماح بتسجيل السائقين عبر النموذج</p>
-              </div>
-              <input type="checkbox" defaultChecked className="w-4 h-4 accent-amber-500 cursor-pointer" />
-            </div>
-          </div>
-        )}
+        {activeTab === 'dashboard' && <AdminDashboard onNavigateTab={(t: any) => setActiveTab(t)} />}
+        {activeTab === 'rides' && <AdminRides />}
+        {activeTab === 'map' && <AdminLiveMap />}
+        {activeTab === 'pricing' && <AdminPricing />}
+        {activeTab === 'service_areas' && <AdminServiceAreas />}
+        {activeTab === 'complaints' && <AdminComplaints />}
+        {activeTab === 'users' && <AdminUsers />}
       </main>
+
+      {/* Logout Confirmation Modal (Works 100% inside iframes without window.confirm) */}
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl space-y-4 text-right"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-red-500/15 text-red-400 flex items-center justify-center text-xl mx-auto border border-red-500/20">
+              <LogOut className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-white">تسجيل الخروج</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                هل أنت متأكد من رغبتك في تسجيل الخروج من لوحة الإدارة والعودة للشاشة الرئيسية؟
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={confirmLogout}
+                disabled={isLoggingOut}
+                className="flex-1 py-2.5 px-4 bg-red-500 hover:bg-red-600 active:scale-95 text-white font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-red-500/20 disabled:opacity-50"
+              >
+                {isLoggingOut ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري الخروج...</span>
+                  </>
+                ) : (
+                  <span>نعم، تسجيل الخروج</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Broadcast Notification Modal */}
+      {showBroadcastModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setShowBroadcastModal(false)}
+        >
+          <div
+            className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl space-y-4 text-right"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <Bell className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">إرسال إشعار عام فوري</h3>
+                  <p className="text-[10px] text-slate-400">يصل لجميع الركاب والسائقين على المنصة</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBroadcastModal(false)}
+                className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {broadcastSuccess ? (
+              <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center animate-in fade-in">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-white">تم إرسال الإشعار بنجاح!</h4>
+                <p className="text-xs text-slate-400">وصل الإشعار إلى جميع مستخدمي التطبيق.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">عنوان الإشعار:</label>
+                  <input
+                    type="text"
+                    value={broadcastTitle}
+                    onChange={(e) => setBroadcastTitle(e.target.value)}
+                    placeholder="مثال: إشعار من إدارة MotoDrive"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-300 block">نص الرسالة:</label>
+                  <textarea
+                    rows={3}
+                    value={broadcastBody}
+                    onChange={(e) => setBroadcastBody(e.target.value)}
+                    placeholder="اكتب تفاصيل الإشعار هنا..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleSendBroadcast}
+                    disabled={!broadcastTitle.trim() || !broadcastBody.trim()}
+                    className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-40"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>إرسال الإشعار الآن</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBroadcastModal(false)}
+                    className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -34,7 +34,11 @@ export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
         broadcastNotification('جاري المتابعة مع Facebook', 'يرجى إكمال المصادقة للمتابعة.');
       }
     } catch (err: any) {
-      const message = err?.message || 'فشل الاتصال بفيسبوك. يرجى المحاولة مرة أخرى.';
+      let rawMsg = err?.message || 'فشل الاتصال بفيسبوك. يرجى المحاولة مرة أخرى.';
+      let message = rawMsg;
+      if (rawMsg.includes('App not active') || rawMsg.includes('inactive') || rawMsg.includes('Access token') || rawMsg.includes('OAuth')) {
+        message = '⚠️ تطبيق فيسبوك قيد وضع التطوير (Development Mode). يرجى تحويل التطبيق إلى وضع Live في لوحة Meta for Developers أو استخدام تسجيل الدخول السريع / جوجل / البريد.';
+      }
       console.error('Facebook Sign-In Error:', err);
       setErrorMsg(message);
       onError?.(message);
