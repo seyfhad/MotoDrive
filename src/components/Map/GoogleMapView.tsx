@@ -220,6 +220,7 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 }) => {
   const [selectedDriver, setSelectedDriver] = useState<DriverProfile | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [locationToast, setLocationToast] = useState<string | null>(null);
   const mapInstance = useMap();
 
   const handleMapClick = useCallback(
@@ -236,6 +237,7 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
   // دالة طلب إذن وتحديد الموقع الجغرافي للـ GPS وتوجيه الخريطة نحوه
   const requestUserLocation = async () => {
     setIsLocating(true);
+    setLocationToast(null);
     try {
       const res = await getRobustUserLocation();
       const userCoords = res.coords;
@@ -248,8 +250,15 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
       if (onMapClick) {
         onMapClick(userCoords);
       }
+
+      if (res.message) {
+        setLocationToast(res.message);
+        setTimeout(() => setLocationToast(null), 6000);
+      }
     } catch (err) {
       console.warn("Location request notice:", err);
+      setLocationToast("💡 يرجى التأكد من تشغيل زر 'الموقع' (GPS) في شريط الإشعارات بهاتفك.");
+      setTimeout(() => setLocationToast(null), 6000);
     } finally {
       setIsLocating(false);
     }
@@ -445,6 +454,20 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
             <Navigation className="w-5 h-5 text-amber-400 transition-transform group-hover:scale-110" />
           )}
         </button>
+      )}
+
+      {/* floating GPS feedback toast */}
+      {locationToast && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] bg-slate-950/95 border border-amber-500/50 text-slate-100 text-xs py-2 px-3.5 rounded-xl shadow-2xl backdrop-blur-md text-center dir-rtl flex items-center gap-2 animate-bounce">
+          <span className="text-amber-400 font-bold shrink-0">📍</span>
+          <span>{locationToast}</span>
+          <button
+            onClick={() => setLocationToast(null)}
+            className="text-slate-400 hover:text-white mr-auto text-sm px-1 font-bold"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* Visual GPS Center Target when interactive */}

@@ -230,6 +230,65 @@ export interface RobustLocationResult {
 /**
  * High-reliability geolocation getter for browser, webview, mobile, and iframe environments with Capacitor native permission support
  */
+export async function getIPUserLocation(): Promise<{ coords: Coordinates; cityName: string } | null> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    // Try ipapi.co or freeipapi
+    const res = await fetch('https://ipapi.co/json/', { signal: controller.signal }).catch(() => null);
+    clearTimeout(timeoutId);
+
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && data.latitude && data.longitude) {
+        const city = data.city || data.region || 'الجزائر';
+        return {
+          coords: {
+            lat: parseFloat(data.latitude),
+            lng: parseFloat(data.longitude),
+            name: `موقع تقريبي عبر الشبكة (${city})`,
+            address: `${city}، الجزائر`,
+          },
+          cityName: city,
+        };
+      }
+    }
+  } catch {
+    // Ignore IP fetch errors
+  }
+
+  try {
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), 2000);
+    const res2 = await fetch('https://freeipapi.com/api/json', { signal: controller2.signal }).catch(() => null);
+    clearTimeout(timeoutId2);
+
+    if (res2 && res2.ok) {
+      const data2 = await res2.json();
+      if (data2 && data2.latitude && data2.longitude) {
+        const city = data2.cityName || data2.regionName || 'الجزائر';
+        return {
+          coords: {
+            lat: parseFloat(data2.latitude),
+            lng: parseFloat(data2.longitude),
+            name: `موقع تقريبي (${city})`,
+            address: `${city}، الجزائر`,
+          },
+          cityName: city,
+        };
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return null;
+}
+
+/**
+ * High-reliability geolocation getter for browser, webview, mobile, and iframe environments with Capacitor native permission support & IP fallback
+ */
 export async function getRobustUserLocation(): Promise<RobustLocationResult> {
   const defaultCoords: Coordinates = {
     lat: 36.7538,
@@ -238,62 +297,72 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
     address: 'ساحة البريد المركزي، الجزائر العاصمة',
   };
 
-  // 1. Native Capacitor Platform Support with explicit permission request
-  if (Capacitor.isNativePlatform()) {
+  // 1. Native Capacitor Platform Support with explicit permission check & prompt trigger
+  if (Capacitor.isNativePlatform() || Capacitor.isPluginAvailable('Geolocation')) {
     try {
-      console.log('Requesting native geolocation permissions...');
-      const permResult = await Geolocation.requestPermissions();
-      if (permResult.location === 'denied' || permResult.coarseLocation === 'denied') {
+      console.log('Checking native geolocation permissions...');
+      let permResult = await Geolocation.checkPermissions();
+
+      if (
+        permResult.location === 'prompt' ||
+        permResult.location === 'prompt-with-rationale' ||
+        permResult.coarseLocation === 'prompt'
+      ) {
+        console.log('Requesting native geolocation permission prompt...');
+        permResult = await Geolocation.requestPermissions();
+      }
+
+      if (permResult.location === 'denied' && permResult.coarseLocation === 'denied') {
+        const ipLoc = await getIPUserLocation();
         return {
-          coords: defaultCoords,
+          coords: ipLoc ? ipLoc.coords : defaultCoords,
           isFallback: true,
-          message: '⚠️ تم رفض إذن الوصول إلى الموقع من قبل المستخدم. يرجى السماح بالتطبيق بالوصول لموقعك من إعدادات الهاتف.',
+          message: '⚠️ تم رفض إذن الوصول إلى GPS. يرجى تفعيل إذن الموقع للتطبيق من إعدادات الهاتف، أو تحديد مكانك بالضغط على الخريطة.',
         };
       }
 
-      console.log('Fetching native GPS position...');
+      console.log('Fetching native GPS position with high accuracy...');
       const position = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 60000,
+        timeout: 8000,
+        maximumAge: 10000,
       });
 
-      const latitude = position.coords.latitude;
-      const longitude = position.coords.longitude;
-      const address = await reverseGeocodeCoords(latitude, longitude);
+      if (position && position.coords && typeof position.coords.latitude === 'number') {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const address = await reverseGeocodeCoords(latitude, longitude);
 
-      return {
-        coords: {
-          lat: latitude,
-          lng: longitude,
-          name: address || 'موقعي الحالي (GPS)',
-          address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        },
-        isFallback: false,
-        message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
-      };
+        return {
+          coords: {
+            lat: latitude,
+            lng: longitude,
+            name: address || 'موقعي الحالي (GPS)',
+            address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+          },
+          isFallback: false,
+          message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح عبر GPS.',
+        };
+      }
     } catch (nativeErr: any) {
-      console.warn('Native geolocation failed, trying fallback:', nativeErr);
+      console.warn('Native geolocation check/request failed, proceeding with standard browser fallback:', nativeErr);
     }
   }
 
-  // 2. Web / Fallback Geolocation
-  if (!navigator || !navigator.geolocation) {
-    return {
-      coords: defaultCoords,
-      isFallback: true,
-      message: 'خاصية تحديد الموقع غير مدعومة في متصفحك. تم وضع الخريطة في وسط الجزائر العاصمة.',
-    };
-  }
-
+  // Helper promise wrapper for navigator.geolocation
   const tryPosition = (options: PositionOptions): Promise<GeolocationPosition> => {
     return new Promise((resolve, reject) => {
+      if (!navigator || !navigator.geolocation) {
+        reject(new Error('Geolocation not supported'));
+        return;
+      }
       navigator.geolocation.getCurrentPosition(resolve, reject, options);
     });
   };
 
+  // 2. High accuracy GPS try (3.5 seconds max timeout)
   try {
-    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 3500, maximumAge: 30000 });
     const { latitude, longitude } = pos.coords;
     const address = await reverseGeocodeCoords(latitude, longitude);
     return {
@@ -304,32 +373,54 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
         address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
       },
       isFallback: false,
-      message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك الجغرافي بنجاح.',
+      message: address ? `تم تحديد موقعك بدقة: ${address}` : 'تم تحديد موقعك بنجاح عبر GPS الهاتف.',
     };
-  } catch (err1) {
-    try {
-      const pos = await tryPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: Infinity });
-      const { latitude, longitude } = pos.coords;
-      const address = await reverseGeocodeCoords(latitude, longitude);
+  } catch (errHighAccuracy: any) {
+    // If permission explicitly denied by user, attempt IP fallback + clear instructions
+    if (errHighAccuracy?.code === 1) {
+      const ipLoc = await getIPUserLocation();
       return {
-        coords: {
-          lat: latitude,
-          lng: longitude,
-          name: address || 'موقعي الحالي',
-          address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-        },
-        isFallback: false,
-        message: 'تم تحديد موقعك التقريبي عبر شبكة الاتصال.',
-      };
-    } catch (err2: any) {
-      const isDenied = err2?.code === 1;
-      return {
-        coords: defaultCoords,
+        coords: ipLoc ? ipLoc.coords : defaultCoords,
         isFallback: true,
-        message: isDenied
-          ? '⚠️ تم حظر الوصول إلى GPS. يرجى تفعيل إذن الموقع من إعدادات المتصفح أو الضغط على الخريطة مباشرة لتحديد مكانك.'
-          : '⚠️ تعذر التقاط إشارة GPS. تم وضع الخريطة في وسط الجزائر العاصمة، يمكنك اختيار موقعك يدويًا.',
+        message: '⚠️ تم حظر إذن الموقع الجغرافي. يرجى تفعيل إذن الموقع للمتصفح من إعدادات الهاتف، أو اختر موقعك بالضغط المباشر على الخريطة.',
       };
     }
   }
+
+  // 3. Fast Network / Cell-Tower location try (3.5 seconds max timeout)
+  try {
+    const pos = await tryPosition({ enableHighAccuracy: false, timeout: 3500, maximumAge: 120000 });
+    const { latitude, longitude } = pos.coords;
+    const address = await reverseGeocodeCoords(latitude, longitude);
+    return {
+      coords: {
+        lat: latitude,
+        lng: longitude,
+        name: address || 'موقعي الحالي (شبكة الهاتف)',
+        address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      },
+      isFallback: false,
+      message: 'تم تحديد موقعك التقريبي عبر شبكة الاتصال. لتفعيل الدقة العالية، تأكد من تشغيل خيار GPS في شريط الإشعارات.',
+    };
+  } catch (errNetwork: any) {
+    // Network location also failed
+  }
+
+  // 4. IP Geolocation Fallback (instant city/wilaya detection)
+  const ipResult = await getIPUserLocation();
+  if (ipResult) {
+    return {
+      coords: ipResult.coords,
+      isFallback: true,
+      message: `تم تحديد موقعك تقريبياً في (${ipResult.cityName}). 💡 لتفعيل GPS الدقيق: سحّب شريط الإشعارات للهاتف وفعّل خيار "الموقع" (GPS).`,
+    };
+  }
+
+  // 5. Ultimate Fallback to Algiers Center with friendly instructional guidance
+  return {
+    coords: defaultCoords,
+    isFallback: true,
+    message: '⚠️ تعذر التقاط إشارة GPS الهاتف. 💡 الحل: افتح شريط إشعارات الهاتف وفعّل زر "الموقع" (GPS) ثم أعد الضغط على زر تحديد الموقع أو حرك الخريطة.',
+  };
 }
+

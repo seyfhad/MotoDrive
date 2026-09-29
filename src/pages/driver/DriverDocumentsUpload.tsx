@@ -125,7 +125,7 @@ export const DriverDocumentsUpload: React.FC = () => {
       reader.onload = (e) => {
         const img = new Image();
         img.onload = () => {
-          const maxDim = 1200;
+          const maxDim = 600;
           let { width, height } = img;
           if (width > maxDim || height > maxDim) {
             if (width > height) {
@@ -151,7 +151,7 @@ export const DriverDocumentsUpload: React.FC = () => {
                 }
               },
               'image/jpeg',
-              0.82
+              0.60
             );
           } else {
             resolve(file);

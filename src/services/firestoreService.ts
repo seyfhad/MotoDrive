@@ -67,17 +67,37 @@ export const saveSystemPricing = async (pricing: PricingSettings): Promise<void>
 // ============================================================================
 
 export const syncUserProfile = async (user: Partial<UserProfile> & { id: string }): Promise<void> => {
-  const userRef = doc(db, 'users', user.id);
-  await setDoc(userRef, sanitizeFirestoreData({
-    ...user,
-    updatedAt: serverTimestamp(),
-  }), { merge: true });
+  try {
+    const userRef = doc(db, 'users', user.id);
+    await setDoc(userRef, sanitizeFirestoreData({
+      ...user,
+      updatedAt: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('syncUserProfile warning (offline or database not created yet):', err);
+  }
+
+  try {
+    const rawSess = localStorage.getItem('motodrive_user_session');
+    if (rawSess) {
+      const sess = JSON.parse(rawSess);
+      if (sess.user && sess.user.id === user.id) {
+        sess.user = { ...sess.user, ...user };
+        localStorage.setItem('motodrive_user_session', JSON.stringify(sess));
+      }
+    }
+  } catch (e) {}
 };
 
 export const getUserProfile = async (userId: string): Promise<UserProfile | null> => {
-  const userRef = doc(db, 'users', userId);
-  const snap = await getDoc(userRef);
-  return snap.exists() ? (snap.data() as UserProfile) : null;
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snap = await getDoc(userRef);
+    return snap.exists() ? (snap.data() as UserProfile) : null;
+  } catch (err) {
+    console.warn('getUserProfile error:', err);
+    return null;
+  }
 };
 
 export const getDriverByUserIdOrPhone = async (
@@ -126,14 +146,37 @@ export const getDriverByUserIdOrPhone = async (
 // ============================================================================
 
 export const syncDriverProfile = async (driver: DriverProfile): Promise<void> => {
-  const driverRef = doc(db, 'drivers', driver.id);
-  const gh = geohashForLocation([driver.location.lat, driver.location.lng]);
+  try {
+    const driverRef = doc(db, 'drivers', driver.id);
+    const gh = geohashForLocation([driver.location.lat, driver.location.lng]);
 
-  await setDoc(driverRef, sanitizeFirestoreData({
-    ...driver,
-    geohash: gh,
-    updatedAt: serverTimestamp(),
-  }), { merge: true });
+    await setDoc(driverRef, sanitizeFirestoreData({
+      ...driver,
+      geohash: gh,
+      updatedAt: serverTimestamp(),
+    }), { merge: true });
+  } catch (err) {
+    console.warn('syncDriverProfile notice (database uninitialized or offline):', err);
+  }
+
+  try {
+    const rawDir = localStorage.getItem('motodrive_phone_directory');
+    if (rawDir) {
+      const dir = JSON.parse(rawDir);
+      if (driver.phone && dir[driver.phone]) {
+        dir[driver.phone].driver = driver;
+        localStorage.setItem('motodrive_phone_directory', JSON.stringify(dir));
+      }
+    }
+    const rawSess = localStorage.getItem('motodrive_user_session');
+    if (rawSess) {
+      const sess = JSON.parse(rawSess);
+      if (sess.driver && (sess.driver.id === driver.id || sess.driver.phone === driver.phone)) {
+        sess.driver = driver;
+        localStorage.setItem('motodrive_user_session', JSON.stringify(sess));
+      }
+    }
+  } catch (e) {}
 };
 
 export const updateDriverStatusInFirestore = async (
@@ -550,17 +593,63 @@ export const submitComplaintToFirestore = async (
 };
 
 // ============================================================================
-// STORAGE UPLOAD (DOCUMENTS & PHOTOS)
+// STORAGE UPLOAD (DOCUMENTS & PHOTOS WITH BASE64 FALLBACK)
 // ============================================================================
+
+export const fileToCompressedDataUrl = (file: File, maxDimension: number = 500, quality: number = 0.55): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const result = e.target?.result as string || '';
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxDimension) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          }
+        } else {
+          if (height > maxDimension) {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(result);
+        }
+      };
+      img.onerror = () => resolve(result);
+      img.src = result;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+};
 
 export const uploadDriverDocument = async (
   driverId: string,
   docType: string,
   file: File
 ): Promise<string> => {
-  const storageRef = ref(storage, `driver_documents/${driverId}/${docType}_${Date.now()}_${file.name}`);
-  const snap = await uploadBytes(storageRef, file);
-  return getDownloadURL(snap.ref);
+  try {
+    const storageRef = ref(storage, `driver_documents/${driverId}/${docType}_${Date.now()}_${file.name}`);
+    const snap = await uploadBytes(storageRef, file);
+    return await getDownloadURL(snap.ref);
+  } catch (storageErr) {
+    console.warn(`Firebase Storage upload failed for ${docType}, falling back to compressed data URL:`, storageErr);
+    return await fileToCompressedDataUrl(file, 500, 0.55);
+  }
 };
 
 // ============================================================================

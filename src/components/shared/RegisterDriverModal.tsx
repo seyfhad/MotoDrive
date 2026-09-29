@@ -166,7 +166,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       if (typeof reader.result === 'string') {
         const img = new Image();
         img.onload = () => {
-          const maxDim = 900;
+          const maxDim = 500;
           let width = img.width;
           let height = img.height;
           if (width > maxDim || height > maxDim) {
@@ -184,7 +184,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL('image/jpeg', 0.65);
+            const compressed = canvas.toDataURL('image/jpeg', 0.55);
             setter(compressed);
           } else {
             setter(reader.result as string);

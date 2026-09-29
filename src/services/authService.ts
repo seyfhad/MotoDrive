@@ -19,6 +19,7 @@ import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp
 import { Capacitor } from '@capacitor/core';
 import { auth, db } from '../lib/firebase';
 import { UserProfile, DriverProfile, UserRole } from '../types';
+import { sanitizeFirestoreData } from './firestoreService';
 
 // Utility to search existing UserProfile & DriverProfile by Phone
 export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
@@ -80,17 +81,29 @@ export interface PhoneUserLookupResult {
   driver?: DriverProfile | null;
 }
 
+export interface DriverRegistrationData {
+  brand: string;
+  model: string;
+  plateNumber: string;
+  wilaya: string;
+  documents?: {
+    selfieUrl?: string;
+    licenseUrl?: string;
+    vehicleRegistrationUrl?: string;
+    motorcycleFrontUrl?: string;
+    personalPhotoUrl?: string;
+    identityDocumentUrl?: string;
+    licenseFrontUrl?: string;
+    vehicleDocFrontUrl?: string;
+  };
+}
+
 // Register or restore user permanently by phone number
 export const registerOrRestoreUserByPhone = async (
   name: string,
   phone: string,
   role: UserRole = 'passenger',
-  motorcycleData?: {
-    brand: string;
-    model: string;
-    plateNumber: string;
-    wilaya: string;
-  }
+  motorcycleData?: DriverRegistrationData
 ): Promise<PhoneUserLookupResult> => {
   const cleanPhone = phone.trim().replace(/\s+/g, '');
   const cleanName = name.trim() || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
@@ -166,6 +179,7 @@ export const registerOrRestoreUserByPhone = async (
         ratingCount: 1,
         totalTrips: 0,
         cancellationCount: 0,
+        photoUrl: motorcycleData?.documents?.selfieUrl || motorcycleData?.documents?.personalPhotoUrl || undefined,
         motorcycle: {
           brand: motorcycleData?.brand || 'دراجة نارية',
           model: motorcycleData?.model || 'موديل',
@@ -176,20 +190,28 @@ export const registerOrRestoreUserByPhone = async (
         documents: {
           status: 'pending',
           submittedAt: new Date().toISOString(),
+          ...(motorcycleData?.documents || {}),
         },
         updatedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       };
     } else if (motorcycleData) {
-      // If driver already exists but updated motorcycle info before approval
+      // If driver already exists but updated motorcycle or document info
       finalDriver = {
         ...finalDriver,
         name: finalProfile.name,
+        photoUrl: motorcycleData.documents?.selfieUrl || motorcycleData.documents?.personalPhotoUrl || finalDriver.photoUrl,
         motorcycle: {
           ...finalDriver.motorcycle,
           brand: motorcycleData.brand || finalDriver.motorcycle.brand,
           model: motorcycleData.model || finalDriver.motorcycle.model,
           plateNumber: motorcycleData.plateNumber || finalDriver.motorcycle.plateNumber,
+        },
+        documents: {
+          ...finalDriver.documents,
+          ...(motorcycleData.documents || {}),
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
         },
       };
     }
@@ -198,17 +220,17 @@ export const registerOrRestoreUserByPhone = async (
   // Sync to Firestore
   try {
     const userDocRef = doc(db, 'users', finalProfile.id);
-    await setDoc(userDocRef, {
+    await setDoc(userDocRef, sanitizeFirestoreData({
       ...finalProfile,
       updatedAt: serverTimestamp(),
-    }, { merge: true });
+    }), { merge: true });
 
     if (finalDriver) {
       const driverDocRef = doc(db, 'drivers', finalDriver.id);
-      await setDoc(driverDocRef, {
+      await setDoc(driverDocRef, sanitizeFirestoreData({
         ...finalDriver,
         updatedAt: serverTimestamp(),
-      }, { merge: true });
+      }), { merge: true });
     }
   } catch (syncErr) {
     console.warn('Firestore sync warning:', syncErr);

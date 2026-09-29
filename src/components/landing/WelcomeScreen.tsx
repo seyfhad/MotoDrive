@@ -5,7 +5,7 @@ import {
   registerOrRestoreUserByPhone,
   getCachedUserByPhone,
 } from '../../services/authService';
-import { syncDriverProfile } from '../../services/firestoreService';
+import { syncDriverProfile, fileToCompressedDataUrl } from '../../services/firestoreService';
 import { UserRole, DriverProfile } from '../../types';
 import { MotoIcon } from '../shared/MotoIcon';
 import { AdminPasscodeModal } from '../admin/AdminPasscodeModal';
@@ -23,6 +23,9 @@ import {
   Building2,
   AlertCircle,
   Loader2,
+  Camera,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
@@ -51,7 +54,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
   const [wilaya, setWilaya] = useState('16 - الجزائر العاصمة');
   const [isDriverSubmitting, setIsDriverSubmitting] = useState(false);
 
+  // Driver Photo & Document Upload States (uploaded directly on same page)
+  const [selfieDataUrl, setSelfieDataUrl] = useState<string>('');
+  const [licenseDataUrl, setLicenseDataUrl] = useState<string>('');
+  const [vehicleDocDataUrl, setVehicleDocDataUrl] = useState<string>('');
+  const [motoPhotoDataUrl, setMotoPhotoDataUrl] = useState<string>('');
+  const [isCompressingPhotos, setIsCompressingPhotos] = useState<boolean>(false);
+
   const [formError, setFormError] = useState<string | null>(null);
+
+  // File upload handler converting image to compressed Base64 Data URL directly
+  const handlePhotoSelect = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (val: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsCompressingPhotos(true);
+      const dataUrl = await fileToCompressedDataUrl(file, 500, 0.55);
+      setter(dataUrl);
+    } catch (err) {
+      console.warn('Error processing photo:', err);
+    } finally {
+      setIsCompressingPhotos(false);
+    }
+  };
 
   // Auto-restore remembered phone number on mount
   useEffect(() => {
@@ -170,6 +198,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         model: cleanModel.split(' ').slice(1).join(' ') || 'الموديل',
         plateNumber: cleanPlate,
         wilaya: wilaya,
+        documents: {
+          selfieUrl: selfieDataUrl || undefined,
+          personalPhotoUrl: selfieDataUrl || undefined,
+          licenseUrl: licenseDataUrl || undefined,
+          licenseFrontUrl: licenseDataUrl || undefined,
+          vehicleRegistrationUrl: vehicleDocDataUrl || undefined,
+          vehicleDocFrontUrl: vehicleDocDataUrl || undefined,
+          motorcycleFrontUrl: motoPhotoDataUrl || undefined,
+        },
       });
 
       if (res.driver) {
@@ -411,6 +448,93 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
                   placeholder="مثال: 12345-116-16"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono"
                 />
+              </div>
+
+              {/* Photo & Document Attachments Section on the Same Page */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black text-amber-400 flex items-center gap-1">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>إرفاق صور السائق والوثائق (في نفس الصفحة):</span>
+                  </label>
+                  {isCompressingPhotos && (
+                    <span className="text-[10px] text-amber-300 animate-pulse">جاري تجهيز الصورة...</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-right">
+                  {/* Selfie Photo */}
+                  <label className={`p-2.5 rounded-2xl border text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
+                    selfieDataUrl ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-slate-950 border-slate-800 hover:border-amber-500/40 text-slate-400'
+                  }`}>
+                    {selfieDataUrl ? (
+                      <div className="w-full flex items-center gap-1.5 justify-center">
+                        <img src={selfieDataUrl} alt="صورة السائق" className="w-6 h-6 rounded-full object-cover border border-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-300 truncate">السيلفي ✓</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] font-bold block">الصورة الشخصية</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(e, setSelfieDataUrl)} />
+                  </label>
+
+                  {/* Driver License Photo */}
+                  <label className={`p-2.5 rounded-2xl border text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
+                    licenseDataUrl ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-slate-950 border-slate-800 hover:border-amber-500/40 text-slate-400'
+                  }`}>
+                    {licenseDataUrl ? (
+                      <div className="w-full flex items-center gap-1.5 justify-center">
+                        <img src={licenseDataUrl} alt="رخصة السياقة" className="w-6 h-6 rounded-lg object-cover border border-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-300 truncate">رخصة السياقة ✓</span>
+                      </div>
+                    ) : (
+                      <>
+                        <FileCheck className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] font-bold block">رخصة السياقة</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(e, setLicenseDataUrl)} />
+                  </label>
+
+                  {/* Vehicle Registration Photo */}
+                  <label className={`p-2.5 rounded-2xl border text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
+                    vehicleDocDataUrl ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-slate-950 border-slate-800 hover:border-amber-500/40 text-slate-400'
+                  }`}>
+                    {vehicleDocDataUrl ? (
+                      <div className="w-full flex items-center gap-1.5 justify-center">
+                        <img src={vehicleDocDataUrl} alt="البطاقة الرمادية" className="w-6 h-6 rounded-lg object-cover border border-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-300 truncate">البطاقة الرمادية ✓</span>
+                      </div>
+                    ) : (
+                      <>
+                        <FileText className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] font-bold block">البطاقة الرمادية</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(e, setVehicleDocDataUrl)} />
+                  </label>
+
+                  {/* Motorcycle Photo */}
+                  <label className={`p-2.5 rounded-2xl border text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-1 relative overflow-hidden ${
+                    motoPhotoDataUrl ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-slate-950 border-slate-800 hover:border-amber-500/40 text-slate-400'
+                  }`}>
+                    {motoPhotoDataUrl ? (
+                      <div className="w-full flex items-center gap-1.5 justify-center">
+                        <img src={motoPhotoDataUrl} alt="صورة الدراجة" className="w-6 h-6 rounded-lg object-cover border border-emerald-400" />
+                        <span className="text-[10px] font-bold text-emerald-300 truncate">صورة الدراجة ✓</span>
+                      </div>
+                    ) : (
+                      <>
+                        <ImageIcon className="w-4 h-4 text-amber-400" />
+                        <span className="text-[10px] font-bold block">صورة الدراجة النارية</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(e, setMotoPhotoDataUrl)} />
+                  </label>
+                </div>
               </div>
             </div>
 
