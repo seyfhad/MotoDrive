@@ -320,29 +320,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (docSnap) => {
         if (docSnap.exists()) {
           const rawData = docSnap.data() as Partial<PricingSettings>;
-          // Guarantee baseFare and minimumFare are at standard 120 DZD (not legacy 150 DZD)
+          // Guarantee baseFare and minimumFare are at standard 110 DZD
           const sanitized: PricingSettings = {
             ...DEFAULT_PRICING,
             ...rawData,
-            baseFare: 120,
-            minimumFare: 120,
+            baseFare: 110,
+            minimumFare: 110,
             peakMultiplier: rawData.peakMultiplier ?? (rawData as any).peakHourMultiplier ?? 1.0,
             nightMultiplier: rawData.nightMultiplier ?? 1.0,
           };
           delete (sanitized as any).peakHourMultiplier;
           setPricing(sanitized);
 
-          // If Firestore had stale 150 DZD or deprecated keys, automatically update it
+          // If Firestore had stale values or deprecated keys, automatically update it
           if (
-            rawData.minimumFare !== 120 ||
-            rawData.baseFare !== 120 ||
+            rawData.minimumFare !== 110 ||
+            rawData.baseFare !== 110 ||
             (rawData as any).peakHourMultiplier !== undefined
           ) {
             saveSystemPricing(sanitized).catch(() => {});
           }
         } else {
           // Initialize default pricing in Firestore if missing
-          saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 120, minimumFare: 120 }).catch(
+          saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 110, minimumFare: 110 }).catch(
             (err) => {
               console.warn('Initial pricing set notice:', err);
             }

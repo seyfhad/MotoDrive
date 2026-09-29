@@ -61,26 +61,6 @@ export const DriverProfile: React.FC = () => {
             <span>{(activeDriver.rating ?? 5.0).toFixed(1)} ({activeDriver.totalTrips ?? 0} رحلة منجزة)</span>
           </div>
         </div>
-
-        {/* Demo Driver Switcher for testing */}
-        <div className="pt-3 border-t border-slate-800/80">
-          <div className="text-[11px] text-slate-500 mb-1.5 font-medium">تبديل حساب السائق (للتجربة):</div>
-          <div className="flex flex-wrap items-center justify-center gap-1.5">
-            {drivers.map(d => (
-              <button
-                key={d.id}
-                onClick={() => setActiveDriver(d)}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                  d.id === activeDriver.id
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-slate-400 border border-slate-800'
-                }`}
-              >
-                {d.name.split(' ')[0]} ({d.status === 'approved' ? 'معتمد' : 'معلق'})
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Identity Verification Status Card (علامة صح خضراء والوثائق المعتمدة لتعزيز الثقة) */}

@@ -84,33 +84,9 @@ export const PassengerProfile: React.FC = () => {
         <div>
           <h3 className="text-lg font-black text-white">{activePassenger.name}</h3>
           <p className="text-xs text-slate-400 mt-0.5">{activePassenger.phone}</p>
-          <button
-            type="button"
-            onClick={() => setShowEditModal(true)}
-            className="mt-2 text-xs font-bold text-amber-400 hover:text-amber-300 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl transition-all cursor-pointer"
-          >
-            <Camera className="w-3.5 h-3.5" />
-            <span>تعديل الملف ورفع الصور / الوثائق</span>
-          </button>
-        </div>
-
-        {/* Switch demo passenger for testing */}
-        <div className="pt-2 border-t border-slate-800/80">
-          <div className="text-[11px] text-slate-500 mb-1.5 font-medium">تبديل حساب الراكب (للتجربة):</div>
-          <div className="flex items-center justify-center gap-2">
-            {passengers.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setActivePassenger(p)}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all ${
-                  p.id === activePassenger.id
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'bg-slate-950 text-slate-400 border border-slate-800'
-                }`}
-              >
-                {p.name.split(' ')[0]}
-              </button>
-            ))}
+          <div className="mt-2 text-[11px] font-bold text-emerald-400 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>🔒 حساب موثوق برقم الهاتف (غير قابل للتعديل)</span>
           </div>
         </div>
       </div>
@@ -162,58 +138,24 @@ export const PassengerProfile: React.FC = () => {
             <Shield className="w-4 h-4 text-red-400" />
             <h4 className="text-sm font-bold text-white">جهة اتصال الطوارئ</h4>
           </div>
-          <button
-            onClick={() => setEditingEmergency(!editingEmergency)}
-            className="text-xs text-amber-400 font-semibold"
-          >
-            {editingEmergency ? 'إلغاء' : 'تعديل'}
-          </button>
+          <span className="text-[10px] text-slate-400 font-bold bg-slate-800 px-2 py-0.5 rounded-full">
+            مسجلة
+          </span>
         </div>
 
-        {savedSuccess && (
-          <div className="text-xs text-emerald-400 bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-            تم حفظ جهة اتصال الطوارئ بنجاح.
-          </div>
-        )}
-
-        {editingEmergency ? (
-          <div className="space-y-2 text-xs">
-            <input
-              type="text"
-              placeholder="الاسم والقرابة (مثال: الأخ / الوالد)"
-              value={emergencyName}
-              onChange={e => setEmergencyName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-            />
-            <input
-              type="tel"
-              placeholder="رقم الهاتف (05...)"
-              value={emergencyPhone}
-              onChange={e => setEmergencyPhone(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
-            />
-            <button
-              onClick={handleSaveEmergency}
-              className="w-full py-2 bg-amber-500 text-slate-950 font-bold rounded-xl text-xs"
-            >
-              حفظ
-            </button>
-          </div>
-        ) : (
-          <div className="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80 flex items-center justify-between">
-            <div>
-              <div className="font-bold text-white">
-                {activePassenger.emergencyContact?.name || 'لم يتم تحديد جهة اتصال'}
-              </div>
-              <div className="text-slate-400 text-[11px] mt-0.5">
-                {activePassenger.emergencyContact?.phone || 'أضف جهة اتصال لمشاركتها عند الطوارئ'}
-              </div>
+        <div className="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+          <div>
+            <div className="font-bold text-white">
+              {activePassenger.emergencyContact?.name || 'جهة اتصال الطوارئ مسجلة'}
             </div>
-            <div className="w-8 h-8 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center font-bold">
-              SOS
+            <div className="text-slate-400 text-[11px] mt-0.5">
+              {activePassenger.emergencyContact?.phone || 'جهة اتصالات الأمان للحساب'}
             </div>
           </div>
-        )}
+          <div className="w-8 h-8 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center font-bold">
+            SOS
+          </div>
+        </div>
       </div>
 
       {/* Safety & App Guidelines */}
@@ -223,7 +165,7 @@ export const PassengerProfile: React.FC = () => {
           <p>• ارتداء الخوذة الواقية إلزامي طوال مسار الرحلة.</p>
           <p>• التمسك بالمقابض الجانبية أو خصر السائق لتوازن أفضل عند المنعطفات.</p>
           <p>• أقصى مسافة مسموحة للرحلة هي 70 كم كحد أقصى للحفاظ على سلامتك.</p>
-          <p>• السعر المعتمد يبدأ من 120 د.ج ويتم التفاوض عليه بشفافية تامة.</p>
+          <p>• السعر المعتمد يبدأ من 110 د.ج وهو سعر رسمي ثابت حسب شريحة المسافة.</p>
         </div>
       </div>
 

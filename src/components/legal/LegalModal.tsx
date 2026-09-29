@@ -146,9 +146,9 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-white mb-1.5 flex items-center gap-2">
                   <span>💰</span>
-                  <span>3. نموذج التسعير والتفاوض الحر</span>
+                  <span>3. نموذج التسعير الثابت المعتمد</span>
                 </h4>
-                <p>تبدأ التسعيرة بالمنصة من 120 د.ج، ويتم احتساب السعر التقديري استناداً إلى المسافة والطلب.</p>
+                <p>تبدأ التسعيرة بالمنصة من 110 د.ج، وهي تسعيرة رسمية ثابته ومحسوبة بدقة استناداً إلى شريحة المسافة المقطوعة.</p>
               </div>
 
               <div>

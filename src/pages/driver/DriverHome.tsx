@@ -258,27 +258,6 @@ export const DriverHome: React.FC = () => {
                 </div>
               </div>
 
-              {/* Driver Switcher if multiple drivers exist in Firestore */}
-              {drivers.length > 1 && (
-                <div className="flex items-center gap-2 p-2 bg-slate-950/70 border border-slate-800 rounded-xl text-xs">
-                  <span className="text-slate-400 text-[11px] shrink-0">تبديل حساب السائق:</span>
-                  <select
-                    value={activeDriver.id}
-                    onChange={(e) => {
-                      const sel = drivers.find(d => d.id === e.target.value);
-                      if (sel) setActiveDriver(sel);
-                    }}
-                    className="w-full bg-transparent text-white font-medium text-xs focus:outline-none cursor-pointer"
-                  >
-                    {drivers.map(d => (
-                      <option key={d.id} value={d.id} className="bg-slate-900 text-white">
-                        {d.name} ({d.motorcycle.brand} {d.motorcycle.model})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               {/* Big Online / Offline Toggle Button */}
               <button
                 id="driver-toggle-online-btn"

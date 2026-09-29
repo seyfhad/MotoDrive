@@ -11,6 +11,7 @@ import { ContactUsModal } from './components/support/ContactUsModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
 import { PushNotificationToast } from './components/shared/PushNotificationToast';
+import { GpsSettingsModal } from './components/shared/GpsSettingsModal';
 import { getRobustUserLocation } from './utils/geo';
 
 // Passenger Views
@@ -42,6 +43,27 @@ const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isGpsModalOpen, setIsGpsModalOpen] = useState(false);
+  const [isGpsLoading, setIsGpsLoading] = useState(false);
+  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
+
+  // Function to retry fetching high accuracy GPS position
+  const handleRetryGps = async () => {
+    setIsGpsLoading(true);
+    setGpsErrorMsg(null);
+    try {
+      const res = await getRobustUserLocation();
+      if (res.isFallback) {
+        setGpsErrorMsg(res.message || 'تعذر الحصول على إشارة GPS دقيقة. يرجى تفعيل "الموقع" من شريط الإشعارات للهاتف.');
+      } else {
+        setIsGpsModalOpen(false);
+      }
+    } catch (e: any) {
+      setGpsErrorMsg('خطأ في الاتصال بنظام GPS. تأكد من إتاحة الإذن وتفعيل زر الموقع.');
+    } finally {
+      setIsGpsLoading(false);
+    }
+  };
 
   // Legal content (Privacy, Terms) - Directly accessible for Google Cloud verification
   const [isLegalOpen, setIsLegalOpen] = useState(false);
@@ -129,12 +151,16 @@ const AppContent: React.FC = () => {
     };
   }, [logout]);
 
-  // Request geolocation permission & trigger prompt on app start
+  // Request geolocation permission & check GPS status on app start
   useEffect(() => {
     getRobustUserLocation().then(res => {
-      console.log('Location permission & position acquired on startup:', res.coords);
+      console.log('Location permission & position status acquired on startup:', res.coords);
+      if (res.isFallback) {
+        setIsGpsModalOpen(true);
+      }
     }).catch(err => {
       console.warn('Geolocation startup notice:', err);
+      setIsGpsModalOpen(true);
     });
   }, []);
 
@@ -306,6 +332,15 @@ const AppContent: React.FC = () => {
         <ContactUsModal
           isOpen={isContactUsOpen}
           onClose={() => setIsContactUsOpen(false)}
+        />
+
+        {/* Capacitor & Native Android GPS Settings Modal */}
+        <GpsSettingsModal
+          isOpen={isGpsModalOpen}
+          onClose={() => setIsGpsModalOpen(false)}
+          onRetryGps={handleRetryGps}
+          isLoading={isGpsLoading}
+          errorMessage={gpsErrorMsg}
         />
       </div>
     </div>
