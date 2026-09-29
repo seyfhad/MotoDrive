@@ -16,6 +16,7 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
+  arrayUnion,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../lib/firebase';
@@ -360,7 +361,7 @@ export const acceptDriverOfferTransaction = async (
   offerId: string,
   driver: DriverProfile,
   offeredPrice: number,
-  commissionPercent: number = 15
+  commissionPercent: number = 0
 ): Promise<{ success: boolean; error?: string }> => {
   const rideRef = doc(db, 'rides', rideId);
   const offerRef = doc(db, 'rides', rideId, 'offers', offerId);
@@ -449,9 +450,24 @@ export const submitRatingToFirestore = async (
     ...rating,
     createdAt: serverTimestamp(),
   });
+  
+  // 1. Save to root ratings collection
   const docRef = await addDoc(ratingCol, cleanRating);
 
-  // 1. Update Ride Document with rating
+  // 2. Save directly to the driver's document subcollection ('drivers/{driverId}/ratings')
+  if (rating.driverId) {
+    try {
+      const driverRatingSubCol = collection(db, 'drivers', rating.driverId, 'ratings');
+      await addDoc(driverRatingSubCol, {
+        ...cleanRating,
+        ratingDocId: docRef.id,
+      });
+    } catch (err) {
+      console.warn('Error saving rating to driver subcollection:', err);
+    }
+  }
+
+  // 3. Update Ride Document with rating
   if (rating.rideId) {
     try {
       const rideRef = doc(db, 'rides', rating.rideId);
@@ -466,7 +482,7 @@ export const submitRatingToFirestore = async (
     }
   }
 
-  // 2. Recalculate & Update Driver's Rating
+  // 4. Recalculate & Update Driver's Rating and append feedback to Driver Document
   if (rating.driverId) {
     try {
       const driverRef = doc(db, 'drivers', rating.driverId);
@@ -478,18 +494,46 @@ export const submitRatingToFirestore = async (
         const newCount = currentCount + 1;
         const newAvg = Number(((currentAvg * currentCount + rating.rating) / newCount).toFixed(1));
 
+        const feedbackSnippet = {
+          id: docRef.id,
+          rating: rating.rating,
+          comment: rating.comment || '',
+          tags: rating.tags || [],
+          passengerName: rating.passengerName || 'راكب محترم',
+          createdAt: new Date().toISOString(),
+        };
+
         await updateDoc(driverRef, {
           rating: newAvg,
           ratingCount: newCount,
+          recentFeedback: arrayUnion(feedbackSnippet),
           updatedAt: serverTimestamp(),
         });
       }
     } catch (err) {
-      console.warn('Error updating driver rating average:', err);
+      console.warn('Error updating driver rating average and feedback:', err);
     }
   }
 
   return docRef.id;
+};
+
+// Fetch driver ratings from Firestore driver subcollection
+export const getDriverRatingsFromFirestore = async (driverId: string): Promise<Rating[]> => {
+  try {
+    const driverRatingSubCol = collection(db, 'drivers', driverId, 'ratings');
+    const snap = await getDocs(driverRatingSubCol);
+    if (!snap.empty) {
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
+    }
+    // Fallback: check root ratings collection
+    const q = query(collection(db, 'ratings'), where('driverId', '==', driverId));
+    const rootSnap = await getDocs(q);
+    return rootSnap.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
+  } catch (err) {
+    console.warn('Error fetching driver ratings:', err);
+    return [];
+  }
 };
 
 export const submitComplaintToFirestore = async (

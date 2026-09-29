@@ -17,9 +17,13 @@ export interface GoogleMapViewProps {
   zoom?: number;
   pickup?: Coordinates | null;
   destination?: Coordinates | null;
+  routeFrom?: Coordinates | null;
+  routeTo?: Coordinates | null;
+  routeColor?: string;
   drivers?: DriverProfile[];
   activeDriverLocation?: Coordinates | null;
   activeDriverHeading?: number;
+  activeDriverStatus?: 'available' | 'busy';
   interactive?: boolean;
   onMapClick?: (coords: Coordinates) => void;
   showRadar?: boolean;
@@ -32,11 +36,24 @@ export interface GoogleMapViewProps {
 const MapController: React.FC<{
   pickup?: Coordinates | null;
   destination?: Coordinates | null;
+  routeFrom?: Coordinates | null;
+  routeTo?: Coordinates | null;
+  routeColor?: string;
   activeDriverLocation?: Coordinates | null;
   drivers?: DriverProfile[];
   center: [number, number];
   zoom: number;
-}> = ({ pickup, destination, activeDriverLocation, drivers = [], center, zoom }) => {
+}> = ({
+  pickup,
+  destination,
+  routeFrom,
+  routeTo,
+  routeColor,
+  activeDriverLocation,
+  drivers = [],
+  center,
+  zoom,
+}) => {
   const map = useMap();
   const routesLib = useMapsLibrary('routes');
   const routePolylineRef = useRef<google.maps.Polyline | null>(null);
@@ -46,15 +63,19 @@ const MapController: React.FC<{
     if (!map) return;
 
     const points: google.maps.LatLngLiteral[] = [];
-    if (pickup) points.push({ lat: pickup.lat, lng: pickup.lng });
-    if (destination) points.push({ lat: destination.lat, lng: destination.lng });
-    if (activeDriverLocation) points.push({ lat: activeDriverLocation.lat, lng: activeDriverLocation.lng });
+    const p1 = routeFrom || pickup;
+    const p2 = routeTo || destination;
+    if (p1) points.push({ lat: p1.lat, lng: p1.lng });
+    if (p2) points.push({ lat: p2.lat, lng: p2.lng });
+    if (activeDriverLocation && (!p1 || activeDriverLocation.lat !== p1.lat)) {
+      points.push({ lat: activeDriverLocation.lat, lng: activeDriverLocation.lng });
+    }
 
     if (points.length > 1) {
       const bounds = new google.maps.LatLngBounds();
       points.forEach(p => bounds.extend(p));
       map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
-    } else if (points.length === 1 && !destination) {
+    } else if (points.length === 1 && !p2) {
       map.panTo(points[0]);
     } else if (points.length === 0) {
       map.panTo({ lat: center[0], lng: center[1] });
@@ -70,7 +91,7 @@ const MapController: React.FC<{
     activeDriverLocation?.lng,
   ]);
 
-  // 2. Compute accurate road route between pickup and destination using modern Routes API
+  // 2. Compute accurate road route between points using modern Routes API or OSRM fallback
   useEffect(() => {
     if (!map || !routesLib) return;
 
@@ -80,10 +101,12 @@ const MapController: React.FC<{
       routePolylineRef.current = null;
     }
 
-    if (!pickup || !destination) return;
+    const start = routeFrom || pickup;
+    const end = routeTo || destination;
+    if (!start || !end) return;
 
-    const origin = { lat: pickup.lat, lng: pickup.lng };
-    const dest = { lat: destination.lat, lng: destination.lng };
+    const origin = { lat: start.lat, lng: start.lng };
+    const dest = { lat: end.lat, lng: end.lng };
 
     // Try TWO_WHEELER first for motorcycles, fallback to DRIVING, then free OSRM road geometry
     const computeRouteWithMode = async (mode: 'TWO_WHEELER' | 'DRIVING') => {
@@ -100,7 +123,7 @@ const MapController: React.FC<{
         if (route?.path && route.path.length > 0) {
           const polyline = new google.maps.Polyline({
             path: route.path,
-            strokeColor: '#f59e0b',
+            strokeColor: routeColor || '#f59e0b',
             strokeOpacity: 0.9,
             strokeWeight: 5,
             map,
@@ -159,7 +182,19 @@ const MapController: React.FC<{
         routePolylineRef.current = null;
       }
     };
-  }, [map, routesLib, pickup?.lat, pickup?.lng, destination?.lat, destination?.lng]);
+  }, [
+    map,
+    routesLib,
+    pickup?.lat,
+    pickup?.lng,
+    destination?.lat,
+    destination?.lng,
+    routeFrom?.lat,
+    routeFrom?.lng,
+    routeTo?.lat,
+    routeTo?.lng,
+    routeColor,
+  ]);
 
   return null;
 };
@@ -169,9 +204,13 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
   zoom = 13,
   pickup,
   destination,
+  routeFrom,
+  routeTo,
+  routeColor,
   drivers = [],
   activeDriverLocation,
   activeDriverHeading = 0,
+  activeDriverStatus = 'available',
   interactive = true,
   onMapClick,
   showRadar = false,
@@ -234,6 +273,9 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
         <MapController
           pickup={pickup}
           destination={destination}
+          routeFrom={routeFrom}
+          routeTo={routeTo}
+          routeColor={routeColor}
           activeDriverLocation={activeDriverLocation}
           drivers={drivers}
           center={center}
@@ -303,31 +345,57 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
                 <img src="/icon.jpg" alt="سائقك" className="w-full h-full object-cover rounded-full" />
               </div>
               <div className="absolute -inset-1 rounded-full bg-amber-400/40 animate-ping pointer-events-none"></div>
-              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow">
-                سائقك
+              {/* Dynamic Status Pill */}
+              <div className={`absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shadow border flex items-center gap-1 ${
+                activeDriverStatus === 'busy'
+                  ? 'bg-rose-950/95 text-rose-300 border-rose-500/60'
+                  : 'bg-emerald-500 text-slate-950 border-emerald-400'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${activeDriverStatus === 'busy' ? 'bg-rose-400 animate-pulse' : 'bg-slate-950'}`}></span>
+                <span>{activeDriverStatus === 'busy' ? 'مشغول برحلة' : 'سائقك متاح'}</span>
               </div>
             </div>
           </AdvancedMarker>
         )}
 
-        {/* 5. Online Nearby Drivers Markers */}
+        {/* 5. Online Nearby Drivers Markers with Available/Busy status indicator */}
         {drivers
           .filter(d => d.isOnline && d.status === 'approved')
-          .map(driver => (
-            <AdvancedMarker
-              key={driver.id}
-              position={{ lat: driver.location.lat, lng: driver.location.lng }}
-              title={driver.name}
-              onClick={() => setSelectedDriver(driver)}
-            >
-              <div className="relative -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform duration-300 hover:scale-125">
-                <div className="w-9 h-9 rounded-full bg-slate-900 border-2 border-amber-500 shadow-lg overflow-hidden flex items-center justify-center p-0.5">
-                  <img src="/icon.jpg" alt="دراجة" className="w-full h-full object-cover rounded-full" />
+          .map(driver => {
+            const isDriverAvail = driver.isAvailable !== false;
+            return (
+              <AdvancedMarker
+                key={driver.id}
+                position={{ lat: driver.location.lat, lng: driver.location.lng }}
+                title={`${driver.name} (${isDriverAvail ? 'متاح للطلب' : 'مشغول برحلة'})`}
+                onClick={() => setSelectedDriver(driver)}
+              >
+                <div className="relative -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform duration-300 hover:scale-125">
+                  <div className={`w-9 h-9 rounded-full bg-slate-950 border-2 ${
+                    isDriverAvail ? 'border-amber-400' : 'border-rose-500'
+                  } shadow-lg overflow-hidden flex items-center justify-center p-0.5`}>
+                    <img src="/icon.jpg" alt="دراجة" className="w-full h-full object-cover rounded-full" />
+                  </div>
+                  {/* Status Indicator Dot */}
+                  <div
+                    className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border border-slate-950 shadow-md ${
+                      isDriverAvail ? 'bg-emerald-500' : 'bg-rose-500'
+                    }`}
+                  />
+                  {/* Status Mini Pill */}
+                  <div
+                    className={`absolute -bottom-4 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded text-[8px] font-black whitespace-nowrap shadow border leading-tight ${
+                      isDriverAvail
+                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
+                        : 'bg-rose-950 text-rose-300 border-rose-600'
+                    }`}
+                  >
+                    {isDriverAvail ? 'متاح' : 'مشغول'}
+                  </div>
                 </div>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border border-slate-950"></div>
-              </div>
-            </AdvancedMarker>
-          ))}
+              </AdvancedMarker>
+            );
+          })}
 
         {/* InfoWindow for clicked driver */}
         {selectedDriver && (
@@ -345,6 +413,16 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
               </div>
               <div className="text-xs text-amber-600 font-semibold mt-1">
                 ⭐ {(selectedDriver.rating ?? 5.0).toFixed(1)} ({selectedDriver.totalTrips ?? 0} رحلة)
+              </div>
+              <div className="mt-1 pt-1 border-t border-slate-200">
+                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  selectedDriver.isAvailable !== false
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${selectedDriver.isAvailable !== false ? 'bg-emerald-600' : 'bg-rose-600'}`}></span>
+                  {selectedDriver.isAvailable !== false ? 'متاح للاستقبال الآن 🟢' : 'مشغول حالياً 🔴'}
+                </span>
               </div>
             </div>
           </InfoWindow>

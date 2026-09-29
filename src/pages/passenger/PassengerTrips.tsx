@@ -5,11 +5,13 @@ import { History, Calendar, MapPin, Star, AlertCircle, FileText, Download, Refre
 import { Ride } from '../../types';
 import { TripCardSkeleton } from '../../components/shared/Skeleton';
 import { supabaseService } from '../../services/supabaseService';
+import { TripRatingModal } from '../../components/passenger/TripRatingModal';
 
 export const PassengerTrips: React.FC = () => {
   const { activePassenger, rides } = useApp();
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedRideToRate, setSelectedRideToRate] = useState<Ride | null>(null);
 
   // جلب وتحديث السجل مع Supabase مع إظهار تأثير التحميل الهيكلي (Loading Skeleton)
   const loadTripsData = async () => {
@@ -183,10 +185,33 @@ export const PassengerTrips: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {/* Action to rate if completed and not rated yet */}
+              {trip.status === 'completed' && !trip.ratingStars && (
+                <div className="pt-2 border-t border-slate-800/50">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRideToRate(trip)}
+                    className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:text-amber-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <Star className="w-3.5 h-3.5 fill-amber-400" />
+                    <span>تقييم الكابتن والمشوار 🌟</span>
+                  </button>
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
+
+      {/* Trip Rating & Feedback Modal */}
+      {selectedRideToRate && (
+        <TripRatingModal
+          ride={selectedRideToRate}
+          isOpen={Boolean(selectedRideToRate)}
+          onClose={() => setSelectedRideToRate(null)}
+        />
+      )}
     </div>
   );
 };

@@ -54,6 +54,202 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
   }
 };
 
+// Quick helper to check if a phone number exists in local directory
+export const getCachedUserByPhone = (phone: string): { profile: UserProfile | null; driver: DriverProfile | null } => {
+  const cleanPhone = phone.trim().replace(/\s+/g, '');
+  if (!cleanPhone) return { profile: null, driver: null };
+  try {
+    const raw = localStorage.getItem('motodrive_phone_directory');
+    if (raw) {
+      const dir = JSON.parse(raw);
+      if (dir[cleanPhone]) {
+        return {
+          profile: dir[cleanPhone].profile || null,
+          driver: dir[cleanPhone].driver || null,
+        };
+      }
+    }
+  } catch (e) {}
+  return { profile: null, driver: null };
+};
+
+export interface PhoneUserLookupResult {
+  isExisting: boolean;
+  user: any;
+  profile: UserProfile;
+  driver?: DriverProfile | null;
+}
+
+// Register or restore user permanently by phone number
+export const registerOrRestoreUserByPhone = async (
+  name: string,
+  phone: string,
+  role: UserRole = 'passenger',
+  motorcycleData?: {
+    brand: string;
+    model: string;
+    plateNumber: string;
+    wilaya: string;
+  }
+): Promise<PhoneUserLookupResult> => {
+  const cleanPhone = phone.trim().replace(/\s+/g, '');
+  const cleanName = name.trim() || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
+
+  // 1. Look up in localStorage directory
+  let directory: Record<string, { profile: UserProfile; driver?: DriverProfile | null }> = {};
+  try {
+    const raw = localStorage.getItem('motodrive_phone_directory');
+    if (raw) directory = JSON.parse(raw);
+  } catch (e) {}
+
+  // 2. Query Firestore users and drivers by phone
+  let foundProfile: UserProfile | null = null;
+  let foundDriver: DriverProfile | null = null;
+
+  try {
+    const res = await findUserAndDriverByPhone(cleanPhone);
+    foundProfile = res.profile;
+    foundDriver = res.driver;
+  } catch (err) {
+    console.warn('Firestore query by phone error:', err);
+  }
+
+  // Fallback to local directory if offline
+  if (!foundProfile && directory[cleanPhone]?.profile) {
+    foundProfile = directory[cleanPhone].profile;
+    foundDriver = directory[cleanPhone].driver || null;
+  }
+
+  let finalProfile: UserProfile;
+  let finalDriver: DriverProfile | null = foundDriver;
+  const isExisting = Boolean(foundProfile);
+
+  if (foundProfile) {
+    // Existing user found! Preserve identity and update role/name if provided
+    finalProfile = {
+      ...foundProfile,
+      name: cleanName && cleanName !== 'راكب MotoDrive' && cleanName !== 'سائق MotoDrive'
+        ? cleanName
+        : foundProfile.name,
+      role: role === 'driver' ? 'driver' : (foundProfile.role || role),
+    };
+  } else {
+    // New user creation
+    const uid = 'user-' + Math.random().toString(36).substring(2, 9);
+    finalProfile = {
+      id: uid,
+      name: cleanName,
+      phone: cleanPhone,
+      role: role,
+      status: 'active',
+      cancellationCount: 0,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  // Handle Driver specific creation if role is driver and no driver doc exists yet
+  if (role === 'driver') {
+    if (!finalDriver) {
+      const driverId = 'driver-' + finalProfile.id;
+      finalDriver = {
+        id: driverId,
+        userId: finalProfile.id,
+        name: finalProfile.name,
+        phone: cleanPhone,
+        wilaya: motorcycleData?.wilaya || '16 - الجزائر العاصمة',
+        municipality: 'وسط المدينة',
+        status: 'pending', // Pending owner approval
+        isOnline: false,
+        isAvailable: true,
+        location: { lat: 36.7538, lng: 3.0588 },
+        rating: 5.0,
+        ratingCount: 1,
+        totalTrips: 0,
+        cancellationCount: 0,
+        motorcycle: {
+          brand: motorcycleData?.brand || 'دراجة نارية',
+          model: motorcycleData?.model || 'موديل',
+          year: 2023,
+          plateNumber: motorcycleData?.plateNumber || '00000 000 16',
+          color: 'أسود',
+        },
+        documents: {
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
+        },
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+    } else if (motorcycleData) {
+      // If driver already exists but updated motorcycle info before approval
+      finalDriver = {
+        ...finalDriver,
+        name: finalProfile.name,
+        motorcycle: {
+          ...finalDriver.motorcycle,
+          brand: motorcycleData.brand || finalDriver.motorcycle.brand,
+          model: motorcycleData.model || finalDriver.motorcycle.model,
+          plateNumber: motorcycleData.plateNumber || finalDriver.motorcycle.plateNumber,
+        },
+      };
+    }
+  }
+
+  // Sync to Firestore
+  try {
+    const userDocRef = doc(db, 'users', finalProfile.id);
+    await setDoc(userDocRef, {
+      ...finalProfile,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    if (finalDriver) {
+      const driverDocRef = doc(db, 'drivers', finalDriver.id);
+      await setDoc(driverDocRef, {
+        ...finalDriver,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch (syncErr) {
+    console.warn('Firestore sync warning:', syncErr);
+  }
+
+  // Cache in localStorage directory and user session
+  try {
+    directory[cleanPhone] = { profile: finalProfile, driver: finalDriver };
+    localStorage.setItem('motodrive_phone_directory', JSON.stringify(directory));
+    localStorage.setItem('motodrive_remembered_phone', cleanPhone);
+    localStorage.setItem('motodrive_last_phone', cleanPhone);
+    localStorage.setItem(
+      'motodrive_user_session',
+      JSON.stringify({
+        user: finalProfile,
+        driver: finalDriver,
+        timestamp: Date.now(),
+      })
+    );
+    if (finalProfile.role) {
+      localStorage.setItem('motodz_v2_role', finalProfile.role);
+    }
+    window.dispatchEvent(new CustomEvent('motodrive_session_updated'));
+  } catch (e) {}
+
+  const synthUser: any = {
+    uid: finalProfile.id,
+    displayName: finalProfile.name,
+    phoneNumber: finalProfile.phone,
+    email: finalProfile.email,
+    photoURL: finalProfile.photoUrl,
+  };
+
+  return {
+    isExisting,
+    user: synthUser,
+    profile: finalProfile,
+    driver: finalDriver,
+  };
+};
+
 // Utility to search existing UserProfile & DriverProfile by Email
 export const findUserAndDriverByEmail = async (email: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
   const cleanEmail = email.trim().toLowerCase();

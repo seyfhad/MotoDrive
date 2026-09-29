@@ -207,7 +207,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     setOfferedPrice(recommendedPrice);
   }, [recommendedPrice]);
 
-  const minAllowedForTrip = distanceKm <= 5 ? 120 : (pricing.minimumFare || 120);
+  const minAllowedForTrip = distanceKm <= 5 ? 110 : (pricing.minimumFare || 110);
 
   const handleAdjustPrice = (delta: number) => {
     const newPrice = Math.max(minAllowedForTrip, offeredPrice + delta);
@@ -522,18 +522,21 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Special highlight for trips <= 5 km */}
-            {distanceKm <= 5 && (
-              <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-2xl p-3 flex items-center gap-2.5 text-xs text-emerald-300">
+            {/* Tiered pricing badge based on distance */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-300">
+              <div className="flex items-center gap-2">
                 <span className="text-base shrink-0">⚡</span>
                 <div>
-                  <div className="font-bold text-emerald-200">مسافة رحلة قصيرة ({distanceKm} كم)</div>
-                  <div className="text-[11px] text-emerald-400/90 mt-0.5">
-                    جميع المسافات الأقل من 5 كم تسعيرتها الموحدة <strong>120 د.ج</strong> فقط!
+                  <div className="font-bold text-white">تسعيرة شريحة المسافة ({distanceKm} كم)</div>
+                  <div className="text-[11px] text-amber-400 mt-0.5">
+                    {fareBreakdown.tierLabel || `السعر الأساسي: ${formatCurrencyDZD(fareBreakdown.roundedPrice)}`}
                   </div>
                 </div>
               </div>
-            )}
+              <div className="text-sm font-black text-amber-400 font-mono">
+                {formatCurrencyDZD(fareBreakdown.roundedPrice)}
+              </div>
+            </div>
 
             {/* Warning if distance exceeds 70 km */}
             {distanceKm > 70 && (

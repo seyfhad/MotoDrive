@@ -56,20 +56,26 @@ export const Header: React.FC = () => {
         id="app-main-header"
       >
         <div className="w-full flex items-center justify-between gap-2">
-          {/* Brand Icon & Name */}
-          <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-welcome'))}
-            className="flex items-center gap-1.5 sm:gap-2 text-right hover:opacity-90 transition-opacity cursor-pointer"
-            title="الواجهة الأولية وشروط الاستخدام"
-          >
-            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30">
+          {/* Brand Icon & Name: Bike icon at top acts as secret admin trigger */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => setShowPasscodeModal(true)}
+              className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30 hover:border-amber-400 active:scale-95 transition-all cursor-pointer"
+              title="دراجة MotoDrive"
+              aria-label="أيقونة الدراجة"
+            >
               <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
-            </div>
-            <div>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-welcome'))}
+              className="flex items-center gap-1 text-right hover:opacity-90 transition-opacity cursor-pointer"
+              title="الواجهة الأولية"
+            >
               <span className="text-sm sm:text-base font-black tracking-tight text-white font-sans">Moto<span className="text-amber-400">Drive</span></span>
-            </div>
-          </button>
+            </button>
+          </div>
 
           {/* User Account & Quick Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -121,7 +127,7 @@ export const Header: React.FC = () => {
                   await logout();
                   window.dispatchEvent(new CustomEvent('open-welcome'));
                 }}
-                className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all"
+                className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer"
                 title="تسجيل الخروج"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -158,45 +164,31 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-bold hidden sm:inline">شروط الاستخدام</span>
             </button>
 
-            {/* Owner/Admin In-App Message Action Button or Passcode Login Button */}
-            {isOwner ? (
+            {/* Owner/Admin Controls: Strictly visible ONLY when in admin role */}
+            {currentRole === 'admin' && (
               <>
                 <button
                   id="header-admin-panel-btn"
                   onClick={() => {
-                    setCurrentRole(currentRole === 'admin' ? 'passenger' : 'admin');
+                    setCurrentRole('passenger');
                   }}
-                  className={`h-8 px-2.5 rounded-xl border flex items-center gap-1.5 transition-all font-bold text-xs ${
-                    currentRole === 'admin'
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-                      : 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/30 text-amber-300'
-                  }`}
-                  title="لوحة تحكم الإدارة"
+                  className="h-8 px-2.5 rounded-xl border flex items-center gap-1.5 transition-all font-bold text-xs bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20 cursor-pointer"
+                  title="العودة لوضع الراكب"
                 >
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span>{currentRole === 'admin' ? 'وضع المستخدم' : 'لوحة الإدارة'}</span>
+                  <ShieldCheck className="w-4 h-4 text-slate-950" />
+                  <span>العودة للمستخدم</span>
                 </button>
 
                 <button
                   id="header-admin-inapp-message-btn"
                   onClick={() => setShowAdminMessageModal(true)}
-                  className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors"
+                  className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors cursor-pointer"
                   title="إرسال رسالة لحساب مستخدم (داخل التطبيق)"
                 >
                   <Send className="w-3.5 h-3.5 text-amber-400" />
                   <span className="text-[10px] font-bold hidden sm:inline">إرسال إشعار</span>
                 </button>
               </>
-            ) : (
-              <button
-                id="header-passcode-admin-btn"
-                onClick={() => setShowPasscodeModal(true)}
-                className="h-8 px-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 text-xs font-bold transition-all cursor-pointer"
-                title="دخول المالك بالشيفرة السرية"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-[10px]">دخول المالك</span>
-              </button>
             )}
 
             {/* Notification Bell */}

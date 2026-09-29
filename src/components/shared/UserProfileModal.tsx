@@ -21,7 +21,6 @@ import {
   Eye,
   CheckCircle2,
 } from 'lucide-react';
-import { GoogleSignInButton } from '../auth/GoogleSignInButton';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -51,7 +50,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
   if (!isOpen) return null;
 
-  const isGoogleConnected = Boolean(currentUser && (currentUser.email || currentUser.photoURL));
   const userId = currentUser?.uid || activePassenger.id;
 
   // Validate image quality and dimensions
@@ -351,39 +349,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
-        {/* Google Connected Status */}
-        {!isGoogleConnected ? (
-          <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>ربط الحساب بحساب Google</span>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              سجّل دخولك بحساب Google لمزامنة ملفاتك وصورك تلقائياً في السحابة.
-            </p>
-            <GoogleSignInButton
-              role="passenger"
-              onSuccess={() => {
-                setName(activePassenger.name);
-                onClose();
-              }}
-              label="تسجيل الدخول باستخدام Google"
-              id="user-modal-google-signin-btn"
-            />
-          </div>
-        ) : (
-          <div className="bg-slate-950/60 border border-emerald-500/20 rounded-2xl p-2.5 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <div className="text-right">
-                <span className="text-[10px] text-emerald-400 font-bold block">حساب Google متصل</span>
-                <span className="text-slate-300 font-mono text-[11px] truncate max-w-[180px] block" dir="ltr">
-                  {currentUser?.email}
-                </span>
-              </div>
+        {/* Account Status Badge */}
+        <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <div className="text-right">
+              <span className="text-[10px] text-emerald-400 font-bold block">حساب مفعل برقم الهاتف</span>
+              <span className="text-slate-300 font-mono text-[11px]" dir="ltr">
+                {activePassenger.phone || phone || '0550123456'}
+              </span>
             </div>
           </div>
-        )}
+          <span className="text-[10px] text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 font-bold">
+            {activePassenger.role === 'admin' ? 'الإدارة' : activePassenger.role === 'driver' ? 'سائق' : 'راكب'}
+          </span>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-3.5">
           <div>

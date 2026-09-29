@@ -4,6 +4,7 @@ import { Ride } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRight, DollarSign } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { RideTracker } from '../../components/Map/RideTracker';
 
 interface DriverActiveRideProps {
   ride: Ride;
@@ -36,7 +37,11 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
   };
 
   return (
-    <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-5 text-right text-slate-100 shadow-2xl space-y-4 animate-in slide-in-from-bottom-4" id="driver-active-ride-card">
+    <div className="space-y-4 animate-in slide-in-from-bottom-4" id="driver-active-ride-card">
+      {/* Real-time RideTracker Component with Firestore Path */}
+      <RideTracker rideId={ride.id} initialRide={ride} userRole="driver" />
+
+      <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-5 text-right text-slate-100 shadow-2xl space-y-4">
       {/* Ride Step Status Header */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800">
         <div className="flex items-center gap-2">
@@ -206,6 +211,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

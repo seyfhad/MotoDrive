@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { signInQuickGuest } from '../../services/authService';
+import {
+  signInQuickGuest,
+  registerOrRestoreUserByPhone,
+  getCachedUserByPhone,
+} from '../../services/authService';
 import { syncDriverProfile } from '../../services/firestoreService';
 import { UserRole, DriverProfile } from '../../types';
 import { MotoIcon } from '../shared/MotoIcon';
@@ -31,6 +35,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
   const [activeFormTab, setActiveFormTab] = useState<'passenger' | 'driver'>('passenger');
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
+  // Remembered user message
+  const [savedUserHint, setSavedUserHint] = useState<string | null>(null);
+
   // Passenger Form State
   const [passengerName, setPassengerName] = useState('');
   const [passengerPhone, setPassengerPhone] = useState('');
@@ -46,7 +53,61 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Handle Passenger Quick Submission
+  // Auto-restore remembered phone number on mount
+  useEffect(() => {
+    try {
+      const remembered = localStorage.getItem('motodrive_remembered_phone') || localStorage.getItem('motodrive_last_phone');
+      if (remembered) {
+        setPassengerPhone(remembered);
+        setDriverPhone(remembered);
+
+        const cached = getCachedUserByPhone(remembered);
+        if (cached?.profile) {
+          setPassengerName(cached.profile.name);
+          setSavedUserHint(`مرحباً بعودتك: ${cached.profile.name}`);
+        }
+        if (cached?.driver) {
+          setDriverName(cached.driver.name);
+          if (cached.driver.motorcycle) {
+            setMotorcycleModel(`${cached.driver.motorcycle.brand} ${cached.driver.motorcycle.model}`);
+            setPlateNumber(cached.driver.motorcycle.plateNumber);
+          }
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  // Check phone as user types to restore existing name
+  const handlePassengerPhoneChange = (val: string) => {
+    setPassengerPhone(val);
+    const cached = getCachedUserByPhone(val);
+    if (cached?.profile) {
+      setPassengerName(cached.profile.name);
+      setSavedUserHint(`تم التعرف على حسابك: ${cached.profile.name}`);
+    } else {
+      setSavedUserHint(null);
+    }
+  };
+
+  const handleDriverPhoneChange = (val: string) => {
+    setDriverPhone(val);
+    const cached = getCachedUserByPhone(val);
+    if (cached?.driver) {
+      setDriverName(cached.driver.name);
+      if (cached.driver.motorcycle) {
+        setMotorcycleModel(`${cached.driver.motorcycle.brand} ${cached.driver.motorcycle.model}`);
+        setPlateNumber(cached.driver.motorcycle.plateNumber);
+      }
+      setSavedUserHint(`تم العثور على حساب السائق: ${cached.driver.name}`);
+    } else if (cached?.profile) {
+      setDriverName(cached.profile.name);
+      setSavedUserHint(`تم العثور على حسابك: ${cached.profile.name}`);
+    } else {
+      setSavedUserHint(null);
+    }
+  };
+
+  // Handle Passenger Submission with Phone Memory
   const handlePassengerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -56,9 +117,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
     try {
       setIsPassengerSubmitting(true);
-      const { user } = await signInQuickGuest(cleanName, cleanPhone, 'passenger');
-      setCurrentUser(user);
-      broadcastNotification('مرحباً بك!', `أهلاً بك كراكب في منصة MotoDrive باسم: ${cleanName}`);
+      const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
+      
+      setCurrentUser(res.user);
+      setActivePassenger(res.profile);
+      setCurrentRole('passenger');
+
+      if (res.isExisting) {
+        broadcastNotification('مرحباً بعودتك!', `أهلاً بك مجدداً يا ${res.profile.name}`);
+      } else {
+        broadcastNotification('مرحباً بك!', `تم تسجيل حسابك كراكب بنجاح باسم: ${cleanName}`);
+      }
     } catch (err: any) {
       console.error('Passenger submit error:', err);
       setFormError('حدث خطأ أثناء إرسال البيانات. يرجى المحاولة ثانية.');
@@ -67,7 +136,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     }
   };
 
-  // Handle Driver Submission (Stores driver data in Firestore with pending status)
+  // Handle Driver Submission with Phone Memory
   const handleDriverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -96,53 +165,25 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
     try {
       setIsDriverSubmitting(true);
-      // 1. Create base auth user
-      const { user } = await signInQuickGuest(cleanName, cleanPhone, 'driver');
-
-      // 2. Build driver profile doc with pending status
-      const parts = cleanModel.split(' ');
-      const brand = parts[0] || 'دراجة نارية';
-      const model = parts.slice(1).join(' ') || 'الموديل';
-
-      const driverDoc: DriverProfile = {
-        id: 'driver-' + user.uid,
-        userId: user.uid,
-        name: cleanName,
-        phone: cleanPhone,
+      const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'driver', {
+        brand: cleanModel.split(' ')[0] || 'دراجة نارية',
+        model: cleanModel.split(' ').slice(1).join(' ') || 'الموديل',
+        plateNumber: cleanPlate,
         wilaya: wilaya,
-        municipality: 'وسط المدينة',
-        status: 'pending', // Pending admin approval
-        isOnline: false,
-        isAvailable: true,
-        location: { lat: 36.7538, lng: 3.0588 },
-        rating: 5.0,
-        ratingCount: 1,
-        totalTrips: 0,
-        cancellationCount: 0,
-        motorcycle: {
-          brand,
-          model,
-          year: 2023,
-          plateNumber: cleanPlate,
-          color: 'أسود',
-        },
-        documents: {
-          status: 'pending',
-          submittedAt: new Date().toISOString(),
-        },
-        updatedAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-      };
+      });
 
-      // 3. Sync driver to Firestore
-      await syncDriverProfile(driverDoc);
-
-      // 4. Update local state
-      setActiveDriver(driverDoc);
-      setCurrentUser(user);
+      if (res.driver) {
+        setActiveDriver(res.driver);
+      }
+      setCurrentUser(res.user);
+      setActivePassenger(res.profile);
       setCurrentRole('driver');
 
-      broadcastNotification('تم إرسال بيانات السائق!', 'بياناتك قيد المراجعة الآن لدى المالك. سيتم تفعيل حسابك فور الموافقة.');
+      if (res.isExisting && res.driver?.status === 'approved') {
+        broadcastNotification('مرحباً بعودتك يا كابتن!', 'حسابك معتمد ونشط. يمكنك بدء استقبال المشاوير مباشرة.');
+      } else {
+        broadcastNotification('تم حفظ بيانات السائق!', 'بياناتك قيد المراجعة لدى المالك. سيتم تفعيل حسابك فور الموافقة.');
+      }
     } catch (err: any) {
       console.error('Driver registration error:', err);
       setFormError('حدث خطأ أثناء إرسال بيانات السائق. يرجى إعادة المحاولة.');
@@ -165,12 +206,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       <div className="absolute -top-24 -right-24 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Header / Brand Badge */}
+      {/* Top Header / Brand Badge with Hidden Motorcycle Trigger */}
       <div className="relative z-10 flex items-center justify-between pt-1">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsAdminModalOpen(true)}
+            className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0 cursor-pointer active:scale-95 transition-transform hover:border-amber-400"
+            title="MotoDrive"
+            aria-label="أيقونة الدراجة"
+          >
             <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
-          </div>
+          </button>
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-lg font-black tracking-tight text-white font-sans">
@@ -180,15 +227,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
             <p className="text-[10px] text-slate-400">منصة النقل بالدراجات النارية في الجزائر</p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsAdminModalOpen(true)}
-          className="text-[11px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-        >
-          <KeyRound className="w-3.5 h-3.5" />
-          <span>دخول المالك (Admin)</span>
-        </button>
       </div>
 
       {/* Main Interactive Form Body */}
@@ -237,6 +275,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           </button>
         </div>
 
+        {/* Saved User Greeting Banner */}
+        {savedUserHint && (
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-bold">{savedUserHint}</span>
+            </div>
+            <span className="text-[10px] text-slate-400">حسابك محفوظ</span>
+          </div>
+        )}
+
         {/* Form Error Banner */}
         {formError && (
           <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2 animate-in fade-in">
@@ -276,7 +325,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
                   <input
                     type="tel"
                     value={passengerPhone}
-                    onChange={(e) => setPassengerPhone(e.target.value)}
+                    onChange={(e) => handlePassengerPhoneChange(e.target.value)}
                     placeholder="0550123456"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-left"
                     dir="ltr"
@@ -332,7 +381,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
                 <input
                   type="tel"
                   value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
+                  onChange={(e) => handleDriverPhoneChange(e.target.value)}
                   placeholder="0661234567"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-left"
                   dir="ltr"

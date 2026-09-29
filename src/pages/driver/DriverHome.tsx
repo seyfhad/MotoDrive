@@ -6,7 +6,7 @@ import { DriverActiveRide } from './DriverActiveRide';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw } from 'lucide-react';
 import { MotoIcon } from '../../components/shared/MotoIcon';
-import { updateFirestoreDriverLocation } from '../../services/firestoreService';
+import { updateFirestoreDriverLocation, updateDriverOnlineStatus } from '../../services/firestoreService';
 import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 import { DriverPendingApprovalView } from './DriverPendingApprovalView';
@@ -96,6 +96,21 @@ export const DriverHome: React.FC = () => {
     }
   };
 
+  const handleToggleAvailability = async (newAvail: boolean) => {
+    if (!activeDriver.isOnline) return;
+    try {
+      await updateDriverOnlineStatus(activeDriver.id, true, newAvail);
+      setActiveDriver({
+        ...activeDriver,
+        isAvailable: newAvail,
+      });
+      setLocationSuccessMsg(newAvail ? '🟢 تم ضبط حالتك: متاح للرحلات' : '🔴 تم ضبط حالتك: مشغول مؤقتاً');
+      setTimeout(() => setLocationSuccessMsg(null), 4000);
+    } catch (e: any) {
+      console.warn('Availability toggle failed:', e);
+    }
+  };
+
   return (
     <div className="relative min-h-[calc(100vh-65px)] pb-24 text-slate-100" id="driver-home-screen">
       {/* Interactive Map Header / Current Position */}
@@ -107,19 +122,36 @@ export const DriverHome: React.FC = () => {
           destination={currentDriverRide?.destination}
           activeDriverLocation={activeDriver.location}
           activeDriverHeading={activeDriver.heading}
-          showRadar={activeDriver.isOnline && !currentDriverRide}
+          activeDriverStatus={
+            !activeDriver.isOnline
+              ? 'busy'
+              : currentDriverRide || activeDriver.isAvailable === false
+              ? 'busy'
+              : 'available'
+          }
+          showRadar={activeDriver.isOnline && !currentDriverRide && activeDriver.isAvailable !== false}
           className="h-full w-full rounded-none"
         />
 
-        {/* Live GPS Radar Floating Badge */}
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800 text-xs shadow-lg">
+        {/* Live GPS Status Floating Badge (Available vs Busy) */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-800 text-xs shadow-xl">
           <span
             className={`w-2.5 h-2.5 rounded-full ${
-              activeDriver.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+              !activeDriver.isOnline
+                ? 'bg-slate-500'
+                : currentDriverRide || activeDriver.isAvailable === false
+                ? 'bg-rose-500 animate-pulse'
+                : 'bg-emerald-400 animate-pulse'
             }`}
           />
           <span className="font-bold">
-            {activeDriver.isOnline ? 'وضع الاستقبال نشط (Online)' : 'غير متصل (Offline)'}
+            {!activeDriver.isOnline
+              ? 'غير متصل (Offline)'
+              : currentDriverRide
+              ? 'مشغول برحلة 🏍️'
+              : activeDriver.isAvailable !== false
+              ? 'متاح للرحلات 🟢'
+              : 'مشغول مؤقتاً 🔴'}
           </span>
         </div>
 
@@ -260,6 +292,39 @@ export const DriverHome: React.FC = () => {
                 <Power className="w-5 h-5" />
                 <span>{activeDriver.isOnline ? 'أنت الآن متصل [ ONLINE ]' : 'اضغط للاتصال [ OFFLINE ]'}</span>
               </button>
+
+              {/* Status Switcher: Available (متاح) vs Busy (مشغول) */}
+              {activeDriver.isOnline && (
+                <div className="bg-slate-950 border border-slate-800 p-1.5 rounded-2xl flex items-center gap-1.5 shadow-lg animate-in fade-in">
+                  <button
+                    type="button"
+                    id="driver-set-available-btn"
+                    onClick={() => handleToggleAvailability(true)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      activeDriver.isAvailable !== false && !currentDriverRide
+                        ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>متاح للرحلات (متاح 🟢)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="driver-set-busy-btn"
+                    onClick={() => handleToggleAvailability(false)}
+                    className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      activeDriver.isAvailable === false || Boolean(currentDriverRide)
+                        ? 'bg-rose-600 text-white shadow-md font-black'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                    <span>{currentDriverRide ? 'مشغول برحلة 🏍️' : 'مشغول مؤقتاً 🔴'}</span>
+                  </button>
+                </div>
+              )}
 
               {onlineError && (
                 <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 font-medium">

@@ -184,6 +184,7 @@ export interface Rating {
   rideId: string;
   passengerId: string;
   driverId: string;
+  passengerName?: string;
   rating: number; // 1 - 5
   tags: string[]; // e.g. "قيادة آمنة", "نظافة الدراجة", "الالتزام بالوقت", "احترام"
   comment?: string;

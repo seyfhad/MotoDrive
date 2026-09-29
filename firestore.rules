@@ -72,6 +72,13 @@ service cloud.firestore {
         isAdmin()
       );
       allow delete: if isAdmin();
+
+      // Driver ratings and feedback subcollection
+      match /ratings/{ratingId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update, delete: if isSignedIn() && (resource.data.passengerId == request.auth.uid || isAdmin());
+      }
     }
 
     // Rides collection

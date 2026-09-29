@@ -237,6 +237,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               photoURL: cachedUser.photoUrl,
             } as any);
 
+            if (cachedSession?.driver) {
+              setActiveDriver(cachedSession.driver);
+            }
+
             if (cachedUser.role === 'admin' || cachedUser.email === 'seyfhad@gmail.com') {
               setCurrentRole('admin');
             } else if (cachedUser.role === 'driver') {
@@ -718,7 +722,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, error: validation.error };
     }
 
-    const commission = Math.round((offeredPrice * pricing.platformCommissionPercent) / 100);
+    const commission = Math.round((offeredPrice * (pricing.platformCommissionPercent ?? 0)) / 100);
     const driverEarning = offeredPrice - commission;
 
     try {
@@ -1027,10 +1031,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rideId,
       passengerId: ride.passengerId,
       driverId: ride.driverId,
+      passengerName: ride.passengerName || activePassenger.name,
       rating: stars,
       tags,
       comment,
     });
+
+    // Update local rides state
+    setRides(prev =>
+      prev.map(r =>
+        r.id === rideId
+          ? {
+              ...r,
+              ratingStars: stars,
+              ratingComment: comment,
+              ratingTags: tags,
+              ratedAt: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
+    // Update local drivers state
+    setDrivers(prev =>
+      prev.map(d => {
+        if (d.id === ride.driverId) {
+          const currentCount = d.ratingCount || 0;
+          const currentAvg = d.rating || 5.0;
+          const newCount = currentCount + 1;
+          const newAvg = Number(((currentAvg * currentCount + stars) / newCount).toFixed(1));
+          return {
+            ...d,
+            rating: newAvg,
+            ratingCount: newCount,
+          };
+        }
+        return d;
+      })
+    );
   };
 
   const submitComplaint = async (

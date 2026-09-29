@@ -14,6 +14,8 @@ import {
   Skeleton,
 } from '../../components/shared/Skeleton';
 import { supabaseService } from '../../services/supabaseService';
+import { TripRatingModal } from '../../components/passenger/TripRatingModal';
+import { Ride } from '../../types';
 
 export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
@@ -26,6 +28,21 @@ export const PassengerHome: React.FC = () => {
   const [mapSelectionMode, setMapSelectionMode] = useState<'pickup' | 'destination' | null>(null);
   const [mapNotice, setMapNotice] = useState<string | null>(null);
   const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+  const [ratingRide, setRatingRide] = useState<Ride | null>(null);
+
+  // الكشف التلقائي عن أي رحلة مكتملة حديثاً لم يقم الراكب بتقييمها بعد لإظهار بطاقة التقييم
+  useEffect(() => {
+    const unratedCompletedRide = rides.find(
+      r => r.passengerId === activePassenger.id && r.status === 'completed' && !r.ratingStars
+    );
+
+    if (unratedCompletedRide) {
+      const dismissedKey = `dismissed_rating_${unratedCompletedRide.id}`;
+      if (!sessionStorage.getItem(dismissedKey)) {
+        setRatingRide(unratedCompletedRide);
+      }
+    }
+  }, [rides, activePassenger.id]);
 
   // مزامنة مبدئية سريعة مع Supabase مع تأثير التحميل الهيكلي (Skeleton)
   useEffect(() => {
@@ -106,7 +123,11 @@ export const PassengerHome: React.FC = () => {
           pickup={currentPassengerRide?.pickup || selectedPickup}
           destination={currentPassengerRide?.destination || selectedDestination}
           drivers={drivers}
-          activeDriverLocation={currentPassengerRide?.driverLocation}
+          activeDriverLocation={
+            currentPassengerRide?.driverLocation ||
+            drivers.find((d) => d.id === currentPassengerRide?.driverId)?.location ||
+            currentPassengerRide?.offers?.find((o) => o.driverId === currentPassengerRide?.driverId)?.location
+          }
           showRadar={currentPassengerRide?.status === 'searching'}
           interactive={true}
           onMapClick={handleMapClick}
@@ -336,6 +357,20 @@ export const PassengerHome: React.FC = () => {
           onRideBooked={() => setShowBookingModal(false)}
           initialPickup={selectedPickup}
           initialDestination={selectedDestination}
+        />
+      )}
+
+      {/* Post-Trip Rating and Feedback Modal */}
+      {ratingRide && (
+        <TripRatingModal
+          ride={ratingRide}
+          isOpen={Boolean(ratingRide)}
+          onClose={() => {
+            if (ratingRide) {
+              sessionStorage.setItem(`dismissed_rating_${ratingRide.id}`, 'true');
+            }
+            setRatingRide(null);
+          }}
         />
       )}
     </div>

@@ -4,6 +4,7 @@ import { Ride, RideOffer } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
 import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight, BadgeCheck } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { RideTracker } from '../../components/Map/RideTracker';
 
 interface ActiveRideViewProps {
   ride: Ride;
@@ -498,25 +499,29 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
   // Active States: accepted, driver_arriving, driver_arrived, trip_started
   // --------------------------------------------------------------------------
   return (
-    <div className="bg-slate-900/95 border border-amber-500/30 rounded-3xl p-4 sm:p-5 text-right text-slate-100 shadow-2xl backdrop-blur-md space-y-4 animate-in slide-in-from-bottom-3" id="active-ride-in-progress">
-      {/* Status Banner */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></div>
-          <span className="text-xs font-black text-amber-400">
-            {ride.status === 'accepted' && 'السائق قبل العرض وهو في الطريق إليك'}
-            {ride.status === 'driver_arriving' && 'السائق يقترب من موقعك (خلال دقيقتين)'}
-            {ride.status === 'driver_arrived' && '📍 السائق وصل إلى موقع الانطلاق!'}
-            {ride.status === 'trip_started' && '🏍️ الرحلة جارية الآن في الطريق إلى الوجهة'}
+    <div className="space-y-4 animate-in slide-in-from-bottom-3" id="active-ride-in-progress">
+      {/* Live Route & Driver Tracker Component with Real-time Firestore sync */}
+      <RideTracker rideId={ride.id} initialRide={ride} />
+
+      <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-5 text-right text-slate-100 shadow-xl backdrop-blur-md space-y-4">
+        {/* Status Banner */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping"></div>
+            <span className="text-xs font-black text-amber-400">
+              {ride.status === 'accepted' && 'السائق قبل العرض وهو في الطريق إليك'}
+              {ride.status === 'driver_arriving' && 'السائق يقترب من موقعك (خلال دقيقتين)'}
+              {ride.status === 'driver_arrived' && '📍 السائق وصل إلى موقع الانطلاق!'}
+              {ride.status === 'trip_started' && '🏍️ الرحلة جارية الآن في الطريق إلى الوجهة'}
+            </span>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+            {ride.id}
           </span>
         </div>
-        <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
-          {ride.id}
-        </span>
-      </div>
 
-      {/* Driver & Motorcycle Info Card */}
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
+        {/* Driver & Motorcycle Info Card */}
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
             src={ride.driverPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
@@ -676,6 +681,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

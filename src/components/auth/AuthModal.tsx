@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { signOutUser, signInQuickGuest } from '../../services/authService';
+import { signOutUser, registerOrRestoreUserByPhone, getCachedUserByPhone } from '../../services/authService';
 import { UserRole } from '../../types';
 import { MotoIcon } from '../shared/MotoIcon';
-import { GoogleSignInButton } from './GoogleSignInButton';
 import {
   X,
   ShieldCheck,
@@ -33,6 +32,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     activePassenger,
     currentUser,
     setCurrentUser,
+    setActivePassenger,
+    setCurrentRole,
     broadcastNotification,
   } = useApp();
 
@@ -52,9 +53,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const cleanName = normalName.trim() || 'راكب MotoDrive';
       const cleanPhone = normalPhone.trim() || '0550123456';
 
-      const { user } = await signInQuickGuest(cleanName, cleanPhone, 'passenger');
-      setCurrentUser(user);
-      broadcastNotification('مرحباً بك!', `تم الدخول بنجاح كراكب باسم: ${cleanName}`);
+      const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
+      setCurrentUser(res.user);
+      setActivePassenger(res.profile);
+      setCurrentRole('passenger');
+
+      if (res.isExisting) {
+        broadcastNotification('مرحباً بعودتك!', `تم الدخول بنجاح بحسابك: ${res.profile.name}`);
+      } else {
+        broadcastNotification('مرحباً بك!', `تم الدخول بنجاح كراكب باسم: ${cleanName}`);
+      }
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {
@@ -71,6 +79,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } else {
       setSelectedRole(defaultRole || 'passenger');
       setStep('google_auth');
+      try {
+        const remembered = localStorage.getItem('motodrive_remembered_phone') || localStorage.getItem('motodrive_last_phone');
+        if (remembered) {
+          setNormalPhone(remembered);
+          const cached = getCachedUserByPhone(remembered);
+          if (cached?.profile) {
+            setNormalName(cached.profile.name);
+          }
+        }
+      } catch (e) {}
     }
   }, [isOpen, defaultRole]);
 
@@ -119,10 +137,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <div className="text-center">
             <h3 className="text-base font-black text-white flex items-center gap-1.5 justify-center">
-              <span>تسجيل الدخول عبر Google</span>
+              <span>تسجيل الدخول برقم الهاتف</span>
               <Sparkles className="w-4 h-4 text-amber-400" />
             </h3>
-            <p className="text-[11px] text-slate-400">حساب آمن ومباشر بواسطة Firebase Auth</p>
+            <p className="text-[11px] text-slate-400">دخول مباشر دون الحاجة لحساب Google</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
             <ShieldCheck className="w-4 h-4" />

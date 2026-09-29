@@ -1,15 +1,15 @@
 import { PricingSettings } from '../types';
 
-export const MINIMUM_BASE_FARE = 120; // 120 د.ج الحد الأدنى والابتدائي
+export const MINIMUM_BASE_FARE = 110; // 110 د.ج الحد الأدنى والابتدائي (0.0 - 5.0 كم)
 export const MAX_ALLOWED_DISTANCE_KM = 70; // 70 كم أقصى مسافة مسموحة للرحلة
 
 export const DEFAULT_PRICING: PricingSettings = {
-  baseFare: 120, // 120 DA
-  pricePerKm: 14, // 14 DA / km base rate (0 to 20 km)
+  baseFare: 110, // 110 DA
+  pricePerKm: 12.5, // 12.5 DA / km average rate
   pricePerMinute: 0, // 0 DA / min
-  minimumFare: 120, // 120 DA minimum
+  minimumFare: 110, // 110 DA minimum
   cancellationFee: 100, // 100 DA
-  platformCommissionPercent: 15, // 15% MotoDrive commission
+  platformCommissionPercent: 0, // 0% عمولة المنصة - الأرباح كاملة 100% للسائق
   nightMultiplier: 1.0,
   peakMultiplier: 1.0,
   isTimeCalculationEnabled: false,
@@ -33,40 +33,100 @@ export interface PriceBreakdown {
   driverEarning: number;
   isDistanceExceeded: boolean;
   distanceError?: string;
+  tierLabel?: string;
+}
+
+export interface DistancePricingTier {
+  minKm: number;
+  maxKm: number;
+  fareDZD: number;
+  label: string;
 }
 
 /**
- * Algerian Motorcycle Ride Tiered Pricing Formula:
- * - All trips <= 5 km: flat 120 DZD (distance cost = 0, covered by minimum base fare 120 DZD)
- * - 5 to 20 km: climbs from 120 DZD to 400 DZD (+280 DZD across 15 km)
- * - At 20 km: exactly 400 DZD (120 base + 280 distance)
- * - At 40 km: exactly 750 DZD (120 base + 630 distance)
- * - At 60 km: exactly 1500 DZD (120 base + 1380 distance)
- * - 60 to 70 km: continues at 37.5 DZD/km (1875 DZD at 70 km)
- * - Maximum travel distance: 70 km (trips > 70 km are strictly blocked)
+ * سلم تسعيرة رحلات الدراجات النارية المعتمد في الجزائر:
+ * - من 0.0 كلم إلى 5.0 كلم: 110 دج
+ * - من 5.1 كلم إلى 8.0 كلم: 150 دج
+ * - من 8.1 كلم إلى 11.0 كلم: 200 دج
+ * - من 11.1 كلم إلى 15.0 كلم: 250 دج
+ * - من 15.1 كلم إلى 19.0 كلم: 300 دج
+ * - من 19.1 كلم إلى 23.0 كلم: 350 دج
+ * - من 23.1 كلم إلى 27.0 كلم: 400 دج
+ * - من 27.1 كلم إلى 31.0 كلم: 450 دج
+ * - من 31.0 كلم إلى 35.0 كلم: 700 دج
+ * - من 35.1 كلم إلى 40.0 كلم: 850 دج
+ * - من 40.1 كلم إلى 45.0 كلم: 1050 دج
+ * - من 45.1 كلم إلى 50.0 كلم: 1300 دج
+ * - من 50.1 كلم إلى 55.0 كلم: 1500 دج
+ * - من 55.1 كلم إلى 60.0 كلم: 1800 دج
+ * - من 60.1 كلم إلى 65.0 كلم: 2100 دج
+ * - من 65.1 كلم إلى 70.0 كلم: 2400 دج
+ * عمولة المنصة: 0% (جميع الأرباح للسائق 100%)
  */
-export function calculateTieredDistanceCost(distanceKm: number): number {
-  if (distanceKm <= 5) {
-    // All distances 5 km or under are flat 120 DZD (0 additional distance charge)
-    return 0;
-  }
+export const DISTANCE_PRICING_TIERS: DistancePricingTier[] = [
+  { minKm: 0.0, maxKm: 5.0, fareDZD: 110, label: 'من 0.0 إلى 5.0 كم' },
+  { minKm: 5.1, maxKm: 8.0, fareDZD: 150, label: 'من 5.1 إلى 8.0 كم' },
+  { minKm: 8.1, maxKm: 11.0, fareDZD: 200, label: 'من 8.1 إلى 11.0 كم' },
+  { minKm: 11.1, maxKm: 15.0, fareDZD: 250, label: 'من 11.1 إلى 15.0 كم' },
+  { minKm: 15.1, maxKm: 19.0, fareDZD: 300, label: 'من 15.1 إلى 19.0 كم' },
+  { minKm: 19.1, maxKm: 23.0, fareDZD: 350, label: 'من 19.1 إلى 23.0 كم' },
+  { minKm: 23.1, maxKm: 27.0, fareDZD: 400, label: 'من 23.1 إلى 27.0 كم' },
+  { minKm: 27.1, maxKm: 31.0, fareDZD: 450, label: 'من 27.1 إلى 31.0 كم' },
+  { minKm: 31.0, maxKm: 35.0, fareDZD: 700, label: 'من 31.0 إلى 35.0 كم' },
+  { minKm: 35.1, maxKm: 40.0, fareDZD: 850, label: 'من 35.1 إلى 40.0 كم' },
+  { minKm: 40.1, maxKm: 45.0, fareDZD: 1050, label: 'من 40.1 إلى 45.0 كم' },
+  { minKm: 45.1, maxKm: 50.0, fareDZD: 1300, label: 'من 45.1 إلى 50.0 كم' },
+  { minKm: 50.1, maxKm: 55.0, fareDZD: 1500, label: 'من 50.1 إلى 55.0 كم' },
+  { minKm: 55.1, maxKm: 60.0, fareDZD: 1800, label: 'من 55.1 إلى 60.0 كم' },
+  { minKm: 60.1, maxKm: 65.0, fareDZD: 2100, label: 'من 60.1 إلى 65.0 كم' },
+  { minKm: 65.1, maxKm: 70.0, fareDZD: 2400, label: 'من 65.1 إلى 70.0 كم' },
+];
 
-  if (distanceKm <= 20) {
-    // 5 -> 20 km: climbs from 120 to 400 DZD (+280 DZD over 15 km)
-    return ((distanceKm - 5) / 15) * 280;
-  } else if (distanceKm <= 40) {
-    // 20 -> 40 km: climbs from 400 to 750 DZD (+350 DZD => 17.5 DZD/km)
-    // Distance cost at 20 km = 280 DZD
-    return 280 + (distanceKm - 20) * 17.5;
-  } else if (distanceKm <= 60) {
-    // 40 -> 60 km: climbs from 750 to 1500 DZD (+750 DZD => 37.5 DZD/km)
-    // Distance cost at 40 km = 280 + 350 = 630 DZD
-    return 630 + (distanceKm - 40) * 37.5;
-  } else {
-    // 60 -> 70 km: intercity rate continues at 37.5 DZD/km
-    // Distance cost at 60 km = 630 + 750 = 1380 DZD
-    return 1380 + (distanceKm - 60) * 37.5;
-  }
+export function getTieredFareByDistance(distanceKm: number): number {
+  if (distanceKm <= 5.0) return 110;
+  if (distanceKm <= 8.0) return 150;
+  if (distanceKm <= 11.0) return 200;
+  if (distanceKm <= 15.0) return 250;
+  if (distanceKm <= 19.0) return 300;
+  if (distanceKm <= 23.0) return 350;
+  if (distanceKm <= 27.0) return 400;
+  if (distanceKm <= 31.0) return 450;
+  if (distanceKm <= 35.0) return 700;
+  if (distanceKm <= 40.0) return 850;
+  if (distanceKm <= 45.0) return 1050;
+  if (distanceKm <= 50.0) return 1300;
+  if (distanceKm <= 55.0) return 1500;
+  if (distanceKm <= 60.0) return 1800;
+  if (distanceKm <= 65.0) return 2100;
+  if (distanceKm <= 70.0) return 2400;
+
+  // For any extended distance beyond 70 km:
+  const extraKm = distanceKm - 70;
+  return 2400 + Math.ceil(extraKm / 5) * 300;
+}
+
+export function getTierLabelByDistance(distanceKm: number): string {
+  if (distanceKm <= 5.0) return 'شريحة 0.0 - 5.0 كم (110 د.ج)';
+  if (distanceKm <= 8.0) return 'شريحة 5.1 - 8.0 كم (150 د.ج)';
+  if (distanceKm <= 11.0) return 'شريحة 8.1 - 11.0 كم (200 د.ج)';
+  if (distanceKm <= 15.0) return 'شريحة 11.1 - 15.0 كم (250 د.ج)';
+  if (distanceKm <= 19.0) return 'شريحة 15.1 - 19.0 كم (300 د.ج)';
+  if (distanceKm <= 23.0) return 'شريحة 19.1 - 23.0 كم (350 د.ج)';
+  if (distanceKm <= 27.0) return 'شريحة 23.1 - 27.0 كم (400 د.ج)';
+  if (distanceKm <= 31.0) return 'شريحة 27.1 - 31.0 كم (450 د.ج)';
+  if (distanceKm <= 35.0) return 'شريحة 31.0 - 35.0 كم (700 د.ج)';
+  if (distanceKm <= 40.0) return 'شريحة 35.1 - 40.0 كم (850 د.ج)';
+  if (distanceKm <= 45.0) return 'شريحة 40.1 - 45.0 كم (1,050 د.ج)';
+  if (distanceKm <= 50.0) return 'شريحة 45.1 - 50.0 كم (1,300 د.ج)';
+  if (distanceKm <= 55.0) return 'شريحة 50.1 - 55.0 كم (1,500 د.ج)';
+  if (distanceKm <= 60.0) return 'شريحة 55.1 - 60.0 كم (1,800 د.ج)';
+  if (distanceKm <= 65.0) return 'شريحة 60.1 - 65.0 كم (2,100 د.ج)';
+  return 'شريحة 65.1 - 70.0 كم (2,400 د.ج)';
+}
+
+export function calculateTieredDistanceCost(distanceKm: number): number {
+  const tieredFare = getTieredFareByDistance(distanceKm);
+  return Math.max(0, tieredFare - MINIMUM_BASE_FARE);
 }
 
 export function calculateFare(
@@ -80,42 +140,18 @@ export function calculateFare(
     ? `لا يمكن التنقل لأبعد من ${MAX_ALLOWED_DISTANCE_KM} كم بالدراجة النارية حفاظاً على السلامة والراحة.`
     : undefined;
 
-  // For any trip from 0.0 km to 5.0 km (e.g. 0.7 km): strictly flat 120 DZD base fare
-  if (distanceKm <= 5) {
-    const baseFare = MINIMUM_BASE_FARE;
-    const roundedPrice = MINIMUM_BASE_FARE; // 120 DZD flat
-    const platformCommission = Math.round(
-      (roundedPrice * (pricing.platformCommissionPercent || 15)) / 100
-    );
-    const driverEarning = roundedPrice - platformCommission;
+  const baseFare = MINIMUM_BASE_FARE; // 110 DZD
+  const tieredFare = getTieredFareByDistance(distanceKm);
+  const distanceCost = Math.max(0, tieredFare - baseFare);
 
-    return {
-      baseFare,
-      distanceCost: 0,
-      timeCost: 0,
-      subtotal: baseFare,
-      nightSurcharge: 0,
-      peakSurcharge: 0,
-      discountAmount: 0,
-      totalPrice: baseFare,
-      roundedPrice,
-      platformCommission,
-      driverEarning,
-      isDistanceExceeded,
-      distanceError,
-    };
-  }
-
-  const baseFare = MINIMUM_BASE_FARE;
-  const distanceCost = calculateTieredDistanceCost(distanceKm);
   const timeCost = pricing.isTimeCalculationEnabled
     ? durationMinutes * (pricing.pricePerMinute || 0)
     : 0;
 
-  let subtotal = baseFare + distanceCost + timeCost;
+  let subtotal = tieredFare + timeCost;
 
-  // Apply 120 DZD minimum fare constraint
-  const effectiveMin = MINIMUM_BASE_FARE;
+  // Apply minimum fare constraint (110 DZD)
+  const effectiveMin = pricing.minimumFare || MINIMUM_BASE_FARE;
   if (subtotal < effectiveMin) {
     subtotal = effectiveMin;
   }
@@ -135,10 +171,9 @@ export function calculateFare(
   // Round to nearest 10 DA for easy cash handling in Algeria
   const roundedPrice = Math.round(totalPrice / 10) * 10;
 
-  // MotoDrive Commission calculation
-  const platformCommission = Math.round(
-    (roundedPrice * (pricing.platformCommissionPercent || 15)) / 100
-  );
+  // MotoDrive Commission calculation (0% commission - all earnings for the driver)
+  const commissionRate = (pricing.platformCommissionPercent ?? 0) / 100;
+  const platformCommission = Math.round(roundedPrice * commissionRate);
   const driverEarning = roundedPrice - platformCommission;
 
   return {
@@ -155,16 +190,17 @@ export function calculateFare(
     driverEarning,
     isDistanceExceeded,
     distanceError,
+    tierLabel: getTierLabelByDistance(distanceKm),
   };
 }
 
 export function getQuickFareChips(recommendedPrice: number): number[] {
-  const minFare = MINIMUM_BASE_FARE;
+  const minFare = MINIMUM_BASE_FARE; // 110 DZD
   if (recommendedPrice <= minFare) {
-    return [120, 150, 200, 250];
+    return [110, 130, 150, 180];
   }
 
-  const step = recommendedPrice >= 1000 ? 100 : 50;
+  const step = recommendedPrice >= 1000 ? 100 : (recommendedPrice >= 500 ? 50 : (recommendedPrice <= 150 ? 20 : 30));
   const p1 = Math.max(minFare, Math.round((recommendedPrice - step) / 10) * 10);
   const p2 = recommendedPrice;
   const p3 = recommendedPrice + step;
@@ -183,16 +219,16 @@ export function validateOfferedPrice(
     return {
       isValid: false,
       minPrice: MINIMUM_BASE_FARE,
-      maxPrice: 2500,
+      maxPrice: 3500,
       error: `لا يمكن طلب رحلة أبعد من ${MAX_ALLOWED_DISTANCE_KM} كم بالدراجة النارية حفاظاً على السلامة.`,
     };
   }
 
   // Strict check for distances from 0.0 to 5.0 km:
-  // Flat recommended price is 120 DZD, minimum allowed price is strictly 120 DZD
+  // Flat recommended price is 110 DZD, minimum allowed price is strictly 110 DZD
   if (distanceKm <= 5) {
-    const minPrice = MINIMUM_BASE_FARE; // exactly 120 DZD
-    const maxPrice = Math.max(300, Math.round((recommendedPrice * 2.0) / 10) * 10);
+    const minPrice = MINIMUM_BASE_FARE; // exactly 110 DZD
+    const maxPrice = Math.max(250, Math.round((recommendedPrice * 2.0) / 10) * 10);
 
     if (price < minPrice) {
       return {
@@ -215,7 +251,7 @@ export function validateOfferedPrice(
     return { isValid: true, minPrice, maxPrice };
   }
 
-  const effectiveMin = MINIMUM_BASE_FARE; // 120 DZD
+  const effectiveMin = MINIMUM_BASE_FARE; // 110 DZD
   const minRatio = pricing.minOfferedPriceRatio || 0.7;
   const maxRatio = pricing.maxOfferedPriceRatio || 2.0;
 
