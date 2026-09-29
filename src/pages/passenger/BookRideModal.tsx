@@ -78,6 +78,13 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     };
   }, [searchQuery, selectedWilaya]);
 
+  // Auto-detect GPS position immediately on modal open if initialPickup is default/missing
+  React.useEffect(() => {
+    if (!initialPickup) {
+      handleUseRealGPS();
+    }
+  }, []);
+
   // Real GPS Geolocation with robust high/low accuracy fallback
   const handleUseRealGPS = async () => {
     if (!navigator.geolocation) {
@@ -198,22 +205,13 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
   const recommendedPrice = fareBreakdown.roundedPrice;
 
-  // Passenger offered price state (defaults to recommended)
+  // Passenger offered price state strictly locked to recommended fixed price
   const [offeredPrice, setOfferedPrice] = useState<number>(recommendedPrice);
-  const quickChips = getQuickFareChips(recommendedPrice);
 
   // Update offered price if recommended changes
   React.useEffect(() => {
     setOfferedPrice(recommendedPrice);
   }, [recommendedPrice]);
-
-  const minAllowedForTrip = distanceKm <= 5 ? 110 : (pricing.minimumFare || 110);
-
-  const handleAdjustPrice = (delta: number) => {
-    const newPrice = Math.max(minAllowedForTrip, offeredPrice + delta);
-    setOfferedPrice(newPrice);
-    setErrorMsg(null);
-  };
 
   const handleToggleNote = (note: string) => {
     setSelectedNotes(prev =>
@@ -236,13 +234,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       return;
     }
 
-    // Validate price bounds
-    const validation = validateOfferedPrice(offeredPrice, recommendedPrice, pricing, distanceKm);
-    if (!validation.isValid) {
-      setErrorMsg(validation.error || 'السعر المقترح غير صالح');
-      return;
-    }
-
     setIsSubmitting(true);
     setErrorMsg(null);
 
@@ -251,7 +242,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     const res = await requestRide(
       pickup,
       destination,
-      offeredPrice,
+      recommendedPrice,
       fullNote || undefined,
       appliedPromo || undefined
     );
@@ -263,8 +254,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       setErrorMsg(res.error || 'فشل في إنشاء الطلب');
     }
   };
-
-  const priceDiff = offeredPrice - recommendedPrice;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in" id="book-ride-modal">
@@ -278,8 +267,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
             <X className="w-4 h-4" />
           </button>
           <div className="text-center">
-            <h3 className="text-base font-black text-white">طلب رحلة بالتفاوض الحر</h3>
-            <p className="text-[11px] text-amber-400 font-medium">حدد سعرك واستقبل عروض السائقين مباشرة 🏍️</p>
+            <h3 className="text-base font-black text-white">طلب رحلة بالسعر الثابت المعتمد</h3>
+            <p className="text-[11px] text-amber-400 font-medium">سعر محدد وثابت 100% حسب شريحة المسافة المقطوعة 🏍️</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
             ⚡
@@ -522,19 +511,28 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Tiered pricing badge based on distance */}
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-300">
-              <div className="flex items-center gap-2">
-                <span className="text-base shrink-0">⚡</span>
-                <div>
-                  <div className="font-bold text-white">تسعيرة شريحة المسافة ({distanceKm} كم)</div>
-                  <div className="text-[11px] text-amber-400 mt-0.5">
-                    {fareBreakdown.tierLabel || `السعر الأساسي: ${formatCurrencyDZD(fareBreakdown.roundedPrice)}`}
-                  </div>
+            {/* Official Fixed Price Display Card */}
+            <div className="bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/50 rounded-2xl p-4 space-y-2 shadow-lg relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>السعر الثابت المعتمد للرحلة:</span>
+                </div>
+                <div className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold">
+                  سعر رسمي ثابت 100%
                 </div>
               </div>
-              <div className="text-sm font-black text-amber-400 font-mono">
-                {formatCurrencyDZD(fareBreakdown.roundedPrice)}
+
+              <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-3.5 text-center space-y-1">
+                <div className="text-4xl font-black text-amber-400 tracking-tight font-mono">
+                  {recommendedPrice} <span className="text-base font-bold text-slate-300">د.ج</span>
+                </div>
+                <div className="text-xs font-semibold text-amber-300">
+                  {fareBreakdown.tierLabel || `تسعيرة شريحة المسافة (${distanceKm} كم)`}
+                </div>
+                <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
+                  💡 الأرباح كاملة 100% لسائق الدراجة بدون أي خصم لعمولة المنصة.
+                </p>
               </div>
             </div>
 
@@ -550,84 +548,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 </div>
               </div>
             )}
-
-            {/* InDrive-style Fare Negotiation Section */}
-            <div className="bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 space-y-3.5 shadow-lg relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>اقترح سعرك للرحلة (د.ج)</span>
-                </div>
-                <div className="text-[11px] text-slate-400 bg-slate-800/80 px-2.5 py-1 rounded-full">
-                  السعر المقترح بالنظام: <span className="font-bold text-amber-400">{recommendedPrice} د.ج</span>
-                </div>
-              </div>
-
-              {/* Price Adjuster with big +/- controls */}
-              <div className="flex items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 rounded-2xl p-3">
-                <button
-                  type="button"
-                  onClick={() => handleAdjustPrice(-20)}
-                  disabled={offeredPrice <= minAllowedForTrip}
-                  className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-amber-400 font-bold flex items-center justify-center text-lg disabled:opacity-30 transition-all"
-                  title="إنقاص 20 د.ج"
-                >
-                  <Minus className="w-5 h-5" />
-                </button>
-
-                <div className="text-center flex-1">
-                  <div className="text-3xl font-black text-amber-400 tracking-tight">
-                    {offeredPrice} <span className="text-sm font-semibold text-slate-400">د.ج</span>
-                  </div>
-                  <div className="text-[10px] font-medium mt-0.5">
-                    {priceDiff === 0 ? (
-                      <span className="text-slate-400">مطابق للتسعيرة المقترحة</span>
-                    ) : priceDiff > 0 ? (
-                      <span className="text-emerald-400 font-semibold">+{priceDiff} د.ج (قبول فوري وأسرع)</span>
-                    ) : (
-                      <span className="text-amber-400/90 font-semibold">{priceDiff} د.ج (عرض اقتصادي)</span>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAdjustPrice(20)}
-                  className="w-12 h-12 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-bold flex items-center justify-center text-lg transition-all"
-                  title="زيادة 20 د.ج"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Quick Fare Chips */}
-              <div className="space-y-1.5">
-                <div className="text-[10px] text-slate-400">خيارات سريعة مقترحة:</div>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {quickChips.map((chipPrice, i) => {
-                    const isSelected = offeredPrice === chipPrice;
-                    const diff = chipPrice - recommendedPrice;
-                    return (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setOfferedPrice(chipPrice)}
-                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all text-center border ${
-                          isSelected
-                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md scale-[1.02]'
-                            : 'bg-slate-950/90 text-slate-300 hover:bg-slate-800 border-slate-800'
-                        }`}
-                      >
-                        <div>{chipPrice} د.ج</div>
-                        <div className={`text-[9px] ${isSelected ? 'text-slate-900 font-black' : 'text-slate-500'}`}>
-                          {diff === 0 ? 'الموصى به' : diff > 0 ? `+${diff}` : `${diff}`}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
 
             {/* Quick Trip Notes & Requirements */}
             <div className="space-y-2">

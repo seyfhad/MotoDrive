@@ -57,6 +57,11 @@ export const PassengerHome: React.FC = () => {
     };
   }, []);
 
+  // التحديد التلقائي والمباشر لموقع الراكب الفعلي على الخريطة فور فتح الصفحة (مثل Yassir / Uber)
+  useEffect(() => {
+    handleGetRealGPSLocation();
+  }, []);
+
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
   const handleGetRealGPSLocation = async () => {
     setIsLocating(true);

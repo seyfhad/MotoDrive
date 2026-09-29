@@ -11,6 +11,7 @@ import { ContactUsModal } from './components/support/ContactUsModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
 import { PushNotificationToast } from './components/shared/PushNotificationToast';
+import { getRobustUserLocation } from './utils/geo';
 
 // Passenger Views
 import { PassengerHome } from './pages/passenger/PassengerHome';
@@ -128,19 +129,13 @@ const AppContent: React.FC = () => {
     };
   }, [logout]);
 
-  // Request geolocation permission on app start
+  // Request geolocation permission & trigger prompt on app start
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          console.log('Location permission granted:', pos.coords.latitude, pos.coords.longitude);
-        },
-        (err) => {
-          console.warn('Geolocation prompt response:', err.message);
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-      );
-    }
+    getRobustUserLocation().then(res => {
+      console.log('Location permission & position acquired on startup:', res.coords);
+    }).catch(err => {
+      console.warn('Geolocation startup notice:', err);
+    });
   }, []);
 
   // Reset tab when switching roles

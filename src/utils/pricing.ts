@@ -131,7 +131,7 @@ export function calculateTieredDistanceCost(distanceKm: number): number {
 
 export function calculateFare(
   distanceKm: number,
-  durationMinutes: number = 0,
+  _durationMinutes: number = 0,
   pricing: PricingSettings = DEFAULT_PRICING,
   discountPercent: number = 0
 ): PriceBreakdown {
@@ -144,32 +144,12 @@ export function calculateFare(
   const tieredFare = getTieredFareByDistance(distanceKm);
   const distanceCost = Math.max(0, tieredFare - baseFare);
 
-  const timeCost = pricing.isTimeCalculationEnabled
-    ? durationMinutes * (pricing.pricePerMinute || 0)
-    : 0;
-
-  let subtotal = tieredFare + timeCost;
-
-  // Apply minimum fare constraint (110 DZD)
-  const effectiveMin = pricing.minimumFare || MINIMUM_BASE_FARE;
-  if (subtotal < effectiveMin) {
-    subtotal = effectiveMin;
-  }
-
-  // Multipliers
-  const nightMultiplier = pricing.nightMultiplier || 1.0;
-  const peakMultiplier = pricing.peakMultiplier || 1.0;
-
-  const afterMultipliers = subtotal * nightMultiplier * peakMultiplier;
-  const nightSurcharge = subtotal * (nightMultiplier - 1);
-  const peakSurcharge = subtotal * (peakMultiplier - 1);
-
   // Discount
-  const discountAmount = discountPercent > 0 ? (afterMultipliers * discountPercent) / 100 : 0;
-  const totalPrice = Math.max(effectiveMin, afterMultipliers - discountAmount);
+  const discountAmount = discountPercent > 0 ? (tieredFare * discountPercent) / 100 : 0;
+  const totalPrice = Math.max(MINIMUM_BASE_FARE, tieredFare - discountAmount);
 
-  // Round to nearest 10 DA for easy cash handling in Algeria
-  const roundedPrice = Math.round(totalPrice / 10) * 10;
+  // Exact rounded price matching official tier table
+  const roundedPrice = Math.round(totalPrice);
 
   // MotoDrive Commission calculation (0% commission - all earnings for the driver)
   const commissionRate = (pricing.platformCommissionPercent ?? 0) / 100;
@@ -179,10 +159,10 @@ export function calculateFare(
   return {
     baseFare,
     distanceCost: Math.round(distanceCost),
-    timeCost: Math.round(timeCost),
-    subtotal: Math.round(subtotal),
-    nightSurcharge: Math.round(nightSurcharge),
-    peakSurcharge: Math.round(peakSurcharge),
+    timeCost: 0,
+    subtotal: Math.round(tieredFare),
+    nightSurcharge: 0,
+    peakSurcharge: 0,
     discountAmount: Math.round(discountAmount),
     totalPrice: Math.round(totalPrice),
     roundedPrice,
