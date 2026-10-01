@@ -44,7 +44,7 @@ export const PassengerTrips: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-white">سجل رحلاتي</h2>
-          <p className="text-xs text-slate-400">جميع الرحلات السابقة وتفاصيل الفواتير عبر Supabase</p>
+          <p className="text-xs text-slate-400">جميع الرحلات السابقة وتفاصيل الفواتير</p>
         </div>
         <div className="flex items-center gap-2">
           <button

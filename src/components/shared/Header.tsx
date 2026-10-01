@@ -192,75 +192,97 @@ export const Header: React.FC = () => {
             )}
 
             {/* Notification Bell */}
-            <div className="relative">
-              <button
-                id="notifications-bell-btn"
-                onClick={() => {
-                  if (!showNotifications) {
-                    markAllNotificationsAsRead();
-                  }
-                  setShowNotifications(!showNotifications);
-                }}
-                className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors relative"
-                title="التنبيهات والإشعارات"
-              >
-                <Bell className="w-3.5 h-3.5" />
-                {unreadNotifs.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-slate-950 font-black text-[9px] rounded-full flex items-center justify-center">
-                    {unreadNotifs.length}
-                  </span>
-                )}
-              </button>
-
-              {/* Notifications Dropdown */}
-              {showNotifications && (
-                <div className="absolute left-0 mt-2 w-80 max-w-[85vw] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 mb-2">
-                    <h4 className="text-xs font-bold text-white">التنبيهات والإشعارات الفورية</h4>
-                    <span className="text-[10px] text-amber-400 font-semibold">{notifications.length} إشعار</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      pushNotificationService.sendPushNotification(
-                        '🔔 إشعار تجريبي من MotoDrive',
-                        'نظام الإشعارات الفورية والصوتية يعمل بنجاح!',
-                        { soundType: 'new_ride' }
-                      );
-                    }}
-                    className="w-full mb-2 py-1.5 px-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-300 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                  >
-                    <span>🔔 تجربة الإشعار والنغمة الفورية</span>
-                  </button>
-                  <div className="max-h-72 overflow-y-auto space-y-2">
-                    {notifications.length === 0 ? (
-                      <div className="text-center py-6 text-xs text-slate-500">
-                        لا توجد إشعارات جديدة حالياً
-                      </div>
-                    ) : (
-                      notifications.slice(0, 8).map(n => (
-                        <div
-                          key={n.id}
-                          className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-right text-xs"
-                        >
-                          <div className="font-bold text-amber-400 mb-0.5">{n.title}</div>
-                          <div className="text-slate-300 text-[11px] leading-relaxed">{n.body}</div>
-                          <div className="text-[9px] text-slate-500 mt-1">
-                            {new Date(n.createdAt).toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+            <button
+              id="notifications-bell-btn"
+              onClick={() => {
+                if (!showNotifications) {
+                  markAllNotificationsAsRead();
+                }
+                setShowNotifications(!showNotifications);
+              }}
+              className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-amber-400 hover:border-amber-500/30 transition-colors relative cursor-pointer"
+              title="التنبيهات والإشعارات"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              {unreadNotifs.length > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-slate-950 font-black text-[9px] rounded-full flex items-center justify-center animate-pulse">
+                  {unreadNotifs.length}
+                </span>
               )}
-            </div>
+            </button>
           </div>
         </div>
       </header>
 
       {/* Modals */}
+      {showNotifications && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-16 p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in"
+          onClick={() => setShowNotifications(false)}
+          dir="rtl"
+        >
+          <div
+            className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-2xl space-y-3 text-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-400" />
+                <h4 className="text-sm font-bold text-white">التنبيهات والإشعارات الفورية</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNotifications(false)}
+                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                pushNotificationService.sendPushNotification(
+                  '🔔 إشعار تجريبي من MotoDrive',
+                  'نظام الإشعارات الفورية والصوتية يعمل بنجاح!',
+                  { soundType: 'new_ride' }
+                );
+              }}
+              className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+            >
+              <span>🔔 إرسال إشعار وتجربة الصوت الآن</span>
+            </button>
+
+            <div className="max-h-80 overflow-y-auto space-y-2 pt-1">
+              {notifications.length === 0 ? (
+                <div className="text-center py-8 text-xs text-slate-500 space-y-1">
+                  <p className="font-bold">لا توجد إشعارات حالياً</p>
+                  <p className="text-[10px]">ستظهر هنا إشعارات الرحلات والموافقة على الحساب فوراً.</p>
+                </div>
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-right text-xs space-y-1 shadow-sm"
+                  >
+                    <div className="font-bold text-amber-400 flex items-center justify-between">
+                      <span>{n.title}</span>
+                      <span className="text-[9px] font-mono text-slate-500 font-normal">
+                        {new Date(n.createdAt).toLocaleTimeString('ar-DZ', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <div className="text-slate-300 text-[11px] leading-relaxed">{n.body}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSos && (
         <SOSModal
           onClose={() => setShowSos(false)}

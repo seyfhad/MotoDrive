@@ -360,9 +360,9 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
     });
   };
 
-  // 2. High accuracy GPS try (3.5 seconds max timeout)
+  // 2. High accuracy GPS try (10 seconds max timeout for mobile GPS hardware)
   try {
-    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 3500, maximumAge: 30000 });
+    const pos = await tryPosition({ enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 });
     const { latitude, longitude } = pos.coords;
     const address = await reverseGeocodeCoords(latitude, longitude);
     return {
@@ -387,9 +387,9 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
     }
   }
 
-  // 3. Fast Network / Cell-Tower location try (3.5 seconds max timeout)
+  // 3. Fast Network / Cell-Tower location try (8 seconds max timeout)
   try {
-    const pos = await tryPosition({ enableHighAccuracy: false, timeout: 3500, maximumAge: 120000 });
+    const pos = await tryPosition({ enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 });
     const { latitude, longitude } = pos.coords;
     const address = await reverseGeocodeCoords(latitude, longitude);
     return {
@@ -421,6 +421,111 @@ export async function getRobustUserLocation(): Promise<RobustLocationResult> {
     coords: defaultCoords,
     isFallback: true,
     message: '⚠️ تعذر التقاط إشارة GPS الهاتف. 💡 الحل: افتح شريط إشعارات الهاتف وفعّل زر "الموقع" (GPS) ثم أعد الضغط على زر تحديد الموقع أو حرك الخريطة.',
+  };
+}
+
+/**
+ * Background continuous location tracking manager.
+ * Tracks user position in background using watchPosition & periodic updates.
+ */
+export interface BackgroundWatchOptions {
+  enableHighAccuracy?: boolean;
+  intervalMs?: number;
+  onLocationUpdate: (result: RobustLocationResult) => void;
+  onError?: (error: any) => void;
+}
+
+export function startBackgroundLocationTracking(options: BackgroundWatchOptions): () => void {
+  const {
+    enableHighAccuracy = true,
+    intervalMs = 12000,
+    onLocationUpdate,
+    onError,
+  } = options;
+
+  let lastLat = 0;
+  let lastLng = 0;
+  let watchId: number | null = null;
+  let capWatchId: string | null = null;
+
+  const handleCoords = async (latitude: number, longitude: number) => {
+    const dist = Math.sqrt(Math.pow(latitude - lastLat, 2) + Math.pow(longitude - lastLng, 2));
+    let address = '';
+    if (dist > 0.0003) {
+      address = (await reverseGeocodeCoords(latitude, longitude)) || '';
+      lastLat = latitude;
+      lastLng = longitude;
+    }
+
+    onLocationUpdate({
+      coords: {
+        lat: latitude,
+        lng: longitude,
+        name: address || 'موقعي المباشر (GPS)',
+        address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+      },
+      isFallback: false,
+      message: '📍 تم تحديث الموقع تلقائياً.',
+    });
+  };
+
+  // 1. Native Capacitor watchPosition if available
+  if (Capacitor.isNativePlatform() || Capacitor.isPluginAvailable('Geolocation')) {
+    Geolocation.watchPosition(
+      {
+        enableHighAccuracy,
+        timeout: 15000,
+        maximumAge: 5000,
+      },
+      (position, err) => {
+        if (err) {
+          if (onError) onError(err);
+          return;
+        }
+        if (position?.coords) {
+          handleCoords(position.coords.latitude, position.coords.longitude);
+        }
+      }
+    ).then((id) => {
+      capWatchId = id;
+    }).catch(() => {});
+  } else if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    // 2. Browser watchPosition
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        handleCoords(pos.coords.latitude, pos.coords.longitude);
+      },
+      (err) => {
+        if (onError) onError(err);
+      },
+      {
+        enableHighAccuracy,
+        timeout: 15000,
+        maximumAge: 5000,
+      }
+    );
+  }
+
+  // 3. Periodic fallback timer
+  const timer = setInterval(() => {
+    getRobustUserLocation()
+      .then((res) => {
+        onLocationUpdate(res);
+      })
+      .catch((err) => {
+        if (onError) onError(err);
+      });
+  }, intervalMs);
+
+  // Return unsubscribe cleanup function
+  return () => {
+    if (timer) clearInterval(timer);
+    if (watchId !== null && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.clearWatch(watchId);
+    }
+    if (capWatchId) {
+      Geolocation.clearWatch({ id: capWatchId }).catch(() => {});
+    }
   };
 }
 

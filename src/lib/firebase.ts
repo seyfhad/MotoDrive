@@ -1,2 +1,2 @@
-// Unified Firebase re-export from services/firebase.ts
-export { app, auth, db, storage, default } from '../services/firebase';
+// Unified Firebase re-export from services/firebase.ts (Storage removed)
+export { app, auth, db, default } from '../services/firebase';

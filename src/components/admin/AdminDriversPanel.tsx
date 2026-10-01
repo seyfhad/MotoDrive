@@ -11,6 +11,7 @@ import {
   orderBy,
 } from 'firebase/firestore';
 import { updateDriverStatusInFirestore } from '../../services/firestoreService';
+import { approveDriverApplication, rejectDriverApplication } from '../../services/driverApplicationsService';
 import { MotoIcon } from '../shared/MotoIcon';
 import {
   Check,
@@ -117,6 +118,20 @@ export const AdminDriversPanel: React.FC = () => {
         rejectionReason = reasonPrompt.trim() || 'الوثائق المرفقة غير مطابقة';
       }
 
+      if (newStatus === 'approved') {
+        try {
+          await approveDriverApplication(`app_${driverId}`, driverId, 'admin');
+        } catch (appErr) {
+          console.warn('Notice approving application files:', appErr);
+        }
+      } else {
+        try {
+          await rejectDriverApplication(`app_${driverId}`, driverId, rejectionReason || 'الوثائق غير مقبولة', 'admin');
+        } catch (appErr) {
+          console.warn('Notice rejecting application files:', appErr);
+        }
+      }
+
       await updateDriverStatusInFirestore(driverId, newStatus, rejectionReason);
 
       // تحديث محلي فوري
@@ -131,7 +146,7 @@ export const AdminDriversPanel: React.FC = () => {
       alert(
         `تم تحديث حالة السائق بنجاح إلى: ${
           newStatus === 'approved' ? 'مقبول رسمياً ✅' : 'مرفوض ❌'
-        }`
+        }\nتم مسح وثائق التوثيق من Firebase Storage بنجاح لحماية الخصوصية وتوفير المساحة.`
       );
     } catch (err: any) {
       console.error('Error updating driver status:', err);

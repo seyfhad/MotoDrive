@@ -267,3 +267,58 @@ export interface PromoCode {
   expiresAt: string;
   usageCount: number;
 }
+
+export interface DriverApplication {
+  id: string;
+  driverId: string;
+  userId: string;
+  fullName: string;
+  phone: string;
+  email?: string;
+  wilaya: string;
+  municipality: string;
+  motorcycle: MotorcycleInfo;
+  documents: {
+    selfieUrl?: string;
+    motorcyclePhotoUrl?: string;
+    licenseUrl?: string;
+    vehicleRegistrationUrl?: string;
+    // Backwards compatibility mappings
+    licenseFrontUrl?: string;
+    licenseBackUrl?: string;
+    vehicleDocFrontUrl?: string;
+    vehicleDocBackUrl?: string;
+    motorcycleFrontUrl?: string;
+    motorcycleBackUrl?: string;
+  };
+  storagePaths?: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+export interface RideRequest {
+  id: string;
+  passengerId: string;
+  passengerName: string;
+  passengerPhone: string;
+  passengerPhoto?: string;
+  pickup: Coordinates;
+  destination: Coordinates;
+  fare: number;
+  distanceKm: number;
+  estimatedDurationMins: number;
+  status: 'pending' | 'accepted' | 'completed' | 'cancelled';
+  driverId?: string | null;
+  driverName?: string | null;
+  driverPhone?: string | null;
+  driverPhoto?: string | null;
+  motorcycle?: MotorcycleInfo | null;
+  driverLocation?: Coordinates | null;
+  createdAt: string;
+  acceptedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+}

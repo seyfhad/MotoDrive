@@ -48,6 +48,44 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       }
     }
 
+    // Fallback: Check driver_applications collection by phone or userId
+    if (!driver) {
+      const appQ = query(collection(db, 'driver_applications'), where('phone', '==', cleanPhone));
+      const appSnap = await getDocs(appQ);
+      if (!appSnap.empty) {
+        const appData = appSnap.docs[0].data();
+        driver = {
+          id: appData.driverId || `driver-${cleanPhone}`,
+          userId: appData.userId || cleanPhone,
+          name: appData.fullName || cleanPhone,
+          phone: appData.phone || cleanPhone,
+          email: appData.email,
+          wilaya: appData.wilaya || 'الجزائر العاصمة',
+          municipality: appData.municipality || 'وسط المدينة',
+          photoUrl: appData.documents?.selfieUrl || '',
+          rating: 5.0,
+          ratingCount: 1,
+          totalTrips: 0,
+          cancellationCount: 0,
+          isOnline: false,
+          isAvailable: false,
+          status: appData.status || 'pending',
+          rejectionReason: appData.rejectionReason,
+          location: { lat: 36.7538, lng: 3.0588 },
+          motorcycle: appData.motorcycle || {
+            brand: 'SYM',
+            model: 'Symphony',
+            year: 2023,
+            plateNumber: '',
+            color: 'أسود',
+          },
+          documents: appData.documents || { status: appData.status || 'pending' },
+          createdAt: appData.submittedAt || new Date().toISOString(),
+          updatedAt: appData.reviewedAt || new Date().toISOString(),
+        } as DriverProfile;
+      }
+    }
+
     return { profile, driver };
   } catch (err) {
     console.warn('Error querying user by phone:', err);

@@ -32,7 +32,7 @@ export const DriverTrips: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-white">سجل رحلات السائق</h2>
-          <p className="text-xs text-slate-400">إجمالي الرحلات والأرباح المحققة عبر Supabase</p>
+          <p className="text-xs text-slate-400">إجمالي الرحلات والأرباح المحققة</p>
         </div>
         <div className="flex items-center gap-2">
           <button

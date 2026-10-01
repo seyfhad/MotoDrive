@@ -281,18 +281,6 @@ export const PassengerHome: React.FC = () => {
                 </button>
               </div>
 
-              {/* Pricing & Distance Policy Banner */}
-              <div className="flex items-center justify-between px-3 py-2 bg-slate-950/70 border border-slate-800/80 rounded-xl text-[11px]">
-                <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                  <span>⚡ السعر يبدأ من 110 د.ج (أقل من 5 كم = 110 د.ج ثابت)</span>
-                  <span className="text-slate-600">•</span>
-                  <span className="text-slate-300 font-normal">أقصى مسافة 70 كم</span>
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  تسعيرة ثابتة
-                </div>
-              </div>
-
               {/* Main Call to Action Button */}
               <button
                 id="passenger-order-ride-main-btn"

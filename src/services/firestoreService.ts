@@ -18,8 +18,7 @@ import {
   Timestamp,
   arrayUnion,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile, DriverApprovalStatus } from '../types';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
 
@@ -146,20 +145,36 @@ export const getDriverByUserIdOrPhone = async (
 // ============================================================================
 
 export const syncDriverProfile = async (driver: DriverProfile): Promise<void> => {
+  const gh = geohashForLocation([driver.location?.lat || 36.7538, driver.location?.lng || 3.0588]);
+  const cleanData = sanitizeFirestoreData({
+    ...driver,
+    geohash: gh,
+    updatedAt: serverTimestamp(),
+  });
+
+  // 1. Primary write to Firestore by driver.id
   try {
     const driverRef = doc(db, 'drivers', driver.id);
-    const gh = geohashForLocation([driver.location.lat, driver.location.lng]);
-
-    await setDoc(driverRef, sanitizeFirestoreData({
-      ...driver,
-      geohash: gh,
-      updatedAt: serverTimestamp(),
-    }), { merge: true });
+    await setDoc(driverRef, cleanData, { merge: true });
   } catch (err) {
-    console.warn('syncDriverProfile notice (database uninitialized or offline):', err);
+    console.warn('syncDriverProfile primary setDoc notice:', err);
   }
 
+  // 2. Secondary write by userId or prefixed ID if different
+  if (driver.userId && `driver-${driver.userId}` !== driver.id) {
+    try {
+      const altRef = doc(db, 'drivers', `driver-${driver.userId}`);
+      await setDoc(altRef, cleanData, { merge: true });
+    } catch (e) {}
+  }
+
+  // 3. Local persistence fallback to guarantee active state
   try {
+    localStorage.setItem('motodrive_active_driver', JSON.stringify(driver));
+    if (driver.phone) {
+      localStorage.setItem(`motodrive_pending_driver_${driver.phone}`, JSON.stringify(driver));
+    }
+
     const rawDir = localStorage.getItem('motodrive_phone_directory');
     if (rawDir) {
       const dir = JSON.parse(rawDir);
@@ -642,14 +657,7 @@ export const uploadDriverDocument = async (
   docType: string,
   file: File
 ): Promise<string> => {
-  try {
-    const storageRef = ref(storage, `driver_documents/${driverId}/${docType}_${Date.now()}_${file.name}`);
-    const snap = await uploadBytes(storageRef, file);
-    return await getDownloadURL(snap.ref);
-  } catch (storageErr) {
-    console.warn(`Firebase Storage upload failed for ${docType}, falling back to compressed data URL:`, storageErr);
-    return await fileToCompressedDataUrl(file, 500, 0.55);
-  }
+  return await fileToCompressedDataUrl(file, 640, 0.55);
 };
 
 // ============================================================================

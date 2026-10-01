@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { syncUserProfile } from '../../services/firestoreService';
-import { storage, db } from '../../services/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db } from '../../services/firebase';
+import { compressImageToBase64 } from '../../utils/imageCompressor';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import {
@@ -115,26 +115,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     try {
       setIsUploadingPhoto(true);
-      const cleanExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const storagePath = `avatars/${userId}/avatar_${Date.now()}.${cleanExt}`;
-      const storageRef = ref(storage, storagePath);
-
-      let downloadUrl = '';
-      try {
-        const snapshot = await uploadBytes(storageRef, file, {
-          contentType: file.type || 'image/jpeg',
-          customMetadata: { userId, uploadedAt: new Date().toISOString() },
-        });
-        downloadUrl = await getDownloadURL(snapshot.ref);
-      } catch (storageErr) {
-        console.warn('Firebase Storage direct upload notice, falling back:', storageErr);
-        // Base64 fallback if storage blocked
-        downloadUrl = await new Promise((res) => {
-          const r = new FileReader();
-          r.onload = () => res(r.result as string);
-          r.readAsDataURL(file);
-        });
-      }
+      const downloadUrl = await compressImageToBase64(file, 30, 400);
 
       setPhotoUrl(downloadUrl);
 
@@ -150,7 +131,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       }
     } catch (err: any) {
       console.error('Error uploading avatar:', err);
-      setErrorMsg('تعذر رفع الصورة الشخصية: ' + (err?.message || ''));
+      setErrorMsg('تعذر حفظ الصورة الشخصية: ' + (err?.message || ''));
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -175,25 +156,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     try {
       setIsUploadingDoc(true);
-      const cleanExt = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const storagePath = `user_files/${userId}/id_document_${Date.now()}.${cleanExt}`;
-      const storageRef = ref(storage, storagePath);
-
-      let downloadUrl = '';
-      try {
-        const snapshot = await uploadBytes(storageRef, file, {
-          contentType: file.type || 'image/jpeg',
-          customMetadata: { userId, uploadedAt: new Date().toISOString(), type: 'id_document' },
-        });
-        downloadUrl = await getDownloadURL(snapshot.ref);
-      } catch (storageErr) {
-        console.warn('Storage upload fallback:', storageErr);
-        downloadUrl = await new Promise((res) => {
-          const r = new FileReader();
-          r.onload = () => res(r.result as string);
-          r.readAsDataURL(file);
-        });
-      }
+      const downloadUrl = await compressImageToBase64(file, 40, 640);
 
       setIdDocUrl(downloadUrl);
 

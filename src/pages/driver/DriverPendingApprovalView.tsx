@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { auth } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { resendFirebaseEmailVerification, reloadAndCheckEmailVerification } from '../../services/authService';
-import { getDriverByUserIdOrPhone } from '../../services/firestoreService';
 import {
   Clock,
   AlertCircle,
@@ -10,90 +10,85 @@ import {
   FileText,
   Shield,
   RefreshCw,
-  Edit3,
-  Camera,
   Eye,
   X,
   PhoneCall,
   Mail,
-  Send,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import { MotoIcon } from '../../components/shared/MotoIcon';
-import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 
 interface DriverPendingApprovalViewProps {
-  onOpenDocuments?: () => void;
+  onReapply?: () => void;
 }
 
-export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps> = ({ onOpenDocuments }) => {
+export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps> = ({ onReapply }) => {
   const { activeDriver, setActiveDriver, currentUser, logout } = useApp();
-  const [showEditModal, setShowEditModal] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Robust Polling / Real-time check for driver approval status update
-  useEffect(() => {
-    let isMounted = true;
-    const checkApprovalStatus = async () => {
-      if (activeDriver?.id || currentUser?.uid || currentUser?.email || activeDriver?.email) {
-        try {
-          const latestDriver = await getDriverByUserIdOrPhone(
-            activeDriver?.userId || currentUser?.uid || activeDriver?.id || '',
-            activeDriver?.phone,
-            activeDriver?.email || currentUser?.email
-          );
-          if (isMounted && latestDriver && latestDriver.status && latestDriver.status !== activeDriver.status) {
-            setActiveDriver(latestDriver);
-            if (latestDriver.status === 'approved') {
-              window.location.reload(); // Instant refresh to load approved DriverHome
-            }
-          }
-        } catch (err) {
-          console.warn('Polling driver status notice:', err);
-        }
-      }
-    };
-
-    const interval = setInterval(checkApprovalStatus, 4000);
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [activeDriver, currentUser, setActiveDriver]);
-
-  // Email verification states - strictly require verified email for email accounts
+  // Email verification check for email accounts
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(() => {
     const u = auth.currentUser;
     if (u && u.email) {
       return u.emailVerified;
     }
-    // If logged in via email in Context, default to false until auth reloads and confirms verification
-    if (currentUser?.email || activeDriver.email) {
-      return false;
-    }
-    return false;
+    return true; // Phone or guest accounts don't require email verification
   });
   const [isSendingResend, setIsSendingResend] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [emailNotice, setEmailNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
-  // Reload firebase auth on mount to get latest emailVerified flag from server
+  // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR INSTANT APPROVAL UNLOCK
+  // Automatically unlock/activate full driver dashboard when Admin approves
+  useEffect(() => {
+    const driverId = activeDriver?.id;
+    if (!driverId) return;
+
+    const driverRef = doc(db, 'drivers', driverId);
+
+    // Live onSnapshot listener with clean unsubscribe
+    const unsubscribe = onSnapshot(
+      driverRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const updatedData = docSnap.data();
+          if (updatedData.status === 'approved') {
+            setActiveDriver((prev) => ({
+              ...prev,
+              ...updatedData,
+              status: 'approved',
+            }));
+          } else if (updatedData.status !== activeDriver.status) {
+            setActiveDriver((prev) => ({
+              ...prev,
+              ...updatedData,
+            }));
+          }
+        }
+      },
+      (error) => {
+        console.warn('Real-time driver status onSnapshot notice:', error.message);
+      }
+    );
+
+    // Clean memory management: always unsubscribe on unmount
+    return () => {
+      unsubscribe();
+    };
+  }, [activeDriver?.id, activeDriver?.status, setActiveDriver]);
+
+  // Reload emailVerified flag from Firebase Auth on mount
   useEffect(() => {
     let isMounted = true;
-    const checkEmailOnLoad = async () => {
-      if (auth.currentUser) {
-        try {
-          await auth.currentUser.reload();
-          if (isMounted) {
-            setIsEmailVerified(auth.currentUser.emailVerified);
-          }
-        } catch (err) {
-          console.warn('Notice reloading auth user state:', err);
+    if (auth.currentUser && auth.currentUser.email) {
+      auth.currentUser.reload().then(() => {
+        if (isMounted && auth.currentUser) {
+          setIsEmailVerified(auth.currentUser.emailVerified);
         }
-      }
-    };
-    checkEmailOnLoad();
+      }).catch(() => {});
+    }
     return () => {
       isMounted = false;
     };
@@ -111,7 +106,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
     } catch (err: any) {
       setEmailNotice({
         type: 'error',
-        text: err?.message || 'تعذر إرسال رابط التحقق. يرجى محاولة تسجيل الدخول مرة أخرى.',
+        text: err?.message || 'تعذر إرسال رابط التحقق.',
       });
     } finally {
       setIsSendingResend(false);
@@ -127,12 +122,12 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
         setIsEmailVerified(true);
         setEmailNotice({
           type: 'success',
-          text: '🎉 تم تأكيد بريدك الإلكتروني بنجاح! يمكنك الآن الانطلاق وإكمال رفع وثائق السائق.',
+          text: '🎉 تم تأكيد بريدك الإلكتروني بنجاح!',
         });
       } else {
         setEmailNotice({
           type: 'error',
-          text: 'لم يتم تأكيد البريد بعد. يرجى الضغط على الرابط المرسل إلى بريدك أولاً، ثم الضغط هنا مجدداً.',
+          text: 'لم يتم تأكيد البريد بعد. اضغط على الرابط في الرسالة أولاً، ثم اضغط هنا مجدداً.',
         });
       }
     } catch (err: any) {
@@ -145,7 +140,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
     }
   };
 
-  const handleRefresh = () => {
+  const handleManualRefresh = () => {
     setIsRefreshing(true);
     setTimeout(() => {
       setIsRefreshing(false);
@@ -153,63 +148,41 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
   };
 
   const isRejected = activeDriver.status === 'rejected';
-  const isSuspended = activeDriver.status === 'suspended';
 
-  const docList = [
+  // EXACTLY FOUR (4) VERIFICATION DOCUMENTS
+  const fourDocuments = [
     {
-      title: 'صورة شخصية (سيلفي واضحة)',
+      title: '1. صورة شخصية (سيلفي)',
       url: activeDriver.documents?.selfieUrl || activeDriver.photoUrl,
       icon: '👤',
     },
     {
-      title: 'رخصة السياقة (الوجه الأمامي)',
-      url: activeDriver.documents?.licenseFrontUrl || activeDriver.documents?.licenseUrl,
-      icon: '📜',
-    },
-    {
-      title: 'رخصة السياقة (الوجه الخلفي)',
-      url: activeDriver.documents?.licenseBackUrl,
-      icon: '📜',
-    },
-    {
-      title: 'وثيقة الدراجة (البطاقة الرمادية - أمامي)',
-      url: activeDriver.documents?.vehicleDocFrontUrl || activeDriver.documents?.vehicleRegistrationUrl,
-      icon: '📄',
-    },
-    {
-      title: 'وثيقة الدراجة (البطاقة الرمادية - خلفي)',
-      url: activeDriver.documents?.vehicleDocBackUrl,
-      icon: '📄',
-    },
-    {
-      title: 'صورة الدراجة النارية (من الأمام)',
-      url: activeDriver.documents?.motorcycleFrontUrl || activeDriver.documents?.motorcyclePhotosUrls?.[0],
+      title: '2. صورة الدراجة النارية',
+      url: activeDriver.documents?.motorcyclePhotoUrl || activeDriver.documents?.motorcycleFrontUrl,
       icon: '🏍️',
     },
     {
-      title: 'صورة الدراجة النارية (من الخلف)',
-      url: activeDriver.documents?.motorcycleBackUrl || activeDriver.documents?.motorcyclePhotosUrls?.[1],
-      icon: '🛵',
+      title: '3. رخصة السياقة (Permis)',
+      url: activeDriver.documents?.licenseUrl || activeDriver.documents?.licenseFrontUrl,
+      icon: '📜',
+    },
+    {
+      title: '4. البطاقة الرمادية (Carte Grise)',
+      url: activeDriver.documents?.vehicleRegistrationUrl || activeDriver.documents?.vehicleDocFrontUrl,
+      icon: '📄',
     },
   ];
-
-  const hasSubmittedAllDocs = docList.filter(d => Boolean(d.url)).length >= 7;
-
-  // Auto-open edit modal ONLY if email is verified, documents are incomplete, not rejected, and not auto-opened yet
-  const [hasAutoOpened, setHasAutoOpened] = useState(false);
-  useEffect(() => {
-    if (isEmailVerified && !hasSubmittedAllDocs && !isRejected && !showEditModal && !hasAutoOpened) {
-      setShowEditModal(true);
-      setHasAutoOpened(true);
-    }
-  }, [isEmailVerified, hasSubmittedAllDocs, isRejected, showEditModal, hasAutoOpened]);
 
   const currentUserEmail = auth.currentUser?.email || activeDriver.email || currentUser?.email || '';
   const isEmailAuthUser = Boolean(currentUserEmail && currentUserEmail.includes('@'));
 
   return (
-    <div className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-5 pb-24" id="driver-pending-approval-view" dir="rtl">
-      {/* 1. EMAIL VERIFICATION REQUIRED GATE */}
+    <div
+      className="max-w-md mx-auto px-4 py-6 text-right text-slate-100 space-y-5 pb-24"
+      id="driver-pending-approval-view"
+      dir="rtl"
+    >
+      {/* 1. EMAIL VERIFICATION REQUIRED GATE (IF REGISTERED WITH EMAIL) */}
       {isEmailAuthUser && !isEmailVerified ? (
         <div className="rounded-3xl p-6 border border-amber-500/40 bg-slate-900/95 shadow-2xl space-y-5 relative overflow-hidden">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-3xl shadow-lg border border-amber-500/30">
@@ -226,7 +199,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
             <p className="text-xs text-slate-300 leading-relaxed">
               لقد قمنا بإرسال رابط تأكيد الحساب إلى البريد الإلكتروني التالي:
             </p>
-            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl font-mono text-amber-400 text-xs font-bold text-center dir-ltr select-all">
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-2xl font-mono text-amber-400 text-xs font-bold text-center select-all" dir="ltr">
               {currentUserEmail}
             </div>
           </div>
@@ -234,10 +207,9 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
           <div className="space-y-2 text-xs text-slate-400 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
             <div className="font-bold text-slate-200">التعليمات:</div>
             <ul className="list-disc list-inside space-y-1 text-[11px] leading-relaxed">
-              <li>افتح تطبيق البريد الإلكتروني الخاط بـ <strong className="text-white">{currentUserEmail}</strong>.</li>
-              <li>تفقد صندوق الوارد (Inbox) أو رسائل غير المرغوب فيها (Spam).</li>
+              <li>افتح صندوق الوارد في بريدك الإلكتروني.</li>
               <li>اضغط على رابط التأكيد المرفق بداخل الرسالة.</li>
-              <li>عد إلى هذه الواجهة واضغط على زر <strong className="text-amber-400">"تحديث وتأكيد حالة البريد"</strong> بالأسفل.</li>
+              <li>اضغط على زر <strong className="text-amber-400">"تحديث وفحص حالة البريد"</strong> أدناه فور الانتهاء.</li>
             </ul>
           </div>
 
@@ -246,272 +218,234 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
               className={`p-3 rounded-2xl text-xs font-bold text-center border ${
                 emailNotice.type === 'success'
                   ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                  : emailNotice.type === 'error'
-                  ? 'bg-red-500/10 border-red-500/30 text-red-400'
-                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                  : 'bg-red-500/10 border-red-500/30 text-red-400'
               }`}
             >
               {emailNotice.text}
             </div>
           )}
 
-          <div className="space-y-2.5 pt-2">
+          <div className="space-y-2 pt-1">
             <button
-              type="button"
               onClick={handleCheckEmailStatus}
               disabled={isCheckingEmail}
-              className="w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer disabled:opacity-50"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
             >
-              {isCheckingEmail ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري التحقق من السيرفر...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>تحديث وتأكيد حالة البريد الإلكتروني</span>
-                </>
-              )}
+              {isCheckingEmail ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              <span>تحديث وفحص حالة البريد الآن</span>
             </button>
 
             <button
-              type="button"
               onClick={handleResendEmail}
               disabled={isSendingResend}
-              className="w-full py-3 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] text-slate-200 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700 disabled:opacity-50"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
             >
-              {isSendingResend ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري الإرسال...</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 text-amber-400" />
-                  <span>إعادة إرسال رابط التحقق (Email SMS)</span>
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={logout}
-              className="w-full py-2.5 text-center text-xs font-semibold text-slate-500 hover:text-slate-300 transition-all cursor-pointer"
-            >
-              تسجيل الخروج أو تجربة بريد إلكتروني آخر
+              {isSendingResend ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+              <span>إعادة إرسال رابط التأكيد</span>
             </button>
           </div>
-        </div>
-      ) : !hasSubmittedAllDocs && !isRejected ? (
-        /* 2. DOC UPLOAD PROMPT CARD (Unlocked only after email verification) */
-        <div className="rounded-3xl p-5 border border-amber-500/30 bg-slate-900 shadow-2xl space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl shrink-0">
-              <Camera className="w-6 h-6 text-amber-400" />
-            </div>
-            <div>
-              <h2 className="text-base font-black text-white">إكمال ملف السائق والوثائق المطلوبة</h2>
-              <span className="text-[11px] font-bold text-amber-400">نظام التسجيل • MotoDrive</span>
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-300 leading-relaxed">
-            مرحباً بك يا <strong className="text-white">{activeDriver.name || 'سائقنا الجديد'}</strong>. يرجى البدء بملء بيانات الدراجة النارية وإرفاق الوثائق الـ 7 المطلوبة لإرسال ملفك إلى مالك التطبيق لمراجعته وقبوله.
-          </p>
-
-          <button
-            type="button"
-            onClick={() => (onOpenDocuments ? onOpenDocuments() : setShowEditModal(true))}
-            className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-          >
-            <Camera className="w-4 h-4" />
-            <span>رفع وحفظ وثائق السائق (Firebase Storage) 📄</span>
-          </button>
         </div>
       ) : (
-        /* Top Banner / Status Card after submission */
-        <div
-          className={`rounded-3xl p-5 border shadow-2xl relative overflow-hidden space-y-3.5 ${
-            isRejected
-              ? 'bg-red-500/10 border-red-500/30 text-red-200'
-              : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${
-                isRejected ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400 animate-pulse'
-              }`}
-            >
-              {isRejected ? <AlertCircle className="w-6 h-6 text-red-400" /> : <Clock className="w-6 h-6 text-amber-400" />}
+        /* 2. DEDICATED PENDING / REJECTED STATUS VIEW */
+        <div className="space-y-4">
+          {/* Main Status Hero Card */}
+          <div
+            className={`border rounded-3xl p-5 shadow-2xl space-y-4 relative overflow-hidden ${
+              isRejected
+                ? 'bg-red-500/10 border-red-500/40 text-red-300'
+                : 'bg-amber-500/10 border-amber-500/40 text-amber-300'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shadow-inner">
+                {isRejected ? '❌' : '⏳'}
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold opacity-80">
+                  {isRejected ? 'حالة الحساب في النظام:' : 'حالة مراجعة الوثائق:'}
+                </div>
+                <div className="text-base font-black text-white">
+                  {isRejected
+                    ? 'تم رفض طلب التسجيل'
+                    : 'طلب السائق قيد المراجعة والتدقيق من طرف الإدارة'}
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 className="text-base font-black text-white">
-                {isRejected
-                  ? 'تم رفض طلب التسجيل'
-                  : isSuspended
-                  ? 'تم إيقاف الحساب مؤقتاً'
-                  : 'طلبك قيد المراجعة من طرف المالك'}
-              </h2>
+
+            {isRejected ? (
+              <div className="p-3.5 bg-red-950/80 border border-red-500/40 rounded-2xl space-y-1.5 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-red-300">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>سبب الرفض من الإدارة:</span>
+                </div>
+                <p className="text-white font-medium pr-5 leading-relaxed">
+                  {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
+                </p>
+                {onReapply && (
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={onReapply}
+                      className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                    >
+                      <span>إعادة تقديم الطلب ورفع الوثائق مجدداً</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs leading-relaxed text-slate-300">
+                <p>
+                  شكراً لتسجيلك يا <strong className="text-white">{activeDriver.name || 'سائقنا العزيز'}</strong>. تم إرسال ملفك والوثائق الـ 4 بنجاح إلى مسؤول المنصة.
+                </p>
+                <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>تحديث لحظي نشط: سيتم فتح التطبيق تلقائياً بمجرد الموافقة دون الحاجة لتحديث الصفحة.</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
+              <span className="text-slate-400">
+                تاريخ الطلب: {new Date(activeDriver.documents?.submittedAt || activeDriver.createdAt).toLocaleDateString('ar-DZ')}
+              </span>
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>فحص الحالة</span>
+              </button>
             </div>
           </div>
 
-          {/* Rejection Details */}
-          {isRejected ? (
-            <div className="p-3.5 bg-red-950/70 border border-red-500/40 rounded-2xl space-y-1.5 text-xs">
-              <div className="flex items-center gap-1.5 font-bold text-red-300">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>سبب الرفض المسجل من طرف الإدارة:</span>
-              </div>
-              <p className="text-white font-medium pr-5 leading-relaxed">
-                {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
-              </p>
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => (onOpenDocuments ? onOpenDocuments() : setShowEditModal(true))}
-                  className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>تحديث وإعادة رفع الوثائق (Firebase Storage)</span>
-                </button>
-              </div>
+          {/* Verification Documents Status: EXACTLY 4 Cards */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black text-white flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-amber-400" />
+                <span>الوثائق الـ 4 المرفوعة للمراجعة:</span>
+              </h3>
+              <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                4 من 4
+              </span>
             </div>
-          ) : (
-            /* Clean Pending Details after 7 documents submission */
-            <div className="space-y-2 text-xs leading-relaxed text-slate-300">
-              <p>
-                شكراً لتسجيلك في MotoDrive يا <strong className="text-white">{activeDriver.name || 'سائقنا الجديد'}</strong>. نرجو منك إكمال بيانات الدراجة النارية ورخصة السياقة.
-              </p>
-            </div>
-          )}
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[11px]">
-            <span className="text-slate-400">تاريخ الإرسال: {new Date(activeDriver.documents?.submittedAt || activeDriver.createdAt).toLocaleDateString('ar-DZ')}</span>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              className="flex items-center gap-1 text-amber-400 hover:text-amber-300 font-bold"
+            <div className="grid grid-cols-2 gap-2.5">
+              {fourDocuments.map((doc, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">{doc.icon}</span>
+                    <div className="truncate">
+                      <div className="font-bold text-slate-200 text-[11px] truncate">{doc.title}</div>
+                      <div className="text-[9px] text-emerald-400 flex items-center gap-0.5 mt-0.5">
+                        <CheckCircle2 className="w-2.5 h-2.5" />
+                        <span>تم الرفع</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {doc.url && (
+                    <button
+                      type="button"
+                      onClick={() => setZoomedImage({ url: doc.url!, title: doc.title })}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                      title="معاينة الوثيقة"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Motorcycle Details Card */}
+          <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2 text-xs">
+            <h4 className="font-bold text-white flex items-center gap-1.5">
+              <MotoIcon className="w-4 h-4 text-amber-400" />
+              <span>معلومات الدراجة النارية المسجلة:</span>
+            </h4>
+            <div className="grid grid-cols-2 gap-2 text-slate-300 text-[11px]">
+              <div>
+                <span className="text-slate-500 block">العلامة والموديل:</span>
+                <span className="font-bold text-white">{activeDriver.motorcycle?.brand} {activeDriver.motorcycle?.model}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">رقم اللوحة:</span>
+                <span className="font-mono font-bold text-amber-400">{activeDriver.motorcycle?.plateNumber || 'غير مدخل'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">الولاية والبلدية:</span>
+                <span className="font-medium text-white">{activeDriver.wilaya} • {activeDriver.municipality}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block">سنة الصنع:</span>
+                <span className="font-medium text-white">{activeDriver.motorcycle?.year || 2023}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Support / Help */}
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-300">
+              <PhoneCall className="w-4 h-4 text-emerald-400" />
+              <span>هل لديك استفسار حول ملفك؟</span>
+            </div>
+            <a
+              href="tel:0550000000"
+              className="py-1 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-400 font-bold rounded-xl text-xs transition-colors"
             >
-              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>تحديث الحالة</span>
+              اتصل بالإدارة
+            </a>
+          </div>
+
+          <div className="text-center pt-2">
+            <button
+              onClick={logout}
+              className="text-xs text-slate-500 hover:text-red-400 transition-colors font-medium cursor-pointer"
+            >
+              تسجيل الخروج من الحساب
             </button>
           </div>
         </div>
       )}
 
-      {/* Uploaded Documents List */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black text-white flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-amber-400" />
-            <span>الوثائق المرسلة للتدقيق (7 صور مطلوبة)</span>
-          </h3>
-          <span className="text-[10px] text-slate-400 font-bold">
-            {docList.filter(d => Boolean(d.url)).length} / 7 مكتملة
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          {docList.map((doc, idx) => (
-            <div
-              key={idx}
-              className="p-3 bg-slate-900 border border-slate-800 rounded-2xl flex items-center justify-between gap-2 text-xs"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="text-base shrink-0">{doc.icon}</span>
-                <div className="truncate">
-                  <div className="font-bold text-slate-200 text-[11px] truncate">{doc.title}</div>
-                  <div className="text-[9px] text-slate-400 flex items-center gap-1 mt-0.5">
-                    {doc.url ? (
-                      <span className="text-emerald-400 flex items-center gap-0.5">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> تم الإرسال
-                      </span>
-                    ) : (
-                      <span className="text-red-400">مفقودة</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {doc.url && (
-                <button
-                  type="button"
-                  onClick={() => setZoomedImage({ url: doc.url!, title: doc.title })}
-                  className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center shrink-0 transition-colors"
-                  title="معاينة الصورة"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Driver & Motorcycle Details Card */}
-      <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-2 text-xs">
-        <h4 className="font-bold text-white flex items-center gap-1.5">
-          <MotoIcon className="w-4 h-4 text-amber-400" />
-          <span>بيانات الدراجة النارية المسجلة:</span>
-        </h4>
-        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
-          <div><span className="text-slate-500">العلامة:</span> {activeDriver.motorcycle.brand}</div>
-          <div><span className="text-slate-500">الموديل:</span> {activeDriver.motorcycle.model}</div>
-          <div><span className="text-slate-500">سنة الصنع:</span> {activeDriver.motorcycle.year}</div>
-          <div><span className="text-slate-500">رقم اللوحة:</span> <span className="font-mono text-amber-300">{activeDriver.motorcycle.plateNumber}</span></div>
-          <div><span className="text-slate-500">الولاية:</span> {activeDriver.wilaya}</div>
-          <div><span className="text-slate-500">البلدية:</span> {activeDriver.municipality}</div>
-        </div>
-      </div>
-
-      {/* Action to Edit Documents */}
-      <button
-        type="button"
-        onClick={() => setShowEditModal(true)}
-        className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-      >
-        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-        <span>تعديل بيانات الدراجة أو إعادة رفع الصور</span>
-      </button>
-
-      {/* Image Preview Modal */}
+      {/* Image Preview & Zoom Modal */}
       {zoomedImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in"
           onClick={() => setZoomedImage(null)}
         >
           <div
-            className="bg-slate-900 border border-slate-800 rounded-3xl max-w-sm w-full p-4 space-y-3 text-right"
-            onClick={e => e.stopPropagation()}
+            className="relative max-w-lg w-full bg-slate-900 border border-slate-700 rounded-3xl p-4 shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <span className="text-xs font-bold text-amber-400">{zoomedImage.title}</span>
               <button
-                type="button"
                 onClick={() => setZoomedImage(null)}
-                className="w-7 h-7 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center"
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
-              <h5 className="text-xs font-bold text-white">{zoomedImage.title}</h5>
             </div>
-            <div className="rounded-2xl overflow-hidden border border-slate-800 max-h-80 bg-slate-950 flex items-center justify-center">
+            <div className="max-h-[70vh] overflow-auto flex items-center justify-center bg-black/60 rounded-2xl p-2">
               <img
                 src={zoomedImage.url}
                 alt={zoomedImage.title}
-                className="w-full h-auto object-contain max-h-80"
+                className="max-h-[65vh] w-auto max-w-full object-contain rounded-xl shadow-lg"
               />
             </div>
           </div>
         </div>
       )}
-
-      {/* Re-register / Edit Modal */}
-      <RegisterDriverModal
-        isOpen={showEditModal}
-        onClose={() => setShowEditModal(false)}
-      />
     </div>
   );
 };
+
+export default DriverPendingApprovalView;

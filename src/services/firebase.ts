@@ -9,7 +9,6 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
-import { getStorage, FirebaseStorage } from 'firebase/storage';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 // Initialize or reuse Firebase App instance
@@ -57,9 +56,6 @@ try {
 }
 
 export const db: Firestore = firestoreDb;
-
-// Export Firebase Cloud Storage instance
-export const storage: FirebaseStorage = getStorage(app);
 
 // Graceful connection test on startup (handles offline & reconnecting states smoothly without errors)
 async function testConnection() {

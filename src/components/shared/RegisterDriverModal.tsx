@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { DriverProfile } from '../../types';
 import { syncDriverProfile } from '../../services/firestoreService';
+import { submitDriverApplication } from '../../services/driverApplicationsService';
+import { compressImageToBase64 } from '../../utils/imageCompressor';
+import { findUserAndDriverByPhone } from '../../services/authService';
 import {
   X,
-  Check,
   Loader2,
   Upload,
   Camera,
@@ -12,7 +14,7 @@ import {
   Clock,
   AlertCircle,
   ShieldCheck,
-  Image as ImageIcon,
+  CheckCircle2,
 } from 'lucide-react';
 import { MotoIcon } from './MotoIcon';
 
@@ -66,6 +68,7 @@ const BRAND_MODELS_MAP: Record<string, string[]> = {
   Zontes: ['Zontes 310M', 'Zontes 350D', 'Zontes 125 U1'],
   'علامة أخرى': ['طراز آخر'],
 };
+
 const ALGERIA_WILAYAS = [
   '01 - أدرار',
   '02 - الشلف',
@@ -127,8 +130,37 @@ const ALGERIA_WILAYAS = [
   '58 - المنيعة',
 ];
 
+interface RequiredDocumentConfig {
+  key: 'selfie' | 'motorcyclePhoto' | 'license' | 'vehicleRegistration';
+  label: string;
+  description: string;
+}
+
+const REQUIRED_DOCUMENTS: RequiredDocumentConfig[] = [
+  {
+    key: 'selfie',
+    label: '1. صورة شخصية واضحة (سيلفي)',
+    description: 'صورة واضحة للوجه بدون نظارات شمسية أو خوذة',
+  },
+  {
+    key: 'motorcyclePhoto',
+    label: '2. صورة الدراجة النارية (مع لوحة الترقيم)',
+    description: 'صورة كاملة للمركبة تبرز الحالة ورقم لوحة الترقيم (Matricule)',
+  },
+  {
+    key: 'license',
+    label: '3. رخصة السياقة (Permis de Conduire)',
+    description: 'صورة رخصة السياقة سارية المفعول صنف أ / A',
+  },
+  {
+    key: 'vehicleRegistration',
+    label: '4. البطاقة الرمادية للمركبة (Carte Grise)',
+    description: 'صورة واضحة لبطاقة تسجيل الدراجة النارية',
+  },
+];
+
 export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
-  const { setCurrentRole, activeDriver, setActiveDriver, broadcastNotification, currentUser } = useApp();
+  const { setCurrentRole, setActiveDriver, broadcastNotification, currentUser } = useApp();
 
   // Basic Information
   const [name, setName] = useState(currentUser?.displayName || '');
@@ -141,168 +173,206 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
   const [municipality, setMunicipality] = useState('الجزائر الوسطى');
   const [hasHelmet, setHasHelmet] = useState(true);
 
-  // 7 Required Documents requested by the user
-  const [selfieUrl, setSelfieUrl] = useState<string>('');
-  const [motorcycleFrontUrl, setMotorcycleFrontUrl] = useState<string>('');
-  const [motorcycleBackUrl, setMotorcycleBackUrl] = useState<string>('');
-  const [licenseFrontUrl, setLicenseFrontUrl] = useState<string>('');
-  const [licenseBackUrl, setLicenseBackUrl] = useState<string>('');
-  const [vehicleDocFrontUrl, setVehicleDocFrontUrl] = useState<string>('');
-  const [vehicleDocBackUrl, setVehicleDocBackUrl] = useState<string>('');
+  // Exactly 4 verification documents: mapping keys to raw Files and preview URLs
+  const [filesMap, setFilesMap] = useState<Partial<Record<RequiredDocumentConfig['key'], File>>>({});
+  const [previewUrls, setPreviewUrls] = useState<Partial<Record<RequiredDocumentConfig['key'], string>>>({});
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  // Helper to read and compress file into lightweight optimized JPEG
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
-    const file = e.target.files?.[0];
+  const handleSelectFile = (docKey: RequiredDocumentConfig['key'], file?: File) => {
     if (!file) return;
+    setFilesMap((prev) => ({ ...prev, [docKey]: file }));
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrls((prev) => ({ ...prev, [docKey]: objectUrl }));
+  };
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        const img = new Image();
-        img.onload = () => {
-          const maxDim = 500;
-          let width = img.width;
-          let height = img.height;
-          if (width > maxDim || height > maxDim) {
-            if (width > height) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressed = canvas.toDataURL('image/jpeg', 0.55);
-            setter(compressed);
-          } else {
-            setter(reader.result as string);
-          }
-        };
-        img.onerror = () => {
-          setter(reader.result as string);
-        };
-        img.src = reader.result;
-      }
-    };
-    reader.readAsDataURL(file);
+  const handleClearFile = (docKey: RequiredDocumentConfig['key']) => {
+    setFilesMap((prev) => {
+      const next = { ...prev };
+      delete next[docKey];
+      return next;
+    });
+    setPreviewUrls((prev) => {
+      const next = { ...prev };
+      delete next[docKey];
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim() || !phone.trim() || !model.trim()) {
-      setErrorMsg('يرجى ملء جميع معلومات السائق والدراجة النارية.');
+    if (!name.trim() || !phone.trim()) {
+      setErrorMsg('يرجى كتابة الاسم الثلاثي ورقم الهاتف بشكل صحيح.');
       return;
     }
 
-    // Strict validation: Driver MUST upload all 7 required documents before moving to pending review
-    if (
-      !selfieUrl ||
-      !motorcycleFrontUrl ||
-      !motorcycleBackUrl ||
-      !licenseFrontUrl ||
-      !licenseBackUrl ||
-      !vehicleDocFrontUrl ||
-      !vehicleDocBackUrl
-    ) {
-      setErrorMsg('⚠️ يرجى رفع جميع الصور الـ 7 المطلوبة كاملاً قبل الإرسال (الصورة الشخصية، صور الدراجة أمام وخلف، رخصة السياقة جهتين، والبطاقة الرمادية جهتين).');
+    if (!plateNumber.trim()) {
+      setErrorMsg('يرجى إدخال رقم لوحة الترقيم (Matricule) للدراجة النارية.');
       return;
     }
 
-    const finalSelfie = selfieUrl;
-    const finalMotoFront = motorcycleFrontUrl;
-    const finalMotoBack = motorcycleBackUrl;
-    const finalLicenseFront = licenseFrontUrl;
-    const finalLicenseBack = licenseBackUrl;
-    const finalVehicleDocFront = vehicleDocFrontUrl;
-    const finalVehicleDocBack = vehicleDocBackUrl;
+    // Verify all 4 documents are provided
+    const missingDocs = REQUIRED_DOCUMENTS.filter((doc) => !filesMap[doc.key]);
+    if (missingDocs.length > 0) {
+      setErrorMsg(`يرجى إرفاق الوثائق الـ 4 المطلوبة كاملة. ينقصك: ${missingDocs.map((d) => d.label).join('، ')}`);
+      return;
+    }
 
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    const driverId = currentUser?.uid
-      ? `driver-${currentUser.uid}`
-      : activeDriver.id && !activeDriver.id.includes('pending')
-      ? activeDriver.id
-      : `drv_${Date.now()}`;
+    // Check if driver application already exists for this phone number
+    try {
+      const existing = await findUserAndDriverByPhone(phone.trim());
+      if (existing.driver) {
+        setIsSubmitting(false);
+        setErrorMsg(`⚠️ هذا الرقم (${phone.trim()}) مسجل بالفعل بطلب سائق. تم توجيهك لمتابعة حالة الطلب.`);
+        try {
+          localStorage.setItem('motodrive_registered_phone', phone.trim());
+          localStorage.setItem('motodrive_active_driver_phone', phone.trim());
+        } catch (e) {}
+        setActiveDriver(existing.driver);
+        setCurrentRole('driver');
+        setTimeout(() => {
+          onClose();
+        }, 2200);
+        return;
+      }
+    } catch (e) {}
 
-    const newDriver: DriverProfile = {
-      id: driverId,
-      userId: currentUser?.uid || driverId.replace(/^driver-/, ''),
-      name: name.trim(),
-      phone: phone.trim(),
-      email: currentUser?.email || undefined,
-      wilaya,
-      municipality: municipality || 'وسط المدينة',
-      photoUrl: finalSelfie,
-      rating: 5.0,
-      ratingCount: 1,
-      totalTrips: 0,
-      cancellationCount: 0,
-      isOnline: false, // Must not be online until admin approves
-      isAvailable: false,
-      status: 'pending', // Strictly pending as requested by user!
-      rejectionReason: undefined,
-      location: {
-        lat: 36.7538 + (Math.random() - 0.5) * 0.04,
-        lng: 3.0588 + (Math.random() - 0.5) * 0.04,
-        name: `${wilaya}، الجزائر`,
-      },
-      motorcycle: {
+    setUploadStatusText('بدء ضغط ومعالجة الوثائق الـ 4 بواسطة Canvas...');
+
+    const cleanUid = currentUser?.uid || phone.trim().replace(/\D/g, '') || `user_${Date.now()}`;
+    const driverId = `driver-${cleanUid}`;
+
+    try {
+      const uploadedDocUrls: Record<string, string> = {};
+
+      const docKeys: RequiredDocumentConfig['key'][] = ['selfie', 'motorcyclePhoto', 'license', 'vehicleRegistration'];
+      let count = 0;
+
+      // 1. Compress the 4 verification documents on client side using Canvas to ~40KB Base64
+      for (const key of docKeys) {
+        count++;
+        const file = filesMap[key];
+        if (file) {
+          const label = REQUIRED_DOCUMENTS.find((d) => d.key === key)?.label || key;
+          setUploadStatusText(`جاري ضغط (${count} من 4): ${label} (~40KB)...`);
+          const base64String = await compressImageToBase64(file, 40, 640);
+          uploadedDocUrls[key] = base64String;
+        }
+      }
+
+      setUploadStatusText('حفظ بيانات السائق وصور الوثائق في Firestore (driver_applications)...');
+
+      const selfieUrl = uploadedDocUrls.selfie || '';
+      const motorcyclePhotoUrl = uploadedDocUrls.motorcyclePhoto || '';
+      const licenseUrl = uploadedDocUrls.license || '';
+      const vehicleRegistrationUrl = uploadedDocUrls.vehicleRegistration || '';
+
+      const motorcycleData = {
         brand,
         model: model.trim(),
         year: parseInt(year) || 2023,
-        plateNumber: plateNumber.trim() || `${Math.floor(10000 + Math.random() * 90000)}-123-16`,
+        plateNumber: plateNumber.trim(),
         color: 'أسود',
-      },
-      documents: {
-        status: 'pending',
-        submittedAt: new Date().toISOString(),
-        selfieUrl: finalSelfie,
-        personalPhotoUrl: finalSelfie,
-        motorcycleFrontUrl: finalMotoFront,
-        motorcycleBackUrl: finalMotoBack,
-        licenseFrontUrl: finalLicenseFront,
-        licenseBackUrl: finalLicenseBack,
-        vehicleDocFrontUrl: finalVehicleDocFront,
-        vehicleDocBackUrl: finalVehicleDocBack,
-        licenseUrl: finalLicenseFront,
-        identityDocumentUrl: finalSelfie,
-        vehicleRegistrationUrl: finalVehicleDocFront,
-        motorcyclePhotosUrls: [finalMotoFront, finalMotoBack],
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+      };
 
-    try {
+      // 2. Store driver application with Base64 images directly into Firestore 'driver_applications' collection
+      await submitDriverApplication({
+        id: `app_${driverId}`,
+        driverId,
+        userId: currentUser?.uid || cleanUid,
+        fullName: name.trim(),
+        phone: phone.trim(),
+        email: currentUser?.email || undefined,
+        wilaya,
+        municipality: municipality || 'وسط المدينة',
+        motorcycle: motorcycleData,
+        documents: {
+          selfieUrl,
+          motorcyclePhotoUrl,
+          licenseUrl,
+          vehicleRegistrationUrl,
+          // Backwards compatibility mappings for existing screens
+          licenseFrontUrl: licenseUrl,
+          licenseBackUrl: licenseUrl,
+          vehicleDocFrontUrl: vehicleRegistrationUrl,
+          vehicleDocBackUrl: vehicleRegistrationUrl,
+          motorcycleFrontUrl: motorcyclePhotoUrl,
+          motorcycleBackUrl: motorcyclePhotoUrl,
+        },
+      });
+
+      // 3. Keep local app state updated and switch to driver role
+      const newDriver: DriverProfile = {
+        id: driverId,
+        userId: currentUser?.uid || cleanUid,
+        name: name.trim(),
+        phone: phone.trim(),
+        email: currentUser?.email || undefined,
+        wilaya,
+        municipality: municipality || 'وسط المدينة',
+        photoUrl: selfieUrl,
+        rating: 5.0,
+        ratingCount: 1,
+        totalTrips: 0,
+        cancellationCount: 0,
+        isOnline: false,
+        isAvailable: false,
+        status: 'pending',
+        rejectionReason: undefined,
+        location: {
+          lat: 36.7538 + (Math.random() - 0.5) * 0.04,
+          lng: 3.0588 + (Math.random() - 0.5) * 0.04,
+          name: `${wilaya}، الجزائر`,
+        },
+        motorcycle: motorcycleData,
+        documents: {
+          status: 'pending',
+          submittedAt: new Date().toISOString(),
+          selfieUrl,
+          personalPhotoUrl: selfieUrl,
+          motorcycleFrontUrl: motorcyclePhotoUrl,
+          motorcycleBackUrl: motorcyclePhotoUrl,
+          licenseFrontUrl: licenseUrl,
+          licenseBackUrl: licenseUrl,
+          vehicleDocFrontUrl: vehicleRegistrationUrl,
+          vehicleDocBackUrl: vehicleRegistrationUrl,
+          licenseUrl,
+          identityDocumentUrl: selfieUrl,
+          vehicleRegistrationUrl,
+          motorcyclePhotosUrls: [motorcyclePhotoUrl],
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        localStorage.setItem('motodrive_registered_phone', phone.trim());
+        localStorage.setItem('motodrive_active_driver_phone', phone.trim());
+      } catch (e) {}
+
       await syncDriverProfile(newDriver);
       setActiveDriver(newDriver);
       setCurrentRole('driver');
 
-      // Send broadcast notification for the admin
       broadcastNotification(
         'طلب تسجيل سائق جديد',
-        `أرسل السائق ${name.trim()} وثائق دراجته (${brand} ${model}) بانتظار موافقة الإدارة.`
+        `أرسل السائق ${name.trim()} وثائقه الـ 4 لدراجته (${brand} ${model}) بانتظار موافقة الإدارة.`
       );
 
       setIsSubmitting(false);
       setIsSubmittedSuccess(true);
     } catch (err: any) {
-      console.error('Error registering driver:', err);
-      setErrorMsg(err.message || 'تعذر حفظ ملف السائق في السحابة.');
+      console.error('Error submitting driver application:', err);
+      setErrorMsg(err?.message || 'تعذر إرسال وثائق السائق إلى السحابة. يرجى التأكد من الاتصال بالإنترنت.');
       setIsSubmitting(false);
     }
   };
@@ -317,7 +387,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+            className="w-8 h-8 rounded-full bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -326,14 +396,14 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               <span>تسجيل سائق دراجة نارية</span>
               <MotoIcon className="w-5 h-5 text-amber-400" />
             </h3>
-            <p className="text-[11px] text-slate-400 font-medium">إدخال معلومات السائق ورفع الوثائق الـ 7 المطلوبة</p>
+            <p className="text-[11px] text-slate-400 font-medium">خطوة واحدة: إدخال البيانات ورفع الوثائق الـ 4 المطلوبة</p>
           </div>
           <div className="w-8 h-8 rounded-xl overflow-hidden border border-amber-500/30 shrink-0 shadow-sm">
             <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
           </div>
         </div>
 
-        {/* Success / Pending Notice State */}
+        {/* Success / Pending Confirmation View */}
         {isSubmittedSuccess ? (
           <div className="p-6 text-center space-y-4 animate-in fade-in">
             <div className="w-16 h-16 rounded-full bg-amber-500/20 border-2 border-amber-500 text-amber-400 flex items-center justify-center text-2xl mx-auto shadow-lg shadow-amber-500/20">
@@ -341,31 +411,31 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
             </div>
 
             <div className="space-y-1.5">
-              <h4 className="text-lg font-black text-white">تم إرسال طلبك بنجاح!</h4>
+              <h4 className="text-lg font-black text-white">تم إرسال طلبك والوثائق الـ 4 بنجاح!</h4>
               <p className="text-xs text-amber-300 font-extrabold bg-amber-500/10 py-1.5 px-3 rounded-xl border border-amber-500/20 inline-block">
-                طلب السائق قيد المراجعة والمعالجة من طرف المالك
+                طلب التسجيل قيد المراجعة والمعالجة من الإدارة
               </p>
             </div>
 
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 text-right space-y-2 leading-relaxed">
               <div className="flex items-center gap-2 text-amber-400 font-bold">
                 <ShieldCheck className="w-4 h-4" />
-                <span>الخطوة القادمة:</span>
+                <span>ماذا يحدث الآن؟</span>
               </div>
               <p className="text-[11px] text-slate-400">
-                يرجى الانتظار حتى يقوم الأدمن بمراجعة صور دراجتك ورخصة السياقة والبطاقة الرمادية وقبول حسابك في لوحة الإدارة. ستتلقى إشعاراً فور التفعيل وستتمكن من فتح وضع (Online) واستقبال طلبات الركاب.
+                يقوم مسؤول المنصة بمراجعة صور دراجتك ورخصة السياقة والبطاقة الرمادية. وفور الموافقة، سيتم تفعيل حسابك كـ سائق مؤهل وبدء استقبال طلبات الرحلات فوراً.
               </p>
             </div>
 
             <button
               onClick={onClose}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer"
             >
-              فهمت، الانتقال لواجهة السائق
+              الانتقال لشاشة متابعة حالة الاعتماد
             </button>
           </div>
         ) : (
-          /* Registration & Document Upload Form */
+          /* Single-Step Registration & Document Upload Form */
           <form onSubmit={handleSubmit} className="space-y-4">
             {errorMsg && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
@@ -374,7 +444,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </div>
             )}
 
-            {/* Step 1: Personal Info */}
+            {/* 1. Personal Information */}
             <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
               <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                 <span>1. المعلومات الشخصية</span>
@@ -388,7 +458,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     required
                     placeholder="مثال: يوسف بلقاسم"
                     value={name}
-                    onChange={e => setName(e.target.value)}
+                    onChange={(e) => setName(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -400,7 +470,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     required
                     placeholder="0661123456"
                     value={phone}
-                    onChange={e => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-left"
                     dir="ltr"
                   />
@@ -412,10 +482,10 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الولاية:</label>
                   <select
                     value={wilaya}
-                    onChange={e => setWilaya(e.target.value)}
+                    onChange={(e) => setWilaya(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
-                    {ALGERIA_WILAYAS.map(w => (
+                    {ALGERIA_WILAYAS.map((w) => (
                       <option key={w} value={w}>{w}</option>
                     ))}
                   </select>
@@ -426,7 +496,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <input
                     type="text"
                     value={municipality}
-                    onChange={e => setMunicipality(e.target.value)}
+                    onChange={(e) => setMunicipality(e.target.value)}
                     placeholder="مثال: سيدي امحمد"
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
                   />
@@ -434,7 +504,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
               </div>
             </div>
 
-            {/* Step 2: Motorcycle Details */}
+            {/* 2. Motorcycle Details */}
             <div className="space-y-2.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
               <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                 <span>2. بيانات الدراجة النارية</span>
@@ -445,7 +515,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الماركة:</label>
                   <select
                     value={brand}
-                    onChange={e => {
+                    onChange={(e) => {
                       const newBrand = e.target.value;
                       setBrand(newBrand);
                       if (BRAND_MODELS_MAP[newBrand]?.[0]) {
@@ -454,7 +524,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                     }}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
-                    {POPULAR_BRANDS.map(b => (
+                    {POPULAR_BRANDS.map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
                   </select>
@@ -464,54 +534,41 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">الموديل (الطراز):</label>
                   <select
                     value={model}
-                    onChange={e => setModel(e.target.value)}
+                    onChange={(e) => setModel(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                   >
-                    {(BRAND_MODELS_MAP[brand] || ['طراز آخر']).map(m => (
+                    {(BRAND_MODELS_MAP[brand] || ['طراز آخر']).map((m) => (
                       <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Custom brand/model note when 'علامة أخرى' is selected */}
-              {brand === 'علامة أخرى' && (
-                <div className="pt-1.5 border-t border-amber-500/30">
-                  <label className="block text-[11px] font-bold text-amber-400 mb-1">
-                    خانة ملاحظة: اكتب اسم الماركة وطراز الدراجة النارية بالتفصيل:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="مثال: Ducati Monster 821 / Aprilia RS660"
-                    value={model}
-                    onChange={e => setModel(e.target.value)}
-                    className="w-full bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400"
-                  />
-                </div>
-              )}
-
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-300 mb-1">سنة الصنع:</label>
                   <input
                     type="number"
-                    value={year}
-                    onChange={e => setYear(e.target.value)}
                     min="2010"
                     max="2026"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 text-center"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono text-center"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">لوحة الترقيم (Matricule):</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    لوحة الترقيم (Matricule):
+                  </label>
                   <input
                     type="text"
-                    placeholder="12345-120-16"
+                    required
+                    placeholder="مثال: 12345-123-16"
                     value={plateNumber}
-                    onChange={e => setPlateNumber(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 text-center font-mono"
+                    onChange={(e) => setPlateNumber(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-400 placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-center"
+                    dir="ltr"
                   />
                 </div>
               </div>
@@ -524,208 +581,127 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
                 <input
                   type="checkbox"
                   checked={hasHelmet}
-                  onChange={e => setHasHelmet(e.target.checked)}
+                  onChange={(e) => setHasHelmet(e.target.checked)}
                   className="w-4 h-4 accent-amber-500 cursor-pointer"
                 />
               </div>
             </div>
 
-            {/* Step 3: Required 7 Document Uploads */}
+            {/* 3. The EXACT 4 Required Verification Documents */}
             <div className="space-y-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-amber-400">
-                  <span>3. رفع الوثائق المطلوبة (7 صور واضحة)</span>
+                <h4 className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <span>3. الوثائق المطلوبة (4 صور فقط ترفع مباشرة)</span>
                 </h4>
-                <span className="text-[10px] text-slate-400">مطلوبة لموافقة الأدمن</span>
+                <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {Object.keys(filesMap).length} / 4 مكتملة
+                </span>
               </div>
 
-              {/* Driver Requirements & Conditions Notice */}
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 space-y-1.5 text-xs text-amber-200">
-                <div className="flex items-center gap-1.5 font-bold text-amber-400">
-                  <MotoIcon className="w-4 h-4 shrink-0" />
-                  <span>شروط ومتطلبات التسجيل المعتمدة:</span>
-                </div>
-                <ul className="text-[11px] space-y-1 text-slate-300 list-disc pr-4 leading-relaxed">
-                  <li>رفع <strong>رخصة السياقة</strong> (صنفي أ / A جهتين)</li>
-                  <li>رفع <strong>البطاقة الرمادية للدراجة</strong> (جهتين)</li>
-                  <li>رفع <strong>صورة شخصية (سيلفي)</strong> واضحة</li>
-                  <li>رفع <strong>صور الدراجة النارية</strong> من الأمام والخلف (مع ظهور لوحة الترقيم بوضوح)</li>
-                  <li className="text-amber-300 font-bold list-none pr-0 pt-1 border-t border-amber-500/20 mt-1">
-                    🔒 <strong>ملاحظة هامة:</strong> بعد استكمال رفع الوثائق الـ 7 والضغط على إرسال، سيتم تحويل ملفك لمالك التطبيق لمراجعته وقبوله.
-                  </li>
-                </ul>
-              </div>
+              <div className="space-y-2.5">
+                {REQUIRED_DOCUMENTS.map((docConfig) => {
+                  const previewUrl = previewUrls[docConfig.key];
+                  const hasFile = Boolean(filesMap[docConfig.key]);
 
-              <div className="space-y-3">
-                {/* 1. Clear Selfie */}
-                <DocumentUploadCard
-                  id="selfie-upload"
-                  label="1. صورة شخصية واضحة (سيلفي)"
-                  description="صورة سيلفي واضحة للوجه بدون نظارات شمسية"
-                  previewUrl={selfieUrl}
-                  onUpload={e => handleFileUpload(e, setSelfieUrl)}
-                  onClear={() => setSelfieUrl('')}
-                />
+                  return (
+                    <div
+                      key={docConfig.key}
+                      className={`p-3 rounded-2xl border transition-all ${
+                        hasFile
+                          ? 'bg-slate-950/90 border-emerald-500/40 shadow-sm'
+                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {previewUrl ? (
+                            <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-emerald-500/60 shrink-0 bg-slate-950">
+                              <img src={previewUrl} alt={docConfig.label} className="w-full h-full object-cover" />
+                              <span className="absolute bottom-0 right-0 bg-emerald-500 text-slate-950 text-[8px] font-black px-1 rounded-tl">
+                                ✓
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="w-12 h-12 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
+                              <Camera className="w-5 h-5" />
+                            </div>
+                          )}
 
-                {/* 2 & 3. Motorcycle Front and Back */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <DocumentUploadCard
-                    id="moto-front-upload"
-                    label="2. الدراجة النارية - من الأمام"
-                    description="صورة واجهة الدراجة"
-                    previewUrl={motorcycleFrontUrl}
-                    onUpload={e => handleFileUpload(e, setMotorcycleFrontUrl)}
-                    onClear={() => setMotorcycleFrontUrl('')}
-                  />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                              <span>{docConfig.label}</span>
+                              {hasFile && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate mt-0.5">{docConfig.description}</div>
+                          </div>
+                        </div>
 
-                  <DocumentUploadCard
-                    id="moto-back-upload"
-                    label="3. الدراجة النارية - من الخلف"
-                    description="شرط إلزامي: يجب أن تظهر لوحة الترقيم (Matricule) بوضوح"
-                    previewUrl={motorcycleBackUrl}
-                    onUpload={e => handleFileUpload(e, setMotorcycleBackUrl)}
-                    onClear={() => setMotorcycleBackUrl('')}
-                  />
-                </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <label
+                            htmlFor={`doc-${docConfig.key}`}
+                            className={`cursor-pointer px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 shadow-sm ${
+                              hasFile
+                                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-black'
+                            }`}
+                          >
+                            <Upload className="w-3 h-3" />
+                            <span>{hasFile ? 'تغيير' : 'اختيار صورة'}</span>
+                          </label>
+                          <input
+                            type="file"
+                            id={`doc-${docConfig.key}`}
+                            accept="image/*"
+                            onChange={(e) => handleSelectFile(docConfig.key, e.target.files?.[0])}
+                            className="hidden"
+                          />
 
-                {/* 4 & 5. Driving License Front and Back */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <DocumentUploadCard
-                    id="license-front-upload"
-                    label="4. رخصة السياقة - من الأمام"
-                    description="صنف أ / A سارية المفعول"
-                    previewUrl={licenseFrontUrl}
-                    onUpload={e => handleFileUpload(e, setLicenseFrontUrl)}
-                    onClear={() => setLicenseFrontUrl('')}
-                  />
-
-                  <DocumentUploadCard
-                    id="license-back-upload"
-                    label="5. رخصة السياقة - من الخلف"
-                    description="الوجه الخلفي لرخصة السياقة"
-                    previewUrl={licenseBackUrl}
-                    onUpload={e => handleFileUpload(e, setLicenseBackUrl)}
-                    onClear={() => setLicenseBackUrl('')}
-                  />
-                </div>
-
-                {/* 6 & 7. Vehicle Registration Front and Back */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <DocumentUploadCard
-                    id="vehicledoc-front-upload"
-                    label="6. وثيقة الدراجة (البطاقة الرمادية) - أمامي"
-                    description="Carte Grise الوجه الأمامي"
-                    previewUrl={vehicleDocFrontUrl}
-                    onUpload={e => handleFileUpload(e, setVehicleDocFrontUrl)}
-                    onClear={() => setVehicleDocFrontUrl('')}
-                  />
-
-                  <DocumentUploadCard
-                    id="vehicledoc-back-upload"
-                    label="7. وثيقة الدراجة (البطاقة الرمادية) - خلفي"
-                    description="Carte Grise الوجه الخلفي"
-                    previewUrl={vehicleDocBackUrl}
-                    onUpload={e => handleFileUpload(e, setVehicleDocBackUrl)}
-                    onClear={() => setVehicleDocBackUrl('')}
-                  />
-                </div>
+                          {hasFile && (
+                            <button
+                              type="button"
+                              onClick={() => handleClearFile(docConfig.key)}
+                              className="w-7 h-7 rounded-xl bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors cursor-pointer"
+                              title="إزالة الصورة"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+
+            {/* Submission Progress Indicator */}
+            {isSubmitting && uploadStatusText && (
+              <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-300 flex items-center gap-2.5 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-amber-400 shrink-0" />
+                <span className="font-semibold">{uploadStatusText}</span>
+              </div>
+            )}
 
             {/* Submit Button */}
             <button
               id="submit-driver-documents-btn"
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-                  <span>جاري إرسال الوثائق إلى لوحة الإدارة...</span>
+                  <span>جاري معالجة وحفظ الوثائق في Firestore...</span>
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  <span>إرسال الملف والوثائق للمراجعة والقبول ⏳</span>
+                  <span>إرسال الملف والوثائق الـ 4 للقبول ⏳</span>
                 </>
               )}
             </button>
           </form>
-        )}
-      </div>
-    </div>
-  );
-};
-
-interface DocumentUploadCardProps {
-  id: string;
-  label: string;
-  description: string;
-  previewUrl: string;
-  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onClear: () => void;
-}
-
-const DocumentUploadCard: React.FC<DocumentUploadCardProps> = ({
-  id,
-  label,
-  description,
-  previewUrl,
-  onUpload,
-  onClear,
-}) => {
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2.5 truncate">
-        {previewUrl ? (
-          <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-amber-500/60 shrink-0 bg-slate-950">
-            <img src={previewUrl} alt={label} className="w-full h-full object-cover" />
-            <span className="absolute bottom-0 right-0 bg-emerald-500 text-slate-950 text-[8px] font-black px-1 rounded-tl">
-              ✓
-            </span>
-          </div>
-        ) : (
-          <div className="w-12 h-12 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
-            <Camera className="w-5 h-5" />
-          </div>
-        )}
-
-        <div className="truncate">
-          <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-            <span>{label}</span>
-            {previewUrl && <FileCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-          </div>
-          <div className="text-[10px] text-slate-400 truncate">{description}</div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1.5 shrink-0">
-        <label
-          htmlFor={id}
-          className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 text-[11px] font-bold border border-slate-700 transition-colors flex items-center gap-1"
-        >
-          <Upload className="w-3 h-3" />
-          <span>{previewUrl ? 'تغيير' : 'رفع صورة'}</span>
-        </label>
-        <input
-          type="file"
-          id={id}
-          accept="image/*"
-          capture="environment"
-          onChange={onUpload}
-          className="hidden"
-        />
-
-        {previewUrl && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="w-6 h-6 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-400 hover:text-red-400 flex items-center justify-center transition-colors"
-            title="حذف"
-          >
-            <X className="w-3 h-3" />
-          </button>
         )}
       </div>
     </div>

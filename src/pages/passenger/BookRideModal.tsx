@@ -267,8 +267,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
             <X className="w-4 h-4" />
           </button>
           <div className="text-center">
-            <h3 className="text-base font-black text-white">طلب رحلة بالسعر الثابت المعتمد</h3>
-            <p className="text-[11px] text-amber-400 font-medium">سعر محدد وثابت 100% حسب شريحة المسافة المقطوعة 🏍️</p>
+            <h3 className="text-base font-black text-white">طلب رحلة جديدة</h3>
+            <p className="text-[11px] text-amber-400 font-medium">تأكيد مكان الانطلاق والوجهة 🏍️</p>
           </div>
           <div className="w-8 h-8 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-sm">
             ⚡
@@ -511,28 +511,14 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Official Fixed Price Display Card */}
-            <div className="bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/50 rounded-2xl p-4 space-y-2 shadow-lg relative overflow-hidden">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>السعر الثابت المعتمد للرحلة:</span>
-                </div>
-                <div className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold">
-                  سعر رسمي ثابت 100%
-                </div>
+            {/* Clean Price Display Card */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-lg text-center space-y-1">
+              <div className="text-[11px] text-slate-400 font-medium">تكلفة الرحلة:</div>
+              <div className="text-4xl font-black text-amber-400 tracking-tight font-mono">
+                {recommendedPrice} <span className="text-base font-bold text-slate-300">د.ج</span>
               </div>
-
-              <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-3.5 text-center space-y-1">
-                <div className="text-4xl font-black text-amber-400 tracking-tight font-mono">
-                  {recommendedPrice} <span className="text-base font-bold text-slate-300">د.ج</span>
-                </div>
-                <div className="text-xs font-semibold text-amber-300">
-                  {fareBreakdown.tierLabel || `تسعيرة شريحة المسافة (${distanceKm} كم)`}
-                </div>
-                <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-800/80">
-                  💡 الأرباح كاملة 100% لسائق الدراجة بدون أي خصم لعمولة المنصة.
-                </p>
+              <div className="text-[11px] text-amber-300/80 font-medium pt-0.5">
+                مسافة الرحلة: {distanceKm} كم (~{estimatedDuration} دقيقة)
               </div>
             </div>
 

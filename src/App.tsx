@@ -22,7 +22,6 @@ import { PassengerProfile } from './pages/passenger/PassengerProfile';
 // Driver Views
 import { DriverHome } from './pages/driver/DriverHome';
 import { DriverEarnings } from './pages/driver/DriverEarnings';
-import { DriverDocumentsUpload } from './pages/driver/DriverDocumentsUpload';
 import { DriverTrips } from './pages/driver/DriverTrips';
 import { DriverProfile } from './pages/driver/DriverProfile';
 import { DriverPendingApprovalView } from './pages/driver/DriverPendingApprovalView';
@@ -192,14 +191,9 @@ const AppContent: React.FC = () => {
 
   // Render Driver Tabs
   const renderDriverView = () => {
-    // Always allow driver to access documents upload tab to upload and manage Carte Grise and License
-    if (activeTab === 'documents') {
-      return <DriverDocumentsUpload />;
-    }
-
     // Strictly block access to ride requests / earnings if driver status is not approved by the owner
     if (activeDriver.status !== 'approved') {
-      return <DriverPendingApprovalView onOpenDocuments={() => setActiveTab('documents')} />;
+      return <DriverPendingApprovalView />;
     }
 
     switch (activeTab) {
@@ -208,8 +202,6 @@ const AppContent: React.FC = () => {
         return <DriverHome />;
       case 'earnings':
         return <DriverEarnings />;
-      case 'documents':
-        return <DriverDocumentsUpload />;
       case 'trips':
         return <DriverTrips />;
       case 'profile':

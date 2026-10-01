@@ -106,22 +106,7 @@ export function getTieredFareByDistance(distanceKm: number): number {
 }
 
 export function getTierLabelByDistance(distanceKm: number): string {
-  if (distanceKm <= 5.0) return 'شريحة 0.0 - 5.0 كم (110 د.ج)';
-  if (distanceKm <= 8.0) return 'شريحة 5.1 - 8.0 كم (150 د.ج)';
-  if (distanceKm <= 11.0) return 'شريحة 8.1 - 11.0 كم (200 د.ج)';
-  if (distanceKm <= 15.0) return 'شريحة 11.1 - 15.0 كم (250 د.ج)';
-  if (distanceKm <= 19.0) return 'شريحة 15.1 - 19.0 كم (300 د.ج)';
-  if (distanceKm <= 23.0) return 'شريحة 19.1 - 23.0 كم (350 د.ج)';
-  if (distanceKm <= 27.0) return 'شريحة 23.1 - 27.0 كم (400 د.ج)';
-  if (distanceKm <= 31.0) return 'شريحة 27.1 - 31.0 كم (450 د.ج)';
-  if (distanceKm <= 35.0) return 'شريحة 31.0 - 35.0 كم (700 د.ج)';
-  if (distanceKm <= 40.0) return 'شريحة 35.1 - 40.0 كم (850 د.ج)';
-  if (distanceKm <= 45.0) return 'شريحة 40.1 - 45.0 كم (1,050 د.ج)';
-  if (distanceKm <= 50.0) return 'شريحة 45.1 - 50.0 كم (1,300 د.ج)';
-  if (distanceKm <= 55.0) return 'شريحة 50.1 - 55.0 كم (1,500 د.ج)';
-  if (distanceKm <= 60.0) return 'شريحة 55.1 - 60.0 كم (1,800 د.ج)';
-  if (distanceKm <= 65.0) return 'شريحة 60.1 - 65.0 كم (2,100 د.ج)';
-  return 'شريحة 65.1 - 70.0 كم (2,400 د.ج)';
+  return `مسافة الرحلة: ${distanceKm} كم`;
 }
 
 export function calculateTieredDistanceCost(distanceKm: number): number {

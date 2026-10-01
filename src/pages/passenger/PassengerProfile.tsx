@@ -84,10 +84,6 @@ export const PassengerProfile: React.FC = () => {
         <div>
           <h3 className="text-lg font-black text-white">{activePassenger.name}</h3>
           <p className="text-xs text-slate-400 mt-0.5">{activePassenger.phone}</p>
-          <div className="mt-2 text-[11px] font-bold text-emerald-400 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>🔒 حساب موثوق برقم الهاتف (غير قابل للتعديل)</span>
-          </div>
         </div>
       </div>
 
@@ -96,12 +92,8 @@ export const PassengerProfile: React.FC = () => {
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400" />
-            <h4 className="text-sm font-bold text-white">حساب التطبيق ورقم الهاتف</h4>
+            <h4 className="text-sm font-bold text-white">معلومات الحساب</h4>
           </div>
-          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-            <CheckCircle2 className="w-3 h-3" />
-            محفوظ برقم الهاتف
-          </span>
         </div>
 
         <div className="space-y-3">

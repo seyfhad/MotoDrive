@@ -10,7 +10,7 @@ import {
 } from '@vis.gl/react-google-maps';
 import { Navigation } from 'lucide-react';
 import { Coordinates, DriverProfile } from '../../types';
-import { getRobustUserLocation } from '../../utils/geo';
+import { getRobustUserLocation, startBackgroundLocationTracking } from '../../utils/geo';
 
 export interface GoogleMapViewProps {
   center?: [number, number];
@@ -218,6 +218,7 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
   className = 'h-full w-full',
   theme = 'dark',
 }) => {
+  const [userLiveCoords, setUserLiveCoords] = useState<Coordinates | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<DriverProfile | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationToast, setLocationToast] = useState<string | null>(null);
@@ -234,13 +235,31 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
     [onMapClick]
   );
 
-  // دالة طلب إذن وتحديد الموقع الجغرافي للـ GPS وتوجيه الخريطة نحوه
+  // Background continuous location tracking
+  useEffect(() => {
+    if (!interactive) return;
+
+    const stopTracking = startBackgroundLocationTracking({
+      enableHighAccuracy: true,
+      intervalMs: 10000,
+      onLocationUpdate: (res) => {
+        setUserLiveCoords(res.coords);
+      },
+    });
+
+    return () => {
+      stopTracking();
+    };
+  }, [interactive]);
+
+  // دالة طلب إذن وتحديد الموقع الجغرافي للـ GPS وتوجيه الخريطة وإعادة التمركز نحو المستخدم
   const requestUserLocation = async () => {
     setIsLocating(true);
     setLocationToast(null);
     try {
       const res = await getRobustUserLocation();
       const userCoords = res.coords;
+      setUserLiveCoords(userCoords);
 
       if (mapInstance) {
         mapInstance.panTo({ lat: userCoords.lat, lng: userCoords.lng });
@@ -253,16 +272,25 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
 
       if (res.message) {
         setLocationToast(res.message);
-        setTimeout(() => setLocationToast(null), 6000);
+        setTimeout(() => setLocationToast(null), 5000);
       }
     } catch (err) {
       console.warn("Location request notice:", err);
-      setLocationToast("💡 يرجى التأكد من تشغيل زر 'الموقع' (GPS) في شريط الإشعارات بهاتفك.");
-      setTimeout(() => setLocationToast(null), 6000);
+      setLocationToast("💡 يرجى التأكد من تشغيل خيار 'الموقع' (GPS) في شريط الإشعارات للهاتف.");
+      setTimeout(() => setLocationToast(null), 5000);
     } finally {
       setIsLocating(false);
     }
   };
+
+  // Automatically request and center GPS user location on mount when map is ready
+  const hasAutoLocatedRef = React.useRef(false);
+  useEffect(() => {
+    if (interactive && mapInstance && !hasAutoLocatedRef.current) {
+      hasAutoLocatedRef.current = true;
+      requestUserLocation();
+    }
+  }, [mapInstance, interactive]);
 
   return (
     <div className={`relative overflow-hidden rounded-2xl ${className}`} id="google-map-container-root">
@@ -290,6 +318,20 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
           center={center}
           zoom={zoom}
         />
+
+        {/* User Live GPS Marker with pulsating accuracy ring */}
+        {userLiveCoords && (
+          <AdvancedMarker
+            position={{ lat: userLiveCoords.lat, lng: userLiveCoords.lng }}
+            title="موقعي الفعلي المباشر (GPS)"
+          >
+            <div className="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+              <div className="w-5 h-5 rounded-full bg-sky-500 border-2 border-white shadow-2xl z-10"></div>
+              <div className="absolute w-9 h-9 rounded-full bg-sky-400/40 animate-ping"></div>
+              <div className="absolute w-16 h-16 rounded-full bg-sky-500/10 border border-sky-400/30"></div>
+            </div>
+          </AdvancedMarker>
+        )}
 
         {/* 1. Pickup Advanced Marker */}
         {pickup && (
@@ -438,21 +480,22 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
         )}
       </Map>
 
-      {/* زر تحديد الموقع الحالي GPS عائم على الخريطة - أعلى قليلاً من أزرار التكبير والتصغير (+ / -) */}
+      {/* زر إعادة تمركز الخريطة وإحضار موقعي الحالي (GPS) */}
       {interactive && (
         <button
           type="button"
-          id="map-locate-above-zoom-btn"
+          id="map-locate-me-recenter-btn"
           onClick={requestUserLocation}
           disabled={isLocating}
-          className="absolute bottom-[116px] right-2.5 sm:right-3.5 z-10 w-10 h-10 rounded-xl bg-slate-900/95 hover:bg-slate-800 border border-slate-700/80 hover:border-amber-500/80 text-amber-400 shadow-2xl flex items-center justify-center transition-all active:scale-95 group backdrop-blur-md"
-          title="تحديد موقعي الفعلي على الخريطة (GPS)"
+          className="absolute bottom-28 right-2.5 sm:right-3.5 z-20 flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-slate-950/95 hover:bg-slate-900 border border-amber-500/70 hover:border-amber-400 text-amber-400 shadow-2xl transition-all active:scale-95 cursor-pointer backdrop-blur-md group"
+          title="تحديد موقعي الفعلي وإعادة تمركز الخريطة (GPS)"
         >
           {isLocating ? (
-            <span className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
+            <span className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></span>
           ) : (
-            <Navigation className="w-5 h-5 text-amber-400 transition-transform group-hover:scale-110" />
+            <Navigation className="w-4 h-4 text-amber-400 transition-transform group-hover:scale-110" />
           )}
+          <span className="text-xs font-black tracking-tight text-white">تحديد موقعي</span>
         </button>
       )}
 

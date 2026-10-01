@@ -48,7 +48,7 @@ export const DriverHome: React.FC = () => {
 
   // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق
   if (activeDriver.status !== 'approved') {
-    return <DriverPendingApprovalView />;
+    return <DriverPendingApprovalView onReapply={() => setShowRegisterModal(true)} />;
   }
 
   // جلب موقع GPS الحقيقي للسائق وتحديثه فوراً في السحابة

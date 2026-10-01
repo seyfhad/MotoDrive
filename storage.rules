@@ -1,54 +1,10 @@
 rules_version = '2';
+// Firebase Storage is completely disabled. All image data is compressed via Canvas
+// and stored directly as lightweight Base64 strings in Cloud Firestore documents.
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    function isOwner(userId) {
-      return isAuthenticated() && (
-        request.auth.uid == userId ||
-        request.auth.uid == userId.replace('driver-', '') ||
-        userId == 'driver-' + request.auth.uid
-      );
-    }
-    
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.admin == true ||
-        request.auth.token.email == 'seyfhad@gmail.com'
-      );
-    }
-
-    // Driver verification documents (Permis, Carte Grise, Assurance, Casier, Motorcycle photos)
-    match /driver_documents/{driverId}/{fileName} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (
-                     isOwner(driverId) ||
-                     driverId == request.auth.uid ||
-                     driverId == 'driver-' + request.auth.uid ||
-                     isAdmin()
-                   )
-                   && request.resource.size < 15 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)|application/pdf');
-    }
-
-    // User profile avatars
-    match /avatars/{userId}/{fileName} {
-      allow read: if true;
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin())
-                   && request.resource.size < 8 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)');
-    }
-
-    // User personal files & attachments
-    match /user_files/{userId}/{fileName} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAuthenticated() && (request.auth.uid == userId || isAdmin())
-                   && request.resource.size < 15 * 1024 * 1024
-                   && request.resource.contentType.matches('image/(jpeg|png|webp|jpg)|application/pdf');
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }

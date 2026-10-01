@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Driver, DriverApprovalStatus } from '../../types';
 import { MotoIcon } from '../../components/shared/MotoIcon';
+import { AdminApplicationsReviewModal } from '../../components/admin/AdminApplicationsReviewModal';
 import {
   CheckCircle2,
   XCircle,
@@ -15,6 +16,7 @@ import {
   Star,
   FileText,
   X,
+  FileCheck,
 } from 'lucide-react';
 
 export const AdminDrivers: React.FC = () => {
@@ -24,6 +26,7 @@ export const AdminDrivers: React.FC = () => {
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [rejectReason, setRejectReason] = useState('الوثائق غير واضحة');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showApplicationsModal, setShowApplicationsModal] = useState(false);
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
 
   const filteredDrivers = drivers.filter(d => {
@@ -65,6 +68,14 @@ export const AdminDrivers: React.FC = () => {
           <h2 className="text-xl font-black text-white">إدارة واعتماد السائقين (Drivers Management)</h2>
           <p className="text-xs text-slate-400">مراجعة ملفات السائقين، رخص السياقة، وحالة التفعيل الأمني</p>
         </div>
+
+        <button
+          onClick={() => setShowApplicationsModal(true)}
+          className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+        >
+          <FileCheck className="w-4 h-4" />
+          <span>مراجعة طلبات الانضمام والوثائق الـ 4 المعلقة</span>
+        </button>
       </div>
 
       {/* Filter & Search Bar */}
@@ -431,6 +442,12 @@ export const AdminDrivers: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Dedicated Admin Modal for driver_applications */}
+      <AdminApplicationsReviewModal
+        isOpen={showApplicationsModal}
+        onClose={() => setShowApplicationsModal(false)}
+      />
     </div>
   );
 };

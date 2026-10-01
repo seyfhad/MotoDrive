@@ -28,6 +28,7 @@ import {
   Rating,
 } from '../types';
 import { pushNotificationService } from '../services/pushNotificationService';
+import { findUserAndDriverByPhone } from '../services/authService';
 import {
   INITIAL_PASSENGERS,
   INITIAL_DRIVERS,
@@ -60,6 +61,17 @@ import {
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
+import {
+  approveDriverApplication,
+  rejectDriverApplication,
+} from '../services/driverApplicationsService';
+import {
+  createRideRequest,
+  subscribePendingRideRequests,
+  acceptRideRequest,
+  completeRideRequest,
+  cancelRideRequest,
+} from '../services/rideRequestsService';
 
 interface AppContextType {
   currentRole: UserRole;
@@ -432,6 +444,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [currentUser]);
 
+  // Auto-restore registered driver application by phone on app mount
+  useEffect(() => {
+    const savedPhone =
+      localStorage.getItem('motodrive_registered_phone') ||
+      localStorage.getItem('motodrive_active_driver_phone');
+    if (savedPhone) {
+      findUserAndDriverByPhone(savedPhone)
+        .then(({ driver }) => {
+          if (driver) {
+            setActiveDriver((prev) => {
+              if (prev.id === driver.id && prev.status === driver.status) return prev;
+              return driver;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   // --------------------------------------------------------------------------
   // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR CURRENT DRIVER PROFILE
   // Ensures instant update of 'approved' status when approved by Admin without app restart
@@ -597,6 +628,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {}
     }
 
+    // 4. Also listen to driver_applications collection by phone for instant real-time approval/rejection update
+    if (currentPhone) {
+      try {
+        const qAppPhone = query(
+          collection(db, 'driver_applications'),
+          where('phone', '==', currentPhone.trim())
+        );
+        const unsubAppPhone = onSnapshot(
+          qAppPhone,
+          (snap) => {
+            if (!snap.empty) {
+              const appData = snap.docs[0].data();
+              if (appData.status) {
+                setActiveDriver((prev) => {
+                  if (prev.status === appData.status && prev.rejectionReason === appData.rejectionReason) {
+                    return prev;
+                  }
+                  return {
+                    ...prev,
+                    status: appData.status,
+                    rejectionReason: appData.rejectionReason || prev.rejectionReason,
+                  };
+                });
+              }
+            }
+          },
+          () => {}
+        );
+        unsubs.push(unsubAppPhone);
+      } catch (e) {}
+    }
+
     return () => {
       unsubs.forEach((u) => u());
     };
@@ -755,6 +818,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const rideDocId = await createRideInFirestore(ridePayload);
 
+      // Save to Firestore collection 'ride_requests' with status: 'pending' (Real-time queue)
+      try {
+        await createRideRequest({
+          id: rideDocId,
+          passengerId: activePassenger.id,
+          passengerName: activePassenger.name,
+          passengerPhone: activePassenger.phone,
+          passengerPhoto: activePassenger.photoUrl,
+          pickup,
+          destination,
+          fare: offeredPrice,
+          distanceKm,
+          estimatedDurationMins: estimatedDuration,
+        });
+      } catch (reqErr) {
+        console.warn('Notice writing to ride_requests:', reqErr);
+      }
+
       addNotification(
         'all_drivers',
         'driver',
@@ -792,6 +873,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (result.success) {
+      // Update status to accepted in ride_requests collection
+      acceptRideRequest(rideId, driver).catch(e => console.warn('Notice updating ride_requests accepted status:', e));
+
       addNotification(
         driver.id,
         'driver',
@@ -847,6 +931,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelRide = async (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
     try {
       await cancelRideInFirestore(rideId, reason, cancelledBy);
+      await cancelRideRequest(rideId);
     } catch (e) {
       console.error('Error cancelling ride in Firestore:', e);
     }
@@ -913,6 +998,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const acceptRide = async (rideId: string, driverId: string): Promise<{ success: boolean; error?: string }> => {
     const ride = rides.find(r => r.id === rideId);
     if (!ride) return { success: false, error: 'الرحلة غير موجودة' };
+    const driver = drivers.find(d => d.id === driverId) || activeDriver;
+    acceptRideRequest(rideId, driver).catch(e => console.warn('Notice accepting in ride_requests:', e));
     return submitDriverOffer(rideId, driverId, ride.passengerOfferedPrice || ride.estimatedPrice);
   };
 
@@ -959,6 +1046,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       extraData.completedAt = new Date().toISOString();
       extraData.paymentStatus = 'paid';
       extraData.finalPrice = targetRide.finalPrice || targetRide.estimatedPrice;
+      // Delete from ride_requests queue and archive to completed rides in Firestore
+      completeRideRequest(rideId).catch(e => console.warn('Notice completing ride_requests doc:', e));
       addNotification(
         targetRide.passengerId,
         'passenger',
@@ -1095,6 +1184,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 7. ADMIN ACTIONS
   // --------------------------------------------------------------------------
   const approveDriver = async (driverId: string) => {
+    // 1. Permanently delete verification files from Firebase Storage & update driver_applications doc
+    try {
+      await approveDriverApplication(`app_${driverId}`, driverId, currentUser?.uid || 'admin');
+    } catch (appErr) {
+      console.warn('Notice in approveDriverApplication:', appErr);
+    }
+
     await updateDriverStatusInFirestore(driverId, 'approved');
     const drv = drivers.find(d => d.id === driverId);
     if (drv) {
@@ -1104,11 +1200,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       driverId,
       'driver',
       '🎉 تم قبول حسابك!',
-      'تهانينا! تمت مراجعة وثائقك بنجاح. يمكنك الآن تفعيل وضع Online والبدء في استقبال الرحلات.'
+      'تهانينا! تمت مراجعة وثائقك واعتمادها بنجاح مع مسح وثائق التوثيق من التخزين السحابي للأمان. يمكنك الآن تفعيل وضع Online والبدء في استقبال الرحلات.'
     );
   };
 
   const rejectDriver = async (driverId: string, reason: string) => {
+    // 1. Permanently delete verification files from Firebase Storage & update driver_applications doc
+    try {
+      await rejectDriverApplication(`app_${driverId}`, driverId, reason, currentUser?.uid || 'admin');
+    } catch (appErr) {
+      console.warn('Notice in rejectDriverApplication:', appErr);
+    }
+
     await updateDriverStatusInFirestore(driverId, 'rejected', reason);
     const drv = drivers.find(d => d.id === driverId);
     if (drv) {
