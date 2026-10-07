@@ -68,6 +68,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, o
               <span className="text-xs font-bold">حسابي</span>
             </button>
           </>
+        ) : activeDriver.status !== 'approved' ? (
+          <button
+            id="nav-tab-driver-pending"
+            onClick={() => handleTabClick('home')}
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl text-amber-400 font-black bg-amber-500/10 border border-amber-500/20 select-none min-h-[44px]"
+          >
+            <FileText className="w-5 h-5" />
+            <span className="text-xs font-bold">حالة المراجعة والطلب</span>
+          </button>
         ) : (
           <>
             <button
