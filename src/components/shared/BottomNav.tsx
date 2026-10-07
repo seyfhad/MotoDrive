@@ -19,6 +19,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, o
   const handleTabClick = (tab: string) => {
     if (onTabChange) onTabChange(tab);
     if (setActiveTab) setActiveTab(tab);
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {}
   };
 
   return (

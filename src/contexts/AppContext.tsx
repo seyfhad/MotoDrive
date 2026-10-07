@@ -332,29 +332,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (docSnap) => {
         if (docSnap.exists()) {
           const rawData = docSnap.data() as Partial<PricingSettings>;
-          // Guarantee baseFare and minimumFare are at standard 110 DZD
           const sanitized: PricingSettings = {
             ...DEFAULT_PRICING,
             ...rawData,
-            baseFare: 110,
-            minimumFare: 110,
+            baseFare: typeof rawData.baseFare === 'number' ? rawData.baseFare : DEFAULT_PRICING.baseFare,
+            minimumFare: typeof rawData.minimumFare === 'number' ? rawData.minimumFare : DEFAULT_PRICING.minimumFare,
+            pricePerKm: typeof rawData.pricePerKm === 'number' ? rawData.pricePerKm : DEFAULT_PRICING.pricePerKm,
+            pricePerMinute: typeof rawData.pricePerMinute === 'number' ? rawData.pricePerMinute : DEFAULT_PRICING.pricePerMinute,
             peakMultiplier: rawData.peakMultiplier ?? (rawData as any).peakHourMultiplier ?? 1.0,
             nightMultiplier: rawData.nightMultiplier ?? 1.0,
           };
           delete (sanitized as any).peakHourMultiplier;
           setPricing(sanitized);
-
-          // If Firestore had stale values or deprecated keys, automatically update it
-          if (
-            rawData.minimumFare !== 110 ||
-            rawData.baseFare !== 110 ||
-            (rawData as any).peakHourMultiplier !== undefined
-          ) {
-            saveSystemPricing(sanitized).catch(() => {});
-          }
         } else {
           // Initialize default pricing in Firestore if missing
-          saveSystemPricing({ ...DEFAULT_PRICING, baseFare: 110, minimumFare: 110 }).catch(
+          saveSystemPricing(DEFAULT_PRICING).catch(
             (err) => {
               console.warn('Initial pricing set notice:', err);
             }
@@ -371,9 +363,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // 2.2 Subscribe to Real-Time Rides and Drivers once user is logged in
+    // 2.2 Subscribe to Real-Time Rides, Drivers, Users & Driver Applications
     let unsubRides: (() => void) | undefined;
     let unsubDrivers: (() => void) | undefined;
+    let unsubUsers: (() => void) | undefined;
+    let unsubApps: (() => void) | undefined;
 
     if (currentUser) {
       const ridesPath = 'rides';
@@ -435,12 +429,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       );
+
+      // Subscribe to users collection for real-time passenger sync in Admin
+      const usersQuery = query(collection(db, 'users'));
+      unsubUsers = onSnapshot(
+        usersQuery,
+        (querySnap) => {
+          if (!querySnap.empty) {
+            const fetchedUsers: UserProfile[] = querySnap.docs.map(
+              (u) => ({ id: u.id, ...u.data() } as UserProfile)
+            );
+            setPassengers(fetchedUsers);
+          }
+        },
+        () => {}
+      );
+
+      // Subscribe to driver_applications collection so newly registered drivers appear in Admin in real-time
+      const appsQuery = query(collection(db, 'driver_applications'));
+      unsubApps = onSnapshot(
+        appsQuery,
+        (querySnap) => {
+          if (!querySnap.empty) {
+            const appsData = querySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            setDrivers((prevDrivers) => {
+              const updated = [...prevDrivers];
+              appsData.forEach((app: any) => {
+                const appDriverId = app.driverId || `driver-${app.phone}`;
+                const idx = updated.findIndex((d) => d.id === appDriverId || d.phone === app.phone);
+                const mappedDriver: DriverProfile = {
+                  id: appDriverId,
+                  userId: app.userId || appDriverId,
+                  name: app.fullName || app.phone,
+                  phone: app.phone,
+                  email: app.email,
+                  wilaya: app.wilaya || 'الجزائر العاصمة',
+                  municipality: app.municipality || 'وسط المدينة',
+                  photoUrl: app.documents?.selfieUrl || '',
+                  rating: 5.0,
+                  ratingCount: 1,
+                  totalTrips: 0,
+                  cancellationCount: 0,
+                  isOnline: false,
+                  isAvailable: false,
+                  status: app.status || 'pending',
+                  rejectionReason: app.rejectionReason,
+                  location: { lat: 36.7538, lng: 3.0588 },
+                  motorcycle: app.motorcycle || {
+                    brand: 'SYM',
+                    model: 'Symphony',
+                    year: 2023,
+                    plateNumber: '',
+                    color: 'أسود',
+                  },
+                  documents: app.documents || { status: app.status || 'pending' },
+                  createdAt: app.submittedAt || new Date().toISOString(),
+                  updatedAt: app.reviewedAt || new Date().toISOString(),
+                };
+
+                if (idx >= 0) {
+                  updated[idx] = { ...updated[idx], ...mappedDriver };
+                } else {
+                  updated.push(mappedDriver);
+                }
+              });
+              return updated;
+            });
+          }
+        },
+        () => {}
+      );
     }
 
     return () => {
       unsubPricing();
       if (unsubRides) unsubRides();
       if (unsubDrivers) unsubDrivers();
+      if (unsubUsers) unsubUsers();
+      if (unsubApps) unsubApps();
     };
   }, [currentUser]);
 

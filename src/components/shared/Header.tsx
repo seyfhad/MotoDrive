@@ -78,7 +78,7 @@ export const Header: React.FC = () => {
           </div>
 
           {/* User Account & Quick Tools */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Account & Login Button */}
             <button
               id="header-user-profile-btn"
@@ -89,7 +89,7 @@ export const Header: React.FC = () => {
                   setShowUserProfile(true);
                 }
               }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-[11px] font-bold transition-all ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold transition-all shrink-0 ${
                 !currentUser
                   ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 shadow-sm shadow-amber-500/20'
                   : 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300'
@@ -99,7 +99,7 @@ export const Header: React.FC = () => {
               {!currentUser ? (
                 <>
                   <User className="w-3 h-3 shrink-0" />
-                  <span className="text-[11px] font-black">تسجيل الدخول</span>
+                  <span className="text-[10px] sm:text-[11px] font-black">تسجيل الدخول</span>
                 </>
               ) : (
                 <>
@@ -108,10 +108,10 @@ export const Header: React.FC = () => {
                   ) : (
                     <User className="w-3 h-3 text-amber-400 shrink-0" />
                   )}
-                  <span className="truncate text-[10px] sm:text-xs font-bold max-w-[80px] sm:max-w-none">
+                  <span className="truncate text-[10px] sm:text-xs font-bold max-w-[65px] sm:max-w-none">
                     {currentUser.displayName || activePassenger?.name?.split(' ')[0] || 'حسابي'}
                   </span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold">
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold hidden sm:inline">
                     {currentRole === 'admin' ? 'الإدارة' : currentRole === 'driver' ? 'سائق' : 'راكب'}
                   </span>
                 </>
@@ -127,10 +127,10 @@ export const Header: React.FC = () => {
                   await logout();
                   window.dispatchEvent(new CustomEvent('open-welcome'));
                 }}
-                className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer shrink-0"
                 title="تسجيل الخروج"
               >
-                <LogOut className="w-3.5 h-3.5" />
+                <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               </button>
             )}
 
@@ -138,7 +138,7 @@ export const Header: React.FC = () => {
             <button
               id="sos-header-btn"
               onClick={() => setShowSos(true)}
-              className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-1 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 ${
                 isTripActive
                   ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-md shadow-red-500/30'
                   : 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
@@ -157,11 +157,11 @@ export const Header: React.FC = () => {
                   new CustomEvent('open-legal', { detail: { tab: 'terms' } })
                 );
               }}
-              className="h-8 px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="h-7 sm:h-8 px-1.5 sm:px-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 flex items-center gap-1 text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
               title="شروط الاستخدام والسياسات القانونية"
             >
               <FileText className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-[10px] font-bold hidden sm:inline">شروط الاستخدام</span>
+              <span className="text-[10px] font-bold hidden md:inline">الشروط</span>
             </button>
 
             {/* Owner/Admin Controls: Strictly visible ONLY when in admin role */}

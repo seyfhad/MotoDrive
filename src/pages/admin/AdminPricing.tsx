@@ -11,32 +11,43 @@ import { DollarSign, Save, RefreshCw, CheckCircle2, ShieldAlert, Sparkles, Perce
 export const AdminPricing: React.FC = () => {
   const { pricing, updatePricing } = useApp();
 
-  const [baseFare, setBaseFare] = useState(pricing.baseFare || 110);
-  const [pricePerKm, setPricePerKm] = useState(pricing.pricePerKm);
-  const [pricePerMinute, setPricePerMinute] = useState(pricing.pricePerMinute);
-  const [minimumFare, setMinimumFare] = useState(pricing.minimumFare || 110);
-  const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee);
-  const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent ?? 0);
+  const [baseFare, setBaseFare] = useState(pricing.baseFare ?? 110);
+  const [pricePerKm, setPricePerKm] = useState(pricing.pricePerKm ?? 25);
+  const [pricePerMinute, setPricePerMinute] = useState(pricing.pricePerMinute ?? 2);
+  const [minimumFare, setMinimumFare] = useState(pricing.minimumFare ?? 110);
+  const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee ?? 100);
+  const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent ?? 15);
   const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier ?? 1.0);
   const [peakMultiplier, setPeakMultiplier] = useState(pricing.peakMultiplier ?? 1.0);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  React.useEffect(() => {
+    setBaseFare(pricing.baseFare ?? 110);
+    setPricePerKm(pricing.pricePerKm ?? 25);
+    setPricePerMinute(pricing.pricePerMinute ?? 2);
+    setMinimumFare(pricing.minimumFare ?? 110);
+    setCancellationFee(pricing.cancellationFee ?? 100);
+    setPlatformCommissionPercent(pricing.platformCommissionPercent ?? 15);
+    setNightMultiplier(pricing.nightMultiplier ?? 1.0);
+    setPeakMultiplier(pricing.peakMultiplier ?? 1.0);
+  }, [pricing]);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updatePricing({
+    await updatePricing({
       ...pricing,
-      baseFare: Number(baseFare) || 110,
-      pricePerKm: Number(pricePerKm) || 0,
-      pricePerMinute: Number(pricePerMinute) || 0,
-      minimumFare: Number(minimumFare) || 110,
-      cancellationFee: Number(cancellationFee) || 100,
-      platformCommissionPercent: Number(platformCommissionPercent) ?? 0,
+      baseFare: Number(baseFare) >= 0 ? Number(baseFare) : 110,
+      pricePerKm: Number(pricePerKm) >= 0 ? Number(pricePerKm) : 25,
+      pricePerMinute: Number(pricePerMinute) >= 0 ? Number(pricePerMinute) : 2,
+      minimumFare: Number(minimumFare) >= 0 ? Number(minimumFare) : 110,
+      cancellationFee: Number(cancellationFee) >= 0 ? Number(cancellationFee) : 100,
+      platformCommissionPercent: Number(platformCommissionPercent) >= 0 ? Number(platformCommissionPercent) : 15,
       nightMultiplier: Number(nightMultiplier) || 1.0,
       peakMultiplier: Number(peakMultiplier) || 1.0,
     });
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   // Live test distance state & calculation

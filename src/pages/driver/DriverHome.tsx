@@ -10,6 +10,8 @@ import { updateFirestoreDriverLocation, updateDriverOnlineStatus } from '../../s
 import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 import { DriverPendingApprovalView } from './DriverPendingApprovalView';
+import { TripRatingModal } from '../../components/passenger/TripRatingModal';
+import { Ride } from '../../types';
 import {
   DriverDashboardSkeleton,
   DriverTripHistorySkeleton,
@@ -33,6 +35,21 @@ export const DriverHome: React.FC = () => {
   const [locationSuccessMsg, setLocationSuccessMsg] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+  const [ratingRide, setRatingRide] = useState<Ride | null>(null);
+
+  // الكشف التلقائي عن أي رحلة مكتملة حديثاً لم يقم السائق بتقييمها بعد لإظهار بطاقة التقييم
+  useEffect(() => {
+    const unratedCompletedRide = rides.find(
+      r => (r.driverId === activeDriver.id || r.driverId === activeDriver.phone) && r.status === 'completed' && !r.driverRating
+    );
+
+    if (unratedCompletedRide) {
+      const dismissedKey = `dismissed_driver_rating_${unratedCompletedRide.id}`;
+      if (!sessionStorage.getItem(dismissedKey)) {
+        setRatingRide(unratedCompletedRide);
+      }
+    }
+  }, [rides, activeDriver.id, activeDriver.phone]);
 
   useEffect(() => {
     let isMounted = true;
@@ -382,6 +399,20 @@ export const DriverHome: React.FC = () => {
         isOpen={showRegisterModal}
         onClose={() => setShowRegisterModal(false)}
       />
+
+      {/* Post-Trip Rating and Feedback Modal for Driver */}
+      {ratingRide && (
+        <TripRatingModal
+          ride={ratingRide}
+          isOpen={Boolean(ratingRide)}
+          onClose={() => {
+            if (ratingRide) {
+              sessionStorage.setItem(`dismissed_driver_rating_${ratingRide.id}`, 'true');
+            }
+            setRatingRide(null);
+          }}
+        />
+      )}
     </div>
   );
 };
