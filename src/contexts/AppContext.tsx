@@ -120,6 +120,7 @@ interface AppContextType {
   // Driver actions
   currentDriverRide: Ride | null;
   pendingDriverRideRequest: Ride | null;
+  pendingDriverRideRequests: Ride[];
   toggleDriverOnline: (driverId: string, isOnline: boolean) => Promise<{ success: boolean; error?: string }>;
   submitDriverOffer: (
     rideId: string,
@@ -421,7 +422,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
             fetchedRides.push(rideData);
           }
-          setRides(fetchedRides);
+          const uniqueRidesMap = new Map<string, Ride>();
+          for (const ride of fetchedRides) {
+            if (['searching', 'offers_available'].includes(ride.status)) {
+              const key = ride.passengerId;
+              if (uniqueRidesMap.has(key)) {
+                const existing = uniqueRidesMap.get(key)!;
+                const existingTime = new Date(existing.requestedAt || 0).getTime();
+                const newTime = new Date(ride.requestedAt || 0).getTime();
+                if (newTime >= existingTime) {
+                  uniqueRidesMap.set(key, ride);
+                }
+              } else {
+                uniqueRidesMap.set(key, ride);
+              }
+            } else {
+              uniqueRidesMap.set(ride.id, ride);
+            }
+          }
+          setRides(Array.from(uniqueRidesMap.values()));
         },
         (err) => {
           if (err?.code !== 'unavailable') {
@@ -830,9 +849,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) || null;
 
   // Driver incoming requests (searching or offers_available and driver is online)
-  const pendingDriverRideRequest = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
-    ? rides.find(r => (r.status === 'searching' || r.status === 'offers_available')) || null
-    : null;
+  const pendingDriverRideRequests = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
+    ? rides.filter(r => 
+        (r.status === 'searching' || r.status === 'offers_available') &&
+        !(r.offers || []).some(o => o.driverId === activeDriver.id && o.status === 'declined')
+      )
+    : [];
+
+  const pendingDriverRideRequest = pendingDriverRideRequests[0] || null;
 
   // --------------------------------------------------------------------------
   // 4. PASSENGER REAL ACTIONS
@@ -1480,6 +1504,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         currentDriverRide,
         pendingDriverRideRequest,
+        pendingDriverRideRequests,
         toggleDriverOnline,
         submitDriverOffer,
         acceptRide,

@@ -26,7 +26,7 @@ export const DriverHome: React.FC = () => {
     drivers,
     toggleDriverOnline,
     currentDriverRide,
-    pendingDriverRideRequest,
+    pendingDriverRideRequests,
     rides,
   } = useApp();
 
@@ -36,6 +36,7 @@ export const DriverHome: React.FC = () => {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
   const [ratingRide, setRatingRide] = useState<Ride | null>(null);
+  const [selectedModalRide, setSelectedModalRide] = useState<Ride | null>(null);
 
   // الكشف التلقائي عن أي رحلة مكتملة حديثاً لم يقم السائق بتقييمها بعد لإظهار بطاقة التقييم
   useEffect(() => {
@@ -232,7 +233,75 @@ export const DriverHome: React.FC = () => {
               </div>
             )}
 
-            {/* Driver Main Control Card - Faithful to Prompt Section 21 */}
+            {/* Incoming Ride Requests Stacked List (Directly visible on screen without click) */}
+            {activeDriver.isOnline && pendingDriverRideRequests.length > 0 && (
+              <div className="space-y-3 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-black text-amber-400 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span>الطلبات الواردة من الركاب مباشرة ({pendingDriverRideRequests.length})</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">اضغط "عرض" للتفاصيل</span>
+                </div>
+
+                <div className="space-y-3">
+                  {pendingDriverRideRequests.map(ride => (
+                    <div
+                      key={ride.id}
+                      className="bg-slate-900 border-2 border-amber-500/60 hover:border-amber-500 rounded-3xl p-4 space-y-3 shadow-xl transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={ride.passengerPhoto || '/icon.jpg'}
+                            alt={ride.passengerName}
+                            className="w-10 h-10 rounded-full object-cover border-2 border-amber-500"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/icon.jpg';
+                            }}
+                          />
+                          <div>
+                            <div className="font-bold text-white text-sm">{ride.passengerName}</div>
+                            <div className="text-[10px] text-amber-400 font-semibold">
+                              ⭐ {ride.passengerRating || '4.9'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-left">
+                          <div className="text-xl font-black text-amber-400">
+                            {formatCurrencyDZD(ride.passengerOfferedPrice || ride.estimatedPrice)}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-medium">{ride.distanceKm} كم • ~{ride.estimatedDurationMins} د</div>
+                        </div>
+                      </div>
+
+                      {/* Route Summary */}
+                      <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-slate-300">
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-emerald-400 font-bold text-xs">📍</span>
+                          <span className="truncate text-white font-medium">{ride.pickup.name || ride.pickup.address}</span>
+                        </div>
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-amber-400 font-bold text-xs">🏁</span>
+                          <span className="truncate text-white font-medium">{ride.destination.name || ride.destination.address}</span>
+                        </div>
+                      </div>
+
+                      {/* View Details Button */}
+                      <button
+                        onClick={() => setSelectedModalRide(ride)}
+                        className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
+                      >
+                        <span>عرض تفاصيل الطلب والقبول 👁️</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Driver Main Control Card */}
             <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 shadow-2xl space-y-4">
               {/* Header Greeting & Motorcycle */}
               <div className="flex items-center justify-between">
@@ -389,11 +458,11 @@ export const DriverHome: React.FC = () => {
         )}
       </div>
 
-      {/* Incoming Request Alert Modal for Driver */}
-      {pendingDriverRideRequest && (
+      {/* Driver Incoming Ride Details Modal when clicking "عرض" */}
+      {selectedModalRide && (
         <DriverIncomingRideModal
-          ride={pendingDriverRideRequest}
-          onClose={() => {}}
+          ride={selectedModalRide}
+          onClose={() => setSelectedModalRide(null)}
         />
       )}
 
