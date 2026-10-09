@@ -11,7 +11,7 @@ import { ContactUsModal } from './components/support/ContactUsModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
 import { PushNotificationToast } from './components/shared/PushNotificationToast';
-import { GpsSettingsModal } from './components/shared/GpsSettingsModal';
+
 import { getRobustUserLocation } from './utils/geo';
 
 // Passenger Views
@@ -326,14 +326,7 @@ const AppContent: React.FC = () => {
           onClose={() => setIsContactUsOpen(false)}
         />
 
-        {/* Capacitor & Native Android GPS Settings Modal */}
-        <GpsSettingsModal
-          isOpen={isGpsModalOpen}
-          onClose={() => setIsGpsModalOpen(false)}
-          onRetryGps={handleRetryGps}
-          isLoading={isGpsLoading}
-          errorMessage={gpsErrorMsg}
-        />
+
       </div>
     </div>
   );

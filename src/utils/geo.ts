@@ -8,6 +8,7 @@ import {
   WILAYA_NAMES,
   findNearestAlgerianWilaya,
   findNearestLocalLocation,
+  getFamousPlacesForWilaya,
   AlgeriaLocationItem
 } from '../data/algeriaLocations';
 
@@ -19,7 +20,8 @@ export {
   ALL_58_WILAYAS,
   WILAYA_NAMES,
   findNearestAlgerianWilaya,
-  findNearestLocalLocation
+  findNearestLocalLocation,
+  getFamousPlacesForWilaya
 };
 export type { AlgeriaLocationItem };
 
@@ -146,16 +148,27 @@ export async function searchAlgeriaPlaces(
 ): Promise<{ name: string; wilaya: string; coords: Coordinates }[]> {
   const trimmed = queryText ? queryText.trim() : '';
 
-  // 1. Instant local results (supports any single letter or term e.g. "ق", "قالمة", "عقبي", "حمام")
+  // If query is empty, return exactly 2 famous places of passenger's wilaya
+  if (!trimmed) {
+    const targetWilaya = wilayaFilter && wilayaFilter !== 'الكل' ? wilayaFilter : 'قالمة';
+    const famousPlaces = getFamousPlacesForWilaya(targetWilaya);
+    return famousPlaces.slice(0, 2).map(item => ({
+      name: item.name,
+      wilaya: item.wilaya,
+      coords: item.coords,
+    }));
+  }
+
+  // 1. Instant local results (supports any single letter or term across all 58 wilayas and 1,541 communes)
   const localMatches = searchLocalLocations(trimmed, wilayaFilter).map(item => ({
     name: item.name,
     wilaya: item.wilaya,
     coords: item.coords,
   }));
 
-  // If query is empty or less than 3 characters, instant local dataset provides perfect results
+  // If query is 1-2 characters, instant local dataset provides perfect results
   if (trimmed.length < 3) {
-    return localMatches.slice(0, 60);
+    return localMatches.slice(0, 40);
   }
 
   // 2. For queries 3+ chars, also query Nominatim in background with timeout

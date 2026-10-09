@@ -1,8 +1,27 @@
 import { Coordinates } from '../types';
 import { ALL_WILAYAS_COMPREHENSIVE_PLACES } from './allWilayasPlaces';
 import { ALL_58_WILAYAS, WILAYA_NAMES, findNearestAlgerianWilaya, WilayaInfo } from './wilayasData';
+import {
+  convertCommunesToLocationItems,
+  ALL_WILAYAS_LIST,
+  ALL_COMMUNES_FLAT,
+  ALL_DAIRAS_FLAT,
+  getCommunesByWilaya,
+  getDairasByWilaya,
+  getWilayaByCodeOrName,
+} from './algerianAdministrativeDivisions';
 
-export { ALL_58_WILAYAS, WILAYA_NAMES, findNearestAlgerianWilaya };
+export {
+  ALL_58_WILAYAS,
+  WILAYA_NAMES,
+  findNearestAlgerianWilaya,
+  ALL_WILAYAS_LIST,
+  ALL_COMMUNES_FLAT,
+  ALL_DAIRAS_FLAT,
+  getCommunesByWilaya,
+  getDairasByWilaya,
+  getWilayaByCodeOrName,
+};
 export type { WilayaInfo };
 
 export interface AlgeriaLocationItem {
@@ -1154,7 +1173,27 @@ const BASE_LOCATIONS: AlgeriaLocationItem[] = [
 export const COMPREHENSIVE_ALGERIA_LOCATIONS: AlgeriaLocationItem[] = [
   ...BASE_LOCATIONS,
   ...ALL_WILAYAS_COMPREHENSIVE_PLACES,
+  ...convertCommunesToLocationItems(),
 ];
+
+/**
+ * Returns exactly 2 famous places for the passenger's current Wilaya
+ */
+export function getFamousPlacesForWilaya(wilayaName: string): AlgeriaLocationItem[] {
+  if (!wilayaName) return COMPREHENSIVE_ALGERIA_LOCATIONS.slice(0, 2);
+  const normTarget = normalizeSearchString(wilayaName);
+  const placesInWilaya = COMPREHENSIVE_ALGERIA_LOCATIONS.filter(item => {
+    const itemWilaya = normalizeSearchString(item.wilaya);
+    return itemWilaya.includes(normTarget) || normTarget.includes(itemWilaya);
+  });
+  if (placesInWilaya.length >= 2) {
+    return placesInWilaya.slice(0, 2);
+  }
+  if (placesInWilaya.length === 1) {
+    return [placesInWilaya[0], COMPREHENSIVE_ALGERIA_LOCATIONS[0]];
+  }
+  return COMPREHENSIVE_ALGERIA_LOCATIONS.slice(0, 2);
+}
 
 /**
  * Normalizes an Arabic/Latin query string for flexible matching

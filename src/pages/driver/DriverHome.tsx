@@ -336,7 +336,7 @@ export const DriverHome: React.FC = () => {
                     <span>رحلات اليوم</span>
                   </div>
                   <div className="text-2xl font-black text-white">
-                    {todayTrips.length || 8}
+                    {todayTrips.length}
                   </div>
                   <div className="text-[10px] text-emerald-400 font-medium">مكتملة بنجاح</div>
                 </div>
@@ -347,9 +347,9 @@ export const DriverHome: React.FC = () => {
                     <span>الأرباح الصافية</span>
                   </div>
                   <div className="text-xl font-black text-amber-400">
-                    {formatCurrencyDZD(todayNetEarnings || 2850)}
+                    {formatCurrencyDZD(todayNetEarnings)}
                   </div>
-                  <div className="text-[10px] text-slate-500">بعد عمولة المنصة (15%)</div>
+                  <div className="text-[10px] text-emerald-400 font-medium">العمولة 0% (أرباحك 100% Cash)</div>
                 </div>
               </div>
             </div>

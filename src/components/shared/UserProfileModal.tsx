@@ -302,7 +302,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               src={
                 photoUrl ||
                 currentUser?.photoURL ||
-                'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+                (activePassenger.role === 'admin'
+                  ? '/assets/images/admin_logo.jpg'
+                  : activePassenger.role === 'driver'
+                  ? '/assets/images/driver_logo.jpg'
+                  : '/assets/images/passenger_logo.jpg')
               }
               alt={name}
               className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl"

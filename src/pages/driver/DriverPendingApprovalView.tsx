@@ -292,7 +292,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
                     ? 'تم رفض طلب التسجيل من طرف المالك'
                     : isMissingDocs
                     ? 'ملف التسجيل غير مكتمل (ينقصك إرفاق الصور الـ 4)'
-                    : 'طلب السائق قيد المراجعة والتدقيق من طرف المالك'}
+                    : `طلب السائق قيد المراجعة يا ${activeDriver.name || 'السائق'}. تاريخ الطلب يرسل للمالك`}
                 </div>
               </div>
             </div>

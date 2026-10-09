@@ -132,7 +132,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
               <div className="space-y-0.5">
                 <span className="text-[10px] text-slate-400">الخط المباشر للإدارة والدعم:</span>
                 <p className="text-lg font-mono font-black text-white" dir="ltr">
-                  {displayPhone}
+                  اضغط للاتصال
                 </p>
               </div>
 

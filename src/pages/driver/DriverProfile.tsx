@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { User, Star, Award, Shield, Phone, MapPin, BadgeCheck, MessageSquare } from 'lucide-react';
 import { MotoIcon } from '../../components/shared/MotoIcon';
-import { DriverIdentityVerificationCard } from '../../components/driver/DriverIdentityVerificationCard';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
@@ -63,12 +62,6 @@ export const DriverProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Identity Verification Status Card (علامة صح خضراء والوثائق المعتمدة لتعزيز الثقة) */}
-      <DriverIdentityVerificationCard
-        driver={activeDriver}
-        onOpenDocuments={() => setIsEditModalOpen(true)}
-        onOpenContactSupport={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
-      />
 
       {/* Motorcycle Specs */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">

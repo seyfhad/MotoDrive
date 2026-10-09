@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Coordinates } from '../../types';
 import {
@@ -6,6 +6,7 @@ import {
   FEATURED_WILAYAS,
   ALL_58_WILAYAS,
   findNearestLocalLocation,
+  findNearestAlgerianWilaya,
   calculateDistanceKm,
   estimateDurationMinutes,
   reverseGeocodeCoords,
@@ -36,26 +37,15 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 }) => {
   const { requestRide, pricing } = useApp();
 
-  const defaultStart: Coordinates = initialPickup || {
-    lat: 36.7538,
-    lng: 3.0588,
-    name: 'موقعي الحالي',
-    address: 'الجزائر',
-  };
-
-  const [pickup, setPickup] = useState<Coordinates>(defaultStart);
+  const [pickup, setPickup] = useState<Coordinates>(
+    initialPickup || ALGERIA_LOCATIONS[0].coords // Default: Guelma Centre or first hotspot
+  );
   const [destination, setDestination] = useState<Coordinates>(
-    initialDestination || {
-      lat: Number((defaultStart.lat + 0.012).toFixed(5)),
-      lng: Number((defaultStart.lng + 0.012).toFixed(5)),
-      name: 'حدد الوجهة المطلوبة',
-      address: 'اختر الوجهة من البحث أو الخريطة',
-    }
+    initialDestination || ALGERIA_LOCATIONS[19].coords // Default: Hammam Debagh
   );
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedWilaya, setSelectedWilaya] = useState<string>('الكل');
   const [searchResults, setSearchResults] = useState<{ name: string; wilaya: string; coords: Coordinates }[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
@@ -67,7 +57,13 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Real-time location search: instant results on any letter typed or wilaya clicked
+  // Automatically detect passenger's current Wilaya
+  const currentWilaya = useMemo(() => {
+    const nearest = findNearestAlgerianWilaya(pickup.lat, pickup.lng);
+    return nearest?.name || 'قالمة';
+  }, [pickup.lat, pickup.lng]);
+
+  // Real-time location search: instant results on any letter typed
   React.useEffect(() => {
     let isCancelled = false;
     const trimmed = searchQuery.trim();
@@ -76,7 +72,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       setIsSearching(true);
     }
 
-    searchAlgeriaPlaces(trimmed, selectedWilaya).then(results => {
+    // If query is empty, show only 2 famous places of passenger's wilaya; otherwise search across all 58 wilayas
+    searchAlgeriaPlaces(trimmed, trimmed ? 'الكل' : currentWilaya).then(results => {
       if (!isCancelled) {
         setSearchResults(results);
         setIsSearching(false);
@@ -86,7 +83,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [searchQuery, selectedWilaya]);
+  }, [searchQuery, currentWilaya]);
 
   // Auto-detect GPS position immediately on modal open if initialPickup is default/missing
   React.useEffect(() => {
@@ -167,10 +164,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       const address = await reverseGeocodeCoords(latitude, longitude);
       const nearest = findNearestLocalLocation(latitude, longitude);
 
-      if (nearest?.item?.wilaya) {
-        setSelectedWilaya(nearest.item.wilaya);
-      }
-
       const placeName =
         address ||
         (nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقعي الحالي (GPS)');
@@ -197,9 +190,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
         name: nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقعي الحالي (GPS)',
         address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
       };
-      if (nearest?.item?.wilaya) {
-        setSelectedWilaya(nearest.item.wilaya);
-      }
       if (searchType === 'pickup') setPickup(fallbackLoc);
       else setDestination(fallbackLoc);
       setSearchType(null);
@@ -304,12 +294,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                   type="text"
                   placeholder={
                     searchType === 'pickup'
-                      ? selectedWilaya !== 'الكل'
-                        ? `ابحث عن أي مكان أو بلدية في ${selectedWilaya} أو اكتب حرفاً...`
-                        : 'ابحث عن مكان الانطلاق (اكتب اسم المكان أو البلدية أو حرفاً)...'
-                      : selectedWilaya !== 'الكل'
-                      ? `ابحث عن الوجهة في ${selectedWilaya} أو أي ولاية...`
-                        : 'ابحث عن الوجهة (اكتب اسم المكان أو البلدية أو حرفاً)...'
+                      ? 'ابحث عن مكان الانطلاق (اسم البلدية، الدائرة، أو المكان)...'
+                      : 'ابحث عن الوجهة (اسم البلدية، الدائرة، أو المكان)...'
                   }
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
@@ -326,50 +312,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
-              </div>
-            </div>
-
-            {/* 58 Wilayas Selector & Quick Filter */}
-            <div className="space-y-2">
-              <div className="text-[11px] text-slate-400 flex items-center justify-between px-1">
-                <span>تحديد الولاية (58 ولاية):</span>
-                <span className="text-[10px] text-amber-400 font-bold">
-                  {selectedWilaya === 'الكل' ? 'جميع الولايات والمدن' : `ولاية ${selectedWilaya}`}
-                </span>
-              </div>
-
-              {/* 58 Wilayas Dropdown */}
-              <div className="relative">
-                <select
-                  value={selectedWilaya}
-                  onChange={e => setSelectedWilaya(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2 px-3 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
-                >
-                  <option value="الكل">🇩🇿 كل ولايات الجزائر (58 ولاية - تغطية وطنية)</option>
-                  {ALL_58_WILAYAS.map(w => (
-                    <option key={w.code} value={w.name}>
-                      {String(w.code).padStart(2, '0')} - ولاية {w.name} ({w.nameFr})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Quick Horizontal Filter Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {FEATURED_WILAYAS.map(w => (
-                  <button
-                    key={w}
-                    type="button"
-                    onClick={() => setSelectedWilaya(w)}
-                    className={`px-3 py-1.5 rounded-xl text-xs whitespace-nowrap transition-all border shrink-0 ${
-                      selectedWilaya === w
-                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
-                        : 'bg-slate-950/80 text-slate-300 hover:bg-slate-800 border-slate-800 font-medium'
-                    }`}
-                  >
-                    {w === 'قالمة' ? '📍 قالمة (Guelma)' : w}
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -404,9 +346,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 <span>
                   {searchQuery.trim()
                     ? `الأماكن المطابقة لـ "${searchQuery}" (${searchResults.length}):`
-                    : selectedWilaya !== 'الكل'
-                    ? `أماكن وبلديات ولاية ${selectedWilaya} (${searchResults.length}):`
-                    : 'أماكن ومحطات شهيرة وسريعة:'}
+                    : `أماكن ومحطات شهيرة وسريعة في ولاية ${currentWilaya}:`}
                 </span>
                 {isSearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
               </div>
