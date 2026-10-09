@@ -36,11 +36,21 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 }) => {
   const { requestRide, pricing } = useApp();
 
-  const [pickup, setPickup] = useState<Coordinates>(
-    initialPickup || ALGERIA_LOCATIONS[0].coords // Default: Guelma Centre or first hotspot
-  );
+  const defaultStart: Coordinates = initialPickup || {
+    lat: 36.7538,
+    lng: 3.0588,
+    name: 'موقعي الحالي',
+    address: 'الجزائر',
+  };
+
+  const [pickup, setPickup] = useState<Coordinates>(defaultStart);
   const [destination, setDestination] = useState<Coordinates>(
-    initialDestination || ALGERIA_LOCATIONS[19].coords // Default: Hammam Debagh
+    initialDestination || {
+      lat: Number((defaultStart.lat + 0.012).toFixed(5)),
+      lng: Number((defaultStart.lng + 0.012).toFixed(5)),
+      name: 'حدد الوجهة المطلوبة',
+      address: 'اختر الوجهة من البحث أو الخريطة',
+    }
   );
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);

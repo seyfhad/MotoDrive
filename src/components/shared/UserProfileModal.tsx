@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { syncUserProfile } from '../../services/firestoreService';
 import { db } from '../../services/firebase';
@@ -30,12 +30,35 @@ interface UserProfileModalProps {
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
   const { activePassenger, setActivePassenger, currentUser, setCurrentUser, logout } = useApp();
 
+  const isOwnerAccount =
+    activePassenger.role === 'admin' ||
+    activePassenger.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com';
+
+  const resolvedInitialPhone =
+    isOwnerAccount && (!activePassenger.phone || activePassenger.phone === '0550000000' || activePassenger.phone === '0550123456')
+      ? '0662688714'
+      : activePassenger.phone || '';
+
   const [name, setName] = useState(activePassenger.name || '');
-  const [phone, setPhone] = useState(activePassenger.phone || '');
+  const [phone, setPhone] = useState(resolvedInitialPhone);
   const [photoUrl, setPhotoUrl] = useState(activePassenger.photoUrl || currentUser?.photoURL || '');
   const [idDocUrl, setIdDocUrl] = useState<string | undefined>(
     (activePassenger as any).idDocumentUrl || undefined
   );
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(activePassenger.name || '');
+      const cleanOwnerPhone =
+        isOwnerAccount && (!activePassenger.phone || activePassenger.phone === '0550000000' || activePassenger.phone === '0550123456')
+          ? '0662688714'
+          : activePassenger.phone || '';
+      setPhone(cleanOwnerPhone);
+      setPhotoUrl(activePassenger.photoUrl || currentUser?.photoURL || '');
+      setIdDocUrl((activePassenger as any).idDocumentUrl || undefined);
+    }
+  }, [isOpen, activePassenger, isOwnerAccount, currentUser]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -206,6 +229,13 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     try {
       await syncUserProfile(updatedUser);
       setActivePassenger(updatedUser);
+      try {
+        localStorage.setItem(
+          'motodrive_user_session',
+          JSON.stringify({ user: updatedUser, timestamp: Date.now() })
+        );
+        localStorage.setItem('motodrive_remembered_phone', phone.trim());
+      } catch (e) {}
       setIsSubmitting(false);
       setSuccessMsg(true);
       setTimeout(() => {
@@ -319,7 +349,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             <div className="text-right">
               <span className="text-[10px] text-emerald-400 font-bold block">حساب مفعل برقم الهاتف</span>
               <span className="text-slate-300 font-mono text-[11px]" dir="ltr">
-                {activePassenger.phone || phone || '0550123456'}
+                {phone || (isOwnerAccount ? '0662688714' : activePassenger.phone) || '0662688714'}
               </span>
             </div>
           </div>

@@ -40,9 +40,9 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
 
     const ownerProfile: any = {
       id: 'admin-owner-seyfhad',
-      name: 'مالك التطبيق (seyfhad)',
+      name: 'مالك التطبيق (Seyf)',
       email: ADMIN_OWNER_EMAIL,
-      phone: '0550000000',
+      phone: '0662688714',
       role: 'admin',
       status: 'active',
       createdAt: new Date().toISOString(),

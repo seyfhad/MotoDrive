@@ -358,15 +358,23 @@ export const subscribeToAuth = (
       const userSnap = await getDoc(userDocRef);
 
       if (userSnap.exists()) {
-        callback(firebaseUser, userSnap.data() as UserProfile);
+        const snapData = userSnap.data() as UserProfile;
+        if (
+          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' &&
+          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456')
+        ) {
+          snapData.phone = '0662688714';
+        }
+        callback(firebaseUser, snapData);
       } else {
+        const isOwner = firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com';
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-          phone: firebaseUser.phoneNumber || '0550123456',
+          phone: firebaseUser.phoneNumber || (isOwner ? '0662688714' : '0550123456'),
           email: firebaseUser.email || undefined,
           photoUrl: firebaseUser.photoURL || undefined,
-          role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
+          role: isOwner ? 'admin' : 'passenger',
           status: 'active',
           cancellationCount: 0,
           createdAt: new Date().toISOString(),
@@ -386,13 +394,14 @@ export const subscribeToAuth = (
       }
     } catch (err: any) {
       console.warn('Auth subscriber profile fetch warning (using offline fallback profile):', err?.message || err);
+      const isOwner = firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com';
       const fallbackProfile: UserProfile = {
         id: firebaseUser.uid,
         name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-        phone: firebaseUser.phoneNumber || '0550123456',
+        phone: firebaseUser.phoneNumber || (isOwner ? '0662688714' : '0550123456'),
         email: firebaseUser.email || undefined,
         photoUrl: firebaseUser.photoURL || undefined,
-        role: firebaseUser.email === 'seyfhad@gmail.com' ? 'admin' : 'passenger',
+        role: isOwner ? 'admin' : 'passenger',
         status: 'active',
         cancellationCount: 0,
         createdAt: new Date().toISOString(),
@@ -1006,7 +1015,12 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     if (user.photoURL && !profile.photoUrl) updates.photoUrl = user.photoURL;
     if (user.displayName && (!profile.name || profile.name.includes('مستخدم'))) updates.name = user.displayName;
     if (user.email && !profile.email) updates.email = user.email;
-    if (user.email === 'seyfhad@gmail.com') updates.role = 'admin';
+    if (user.email === 'seyfhad@gmail.com') {
+      updates.role = 'admin';
+      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456') {
+        updates.phone = '0662688714';
+      }
+    }
 
     if (Object.keys(updates).length > 0) {
       try {
@@ -1020,7 +1034,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     profile = {
       id: user.uid,
       name: user.displayName || 'مستخدم MotoDrive',
-      phone: user.phoneNumber || '0550123456',
+      phone: user.phoneNumber || (user.email === 'seyfhad@gmail.com' ? '0662688714' : '0550123456'),
       email: user.email || undefined,
       photoUrl: user.photoURL || undefined,
       role: user.email === 'seyfhad@gmail.com' ? 'admin' : role,

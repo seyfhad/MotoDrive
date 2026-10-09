@@ -21,8 +21,13 @@ export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
 
   const [showBookingModal, setShowBookingModal] = useState(false);
-  const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>(ALGERIA_LOCATIONS[2].coords);
-  const [selectedDestination, setSelectedDestination] = useState<Coordinates | null>(ALGERIA_LOCATIONS[4].coords);
+  const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>({
+    lat: 36.7538,
+    lng: 3.0588,
+    name: 'جاري تحديد موقعك الحالي...',
+    address: 'الجزائر',
+  });
+  const [selectedDestination, setSelectedDestination] = useState<Coordinates | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
   const [mapSelectionMode, setMapSelectionMode] = useState<'pickup' | 'destination' | null>(null);

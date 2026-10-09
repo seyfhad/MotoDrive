@@ -240,7 +240,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (cachedSessionStr) {
           const cachedSession = JSON.parse(cachedSessionStr);
           if (cachedSession?.user) {
-            const cachedUser = cachedSession.user;
+            const cachedUser = { ...cachedSession.user };
+            if (
+              (cachedUser.role === 'admin' || cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com') &&
+              (!cachedUser.phone || cachedUser.phone === '0550000000' || cachedUser.phone === '0550123456')
+            ) {
+              cachedUser.phone = '0662688714';
+            }
             setActivePassenger(cachedUser);
             setCurrentUser({
               uid: cachedUser.id,
@@ -272,6 +278,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
       if (firebaseUser && userProfile) {
+        if (
+          (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+            userProfile.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+            userProfile.role === 'admin') &&
+          (!userProfile.phone || userProfile.phone === '0550000000' || userProfile.phone === '0550123456')
+        ) {
+          userProfile.phone = '0662688714';
+        }
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
@@ -309,8 +323,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
         }
       } else {
-        setCurrentUser(null);
-        setActivePassenger(GUEST_PASSENGER);
+        // Do NOT wipe local phone or passcode-admin session if one is saved in localStorage
+        const existingLocalSession = localStorage.getItem('motodrive_user_session');
+        if (!existingLocalSession) {
+          setCurrentUser(null);
+          setActivePassenger(GUEST_PASSENGER);
+        } else {
+          hydrateLocalSession();
+        }
       }
     });
 
