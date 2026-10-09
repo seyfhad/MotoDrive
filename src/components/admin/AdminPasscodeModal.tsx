@@ -35,7 +35,7 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
       uid: 'admin-owner-seyfhad',
       displayName: 'مالك التطبيق (Admin)',
       email: ADMIN_OWNER_EMAIL,
-      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      photoURL: '/assets/images/admin_logo.jpg',
     };
 
     const ownerProfile: any = {

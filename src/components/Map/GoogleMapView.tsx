@@ -108,6 +108,61 @@ const MapController: React.FC<{
     const origin = { lat: start.lat, lng: start.lng };
     const dest = { lat: end.lat, lng: end.lng };
 
+    let animInterval: any = null;
+    let cleanupAnim: (() => void) | null = null;
+
+    const setupAnimatedPolyline = (path: any) => {
+      // 1. Base solid path
+      const polyline = new google.maps.Polyline({
+        path,
+        strokeColor: routeColor || '#f59e0b',
+        strokeOpacity: 0.85,
+        strokeWeight: 6,
+        map,
+      });
+      routePolylineRef.current = polyline;
+
+      // 2. Animated dashing / pulsing symbol on top to show movement towards passenger
+      const lineSymbol = {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 3,
+        strokeColor: '#ffffff',
+        fillColor: '#10b981',
+        fillOpacity: 1,
+        strokeWeight: 1.5,
+      };
+
+      const animatedLine = new google.maps.Polyline({
+        path,
+        strokeColor: '#10b981',
+        strokeOpacity: 0,
+        icons: [
+          {
+            icon: lineSymbol,
+            offset: '0%',
+            repeat: '60px',
+          },
+        ],
+        map,
+      });
+
+      let count = 0;
+      animInterval = setInterval(() => {
+        count = (count + 1.5) % 100;
+        const icons = animatedLine.get('icons');
+        if (icons && icons[0]) {
+          icons[0].offset = count + '%';
+          animatedLine.set('icons', icons);
+        }
+      }, 50);
+
+      // Keep both clean on unmount
+      return () => {
+        clearInterval(animInterval);
+        animatedLine.setMap(null);
+      };
+    };
+
     // Try TWO_WHEELER first for motorcycles, fallback to DRIVING, then free OSRM road geometry
     const computeRouteWithMode = async (mode: 'TWO_WHEELER' | 'DRIVING') => {
       try {
@@ -121,14 +176,7 @@ const MapController: React.FC<{
         const res = await (routesLib.Route as any).computeRoutes(request);
         const route = res.routes?.[0];
         if (route?.path && route.path.length > 0) {
-          const polyline = new google.maps.Polyline({
-            path: route.path,
-            strokeColor: routeColor || '#f59e0b',
-            strokeOpacity: 0.9,
-            strokeWeight: 5,
-            map,
-          });
-          routePolylineRef.current = polyline;
+          cleanupAnim = setupAnimatedPolyline(route.path);
           return true;
         }
       } catch {
@@ -162,21 +210,16 @@ const MapController: React.FC<{
         computeRouteWithMode('DRIVING').then(async (drvSuccess) => {
           if (!drvSuccess && map) {
             const osrmPath = await fetchOsrmRoute();
-            const polyline = new google.maps.Polyline({
-              path: osrmPath || [origin, dest],
-              strokeColor: '#f59e0b',
-              strokeOpacity: 0.85,
-              strokeWeight: 5,
-              geodesic: !osrmPath,
-              map,
-            });
-            routePolylineRef.current = polyline;
+            const finalPath = osrmPath || [origin, dest];
+            cleanupAnim = setupAnimatedPolyline(finalPath);
           }
         });
       }
     });
 
     return () => {
+      if (animInterval) clearInterval(animInterval);
+      if (cleanupAnim) cleanupAnim();
       if (routePolylineRef.current) {
         routePolylineRef.current.setMap(null);
         routePolylineRef.current = null;

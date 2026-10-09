@@ -257,10 +257,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   src={
                     currentUser?.photoURL ||
                     activePassenger.photoUrl ||
-                    'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'
+                    (activePassenger.role === 'admin'
+                      ? '/assets/images/admin_logo.jpg'
+                      : activePassenger.role === 'driver'
+                      ? '/assets/images/driver_logo.jpg'
+                      : '/assets/images/passenger_logo.jpg')
                   }
                   alt={currentUser?.displayName || activePassenger.name}
                   className="w-full h-full rounded-full object-cover border-2 border-emerald-500 shadow-lg"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      activePassenger.role === 'admin'
+                        ? '/assets/images/admin_logo.jpg'
+                        : activePassenger.role === 'driver'
+                        ? '/assets/images/driver_logo.jpg'
+                        : '/assets/images/passenger_logo.jpg';
+                  }}
                 />
                 <span className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 border-2 border-slate-900 flex items-center justify-center text-slate-950 text-[10px] font-bold">
                   ✓

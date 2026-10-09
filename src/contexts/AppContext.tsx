@@ -1161,7 +1161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: driverData.name || 'سائق جديد',
       phone: driverData.phone || '',
       email: driverData.email,
-      photoUrl: driverData.photoUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      photoUrl: driverData.photoUrl || '/assets/images/driver_logo.jpg',
       wilaya: driverData.wilaya || 'الجزائر العاصمة',
       municipality: driverData.municipality || 'الجزائر',
       birthDate: driverData.birthDate,

@@ -210,7 +210,7 @@ export interface PricingSettings {
   pricePerMinute: number; // e.g. 5 DA
   minimumFare: number; // e.g. 150 DA
   cancellationFee: number; // e.g. 100 DA
-  platformCommissionPercent: number; // e.g. 15%
+  platformCommissionPercent: number; // 0% (Driver keeps 100% of income)
   nightMultiplier: number; // e.g. 1.2
   peakMultiplier: number; // e.g. 1.15
   isTimeCalculationEnabled: boolean;

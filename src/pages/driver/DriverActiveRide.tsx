@@ -17,8 +17,8 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
   const [cashCollected, setCashCollected] = useState(false);
 
   const agreedPrice = ride.finalPrice || ride.estimatedPrice;
-  const commissionRate = (pricing.driverCommissionPercent || 15) / 100;
-  const driverNetEarnings = ride.driverEarning || Math.round(agreedPrice * (1 - commissionRate));
+  const commissionRate = (pricing.platformCommissionPercent ?? 0) / 100;
+  const driverNetEarnings = agreedPrice; // Full 100% earnings to the driver (0% commission)
 
   const handleNextStep = () => {
     advanceRideStatus(ride.id);
@@ -63,9 +63,12 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
       <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
-            src={ride.passengerPhoto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150'}
+            src={ride.passengerPhoto || '/assets/images/passenger_logo.jpg'}
             alt={ride.passengerName}
             className="w-11 h-11 rounded-full border border-slate-700 object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/assets/images/passenger_logo.jpg';
+            }}
           />
           <div>
             <div className="text-sm font-bold text-white flex items-center gap-2">

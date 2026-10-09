@@ -312,7 +312,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl"
               onError={(e) => {
                 (e.target as HTMLImageElement).src =
-                  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150';
+                  activePassenger.role === 'admin'
+                    ? '/assets/images/admin_logo.jpg'
+                    : activePassenger.role === 'driver'
+                    ? '/assets/images/driver_logo.jpg'
+                    : '/assets/images/passenger_logo.jpg';
               }}
             />
             {isUploadingPhoto ? (

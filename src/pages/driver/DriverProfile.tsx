@@ -29,9 +29,12 @@ export const DriverProfile: React.FC = () => {
       <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 shadow-xl text-center space-y-3">
         <div className="relative w-20 h-20 mx-auto">
           <img
-            src={activeDriver.photoUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
+            src={activeDriver.photoUrl || '/assets/images/driver_logo.jpg'}
             alt={activeDriver.name}
             className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/assets/images/driver_logo.jpg';
+            }}
           />
           <span
             className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold ${

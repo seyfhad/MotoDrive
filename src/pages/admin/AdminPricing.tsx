@@ -16,7 +16,7 @@ export const AdminPricing: React.FC = () => {
   const [pricePerMinute, setPricePerMinute] = useState(pricing.pricePerMinute ?? 2);
   const [minimumFare, setMinimumFare] = useState(pricing.minimumFare ?? 110);
   const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee ?? 100);
-  const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent ?? 15);
+  const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent ?? 0);
   const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier ?? 1.0);
   const [peakMultiplier, setPeakMultiplier] = useState(pricing.peakMultiplier ?? 1.0);
 
@@ -28,7 +28,7 @@ export const AdminPricing: React.FC = () => {
     setPricePerMinute(pricing.pricePerMinute ?? 2);
     setMinimumFare(pricing.minimumFare ?? 110);
     setCancellationFee(pricing.cancellationFee ?? 100);
-    setPlatformCommissionPercent(pricing.platformCommissionPercent ?? 15);
+    setPlatformCommissionPercent(pricing.platformCommissionPercent ?? 0);
     setNightMultiplier(pricing.nightMultiplier ?? 1.0);
     setPeakMultiplier(pricing.peakMultiplier ?? 1.0);
   }, [pricing]);
@@ -42,7 +42,7 @@ export const AdminPricing: React.FC = () => {
       pricePerMinute: Number(pricePerMinute) >= 0 ? Number(pricePerMinute) : 2,
       minimumFare: Number(minimumFare) >= 0 ? Number(minimumFare) : 110,
       cancellationFee: Number(cancellationFee) >= 0 ? Number(cancellationFee) : 100,
-      platformCommissionPercent: Number(platformCommissionPercent) >= 0 ? Number(platformCommissionPercent) : 15,
+      platformCommissionPercent: Number(platformCommissionPercent) >= 0 ? Number(platformCommissionPercent) : 0,
       nightMultiplier: Number(nightMultiplier) || 1.0,
       peakMultiplier: Number(peakMultiplier) || 1.0,
     });

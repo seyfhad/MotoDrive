@@ -34,6 +34,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
   const { setCurrentUser, setActivePassenger, setActiveDriver, setCurrentRole, broadcastNotification } = useApp();
 
   const [activeFormTab, setActiveFormTab] = useState<'passenger' | 'driver'>('passenger');
+  const [passengerMode, setPassengerMode] = useState<'register' | 'login'>('register');
   const [driverMode, setDriverMode] = useState<'register' | 'login'>('register');
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
 
@@ -552,16 +553,55 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         {/* PASSENGER DIRECT FORM */}
         {activeFormTab === 'passenger' && (
           <form onSubmit={handlePassengerSubmit} className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-2xl backdrop-blur-md animate-in fade-in duration-200">
+            {/* Passenger Sub-Mode Switcher: Create Account vs Login */}
+            <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setPassengerMode('register');
+                  setFormError(null);
+                }}
+                className={`py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                  passengerMode === 'register'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>إنشاء حساب راكب جديد</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPassengerMode('login');
+                  setFormError(null);
+                }}
+                className={`py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                  passengerMode === 'login'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>تسجيل دخول راكب</span>
+              </button>
+            </div>
+
             <div className="text-right">
               <h3 className="text-xs font-black text-amber-400 flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>تسجيل أو دخول الراكب برقم الهاتف</span>
+                <span>
+                  {passengerMode === 'register' ? 'إنشاء حساب راكب جديد' : 'تسجيل دخول راكب برقم الهاتف'}
+                </span>
               </h3>
             </div>
 
             <div className="space-y-2.5">
               <div>
-                <label className="text-[11px] font-bold text-slate-300 block mb-1">الاسم الكامل:</label>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  {passengerMode === 'register' ? 'الاسم الكامل:' : 'الاسم الكامل (اختياري عند وجود حساب سابق):'}
+                </label>
                 <div className="relative">
                   <input
                     type="text"
@@ -575,7 +615,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
               </div>
 
               <div>
-                <label className="text-[11px] font-bold text-slate-300 block mb-1">رقم الهاتف (للتواصل عند الانطلاق):</label>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">رقم الهاتف (للتواصل وحفظ الحساب):</label>
                 <div className="relative">
                   <input
                     type="tel"
@@ -598,11 +638,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
               {isPassengerSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري الدخول...</span>
+                  <span>جاري المتابعة...</span>
                 </>
               ) : (
                 <>
-                  <span>🚀 الانطلاق وتصفح الرحلات كراكب</span>
+                  <span>
+                    {passengerMode === 'register'
+                      ? '🚀 إنشاء الحساب والانطلاق كراكب'
+                      : '🔑 تسجيل الدخول ومتابعة الرحلات'}
+                  </span>
                 </>
               )}
             </button>

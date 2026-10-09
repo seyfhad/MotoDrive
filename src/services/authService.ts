@@ -993,7 +993,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
           uid: 'owner-seyfhad',
           displayName: 'سيف الدين (المالك)',
           email: 'seyfhad@gmail.com',
-          photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+          photoURL: '/assets/images/admin_logo.jpg',
         } as any;
       }
     }

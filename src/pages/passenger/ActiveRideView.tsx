@@ -163,9 +163,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <img
-                          src={offer.driverPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
+                          src={offer.driverPhoto || '/assets/images/driver_logo.jpg'}
                           alt={offer.driverName}
                           className="w-11 h-11 rounded-full border-2 border-amber-500 object-cover shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/assets/images/driver_logo.jpg';
+                          }}
                         />
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -524,9 +527,12 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
-            src={ride.driverPhoto || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'}
+            src={ride.driverPhoto || '/assets/images/driver_logo.jpg'}
             alt={ride.driverName}
             className="w-12 h-12 rounded-full border-2 border-amber-500 object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/assets/images/driver_logo.jpg';
+            }}
           />
           <div>
             <div className="flex items-center gap-2 flex-wrap">

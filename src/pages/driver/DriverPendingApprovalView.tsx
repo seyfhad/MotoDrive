@@ -460,10 +460,11 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
             </div>
             <a
               href="tel:0662688714"
-              className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 border border-amber-500/30 text-amber-400 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+              className="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-amber-500/30 text-amber-400 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-sm"
+              title="اتصال مباشر بالإدارة"
             >
+              <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
               <span>اتصل بالإدارة</span>
-              <span className="font-mono text-[11px]" dir="ltr">0662688714</span>
             </a>
           </div>
 
