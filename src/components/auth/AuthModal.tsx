@@ -108,11 +108,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       const { profile, driver } = await findUserAndDriverByPhone(cleanPhone);
+      const isOwnerPhone = cleanPhone === '0662688714' || cleanPhone === '+213662688714' || cleanPhone === '213662688714';
+
+      if (!profile && !driver && !isOwnerPhone) {
+        setErrorMsg('⚠️ هذا الرقم غير مسجل في النظام. يرجى الانتقال إلى تبويب "إنشاء حساب جديد" لتسجيل حسابك أولاً.');
+        setIsSubmitting(false);
+        return;
+      }
 
       if (selectedRole === 'driver') {
-        if (!driver) {
+        if (!driver && !isOwnerPhone) {
           setErrorMsg(
-            '⚠️ لم يتم العثور على حساب أو طلب سائق بهذا الرقم. يرجى التبديل لـ "إنشاء حساب جديد" لتقديم الطلب ورفع الوثائق الـ 4.'
+            '⚠️ لم يتم العثور على حساب أو طلب سائق بهذا الرقم. يرجى التبديل لـ "إنشاء حساب جديد" لتقديم الطلب ورفع الوثائق.'
           );
           setIsSubmitting(false);
           return;
@@ -124,15 +131,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           localStorage.setItem('motodrive_active_driver_phone', cleanPhone);
         } catch (e) {}
 
-        setActiveDriver(driver);
+        if (driver) {
+          setActiveDriver(driver);
+        }
         setCurrentRole('driver');
 
-        if (driver.status === 'pending') {
+        if (driver && driver.status === 'pending') {
           broadcastNotification(
             'طلبك قيد المراجعة',
-            `أهلاً بك يا ${driver.name}. طلبك والوثائق الـ 4 قيد تدقيق الإدارة حالياً.`
+            `أهلاً بك يا ${driver.name}. طلبك والوثائق قيد تدقيق الإدارة حالياً.`
           );
-        } else if (driver.status === 'rejected') {
+        } else if (driver && driver.status === 'rejected') {
           broadcastNotification(
             'تم رفض طلبك',
             `سبب الرفض: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
@@ -140,7 +149,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         } else {
           broadcastNotification(
             'مرحباً بعودتك!',
-            `تم تسجيل دخولك بنجاح كـ سائق معتمد: ${driver.name}`
+            `تم تسجيل دخولك بنجاح كـ سائق معتمد: ${driver?.name || cleanPhone}`
           );
         }
 
@@ -176,10 +185,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Submit Register handler for Passenger
   const handleRegisterPassengerSubmit = async () => {
     const cleanPhone = normalPhone.trim().replace(/\s+/g, '');
-    const cleanName = normalName.trim() || 'راكب MotoDrive';
+    const cleanName = normalName.trim();
 
     if (!cleanPhone || cleanPhone.length < 8) {
       setErrorMsg('يرجى كتابة رقم هاتف صحيح.');
+      return;
+    }
+    if (!cleanName || cleanName === 'مستخدم MotoDrive' || cleanName === 'راكب MotoDrive' || cleanName.length < 2) {
+      setErrorMsg('⚠️ الاسم الكامل إلزامي لتسجيل حساب راكب جديد. يرجى إدخال الاسم.');
       return;
     }
 

@@ -136,6 +136,9 @@ interface AppContextType {
   approveDriver: (driverId: string) => Promise<void>;
   rejectDriver: (driverId: string, reason: string) => Promise<void>;
   suspendDriver: (driverId: string) => Promise<void>;
+  suspendPassenger: (passengerId: string, reason?: string) => Promise<void>;
+  deletePassenger: (passengerId: string, reason?: string) => Promise<void>;
+  deleteDriver: (driverId: string) => Promise<void>;
   updateDriverStatus: (driverId: string, status: DriverApprovalStatus, reason?: string) => Promise<void>;
   updatePricing: (newPricing: PricingSettings) => Promise<void>;
   toggleServiceArea: (id: string) => void;
@@ -1314,6 +1317,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const suspendPassenger = async (passengerId: string, reason: string = 'خالف شروط الاستخدام') => {
+    setPassengers(prev =>
+      prev.map(p =>
+        p.id === passengerId
+          ? { ...p, status: p.status === 'suspended' ? 'active' : 'suspended', suspensionReason: reason }
+          : p
+      )
+    );
+    try {
+      const userRef = doc(db, 'users', passengerId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const currentStatus = userSnap.data().status;
+        const newStatus = currentStatus === 'suspended' ? 'active' : 'suspended';
+        await setDoc(userRef, { status: newStatus, suspensionReason: reason, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('Error suspending passenger in Firestore:', e);
+    }
+    addNotification(passengerId, 'passenger', '⚠️ تحديث حالة حسابك', `تم تعليق حسابك. السبب: ${reason}`);
+  };
+
+  const deletePassenger = async (passengerId: string, reason: string = 'قرار إداري من المالك') => {
+    setPassengers(prev => prev.filter(p => p.id !== passengerId));
+    try {
+      await setDoc(doc(db, 'users', passengerId), { status: 'deleted', deletionReason: reason, deletedAt: serverTimestamp() }, { merge: true });
+    } catch (e) {
+      console.warn('Error deleting passenger:', e);
+    }
+    addNotification(passengerId, 'passenger', '❌ حذف الحساب', `تم حذف حسابك نهائياً من منصة MotoDrive. السبب: ${reason}`);
+  };
+
+  const deleteDriver = async (driverId: string) => {
+    setDrivers(prev => prev.filter(d => d.id !== driverId));
+    try {
+      await setDoc(doc(db, 'drivers', driverId), { status: 'deleted', deletedAt: serverTimestamp() }, { merge: true });
+    } catch (e) {
+      console.warn('Error deleting driver:', e);
+    }
+  };
+
   const updateDriverStatus = async (driverId: string, status: DriverApprovalStatus, reason?: string) => {
     await updateDriverStatusInFirestore(driverId, status, reason);
     if (status === 'approved') {
@@ -1447,6 +1491,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveDriver,
         rejectDriver,
         suspendDriver,
+        suspendPassenger,
+        deletePassenger,
+        deleteDriver,
         updateDriverStatus,
         updatePricing,
         toggleServiceArea,

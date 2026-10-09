@@ -137,6 +137,9 @@ export const DriverHome: React.FC = () => {
           zoom={14}
           pickup={currentDriverRide?.pickup}
           destination={currentDriverRide?.destination}
+          routeFrom={currentDriverRide ? activeDriver.location : undefined}
+          routeTo={currentDriverRide ? currentDriverRide.pickup : undefined}
+          routeColor="#10b981"
           activeDriverLocation={activeDriver.location}
           activeDriverHeading={activeDriver.heading}
           activeDriverStatus={
