@@ -4,14 +4,19 @@ class NotificationSound {
   private audioCtx: AudioContext | null = null;
 
   private initCtx() {
-    if (!this.audioCtx) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        this.audioCtx = new AudioCtx();
+    if (!this.audioCtx && typeof window !== 'undefined') {
+      try {
+        const win = window as any;
+        const AudioCtx = win.AudioContext || win.webkitAudioContext || win.mozAudioContext;
+        if (AudioCtx) {
+          this.audioCtx = new AudioCtx();
+        }
+      } catch (e) {
+        // Ignore audio context initialization errors
       }
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+      this.audioCtx.resume().catch(() => {});
     }
   }
 

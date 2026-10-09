@@ -39,46 +39,47 @@ export const submitDriverApplication = async (
   };
 
   try {
-    await setDoc(
-      appRef,
-      {
-        ...applicationPayload,
-        serverCreatedAt: serverTimestamp(),
-        serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    // Also update/sync the driver document in 'drivers' with status: 'pending'
-    const driverRef = doc(db, DRIVERS_COL, applicationData.driverId);
-    await setDoc(
-      driverRef,
-      {
-        id: applicationData.driverId,
-        userId: applicationData.userId,
-        name: applicationData.fullName,
-        phone: applicationData.phone,
-        email: applicationData.email || '',
-        wilaya: applicationData.wilaya,
-        municipality: applicationData.municipality,
-        motorcycle: applicationData.motorcycle,
-        status: 'pending',
-        photoUrl: applicationData.documents.selfieUrl || '',
-        documents: {
-          ...applicationData.documents,
-          status: 'pending',
-          submittedAt: now,
+    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
+    if (!quotaExceeded) {
+      await setDoc(
+        appRef,
+        {
+          ...applicationPayload,
+          serverCreatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
         },
-        updatedAt: now,
-      },
-      { merge: true }
-    );
+        { merge: true }
+      );
 
-    return appId;
+      // Also update/sync the driver document in 'drivers' with status: 'pending'
+      const driverRef = doc(db, DRIVERS_COL, applicationData.driverId);
+      await setDoc(
+        driverRef,
+        {
+          id: applicationData.driverId,
+          userId: applicationData.userId,
+          name: applicationData.fullName,
+          phone: applicationData.phone,
+          email: applicationData.email || '',
+          wilaya: applicationData.wilaya,
+          municipality: applicationData.municipality,
+          motorcycle: applicationData.motorcycle,
+          status: 'pending',
+          photoUrl: applicationData.documents.selfieUrl || '',
+          documents: {
+            ...applicationData.documents,
+            status: 'pending',
+            submittedAt: now,
+          },
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, `${APPLICATIONS_COL}/${appId}`);
-    throw err;
   }
+  return appId;
 };
 
 /**
@@ -158,33 +159,35 @@ export const approveDriverApplication = async (
   reviewerId: string = 'admin'
 ): Promise<void> => {
   try {
-    const appRef = doc(db, APPLICATIONS_COL, applicationId);
-    const now = new Date().toISOString();
+    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
+    if (!quotaExceeded) {
+      const appRef = doc(db, APPLICATIONS_COL, applicationId);
+      const now = new Date().toISOString();
 
-    await updateDoc(appRef, {
-      status: 'approved',
-      reviewedAt: now,
-      reviewedBy: reviewerId,
-      serverUpdatedAt: serverTimestamp(),
-    });
-
-    // Update driver profile in 'drivers' to approved and active
-    const driverRef = doc(db, DRIVERS_COL, driverId);
-    await setDoc(
-      driverRef,
-      {
+      await updateDoc(appRef, {
         status: 'approved',
-        rejectionReason: '',
-        'documents.status': 'approved',
-        'documents.reviewedAt': now,
-        updatedAt: now,
+        reviewedAt: now,
+        reviewedBy: reviewerId,
         serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+      });
+
+      // Update driver profile in 'drivers' to approved and active
+      const driverRef = doc(db, DRIVERS_COL, driverId);
+      await setDoc(
+        driverRef,
+        {
+          status: 'approved',
+          rejectionReason: '',
+          'documents.status': 'approved',
+          'documents.reviewedAt': now,
+          updatedAt: now,
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${APPLICATIONS_COL}/${applicationId}`);
-    throw err;
   }
 };
 
@@ -200,34 +203,36 @@ export const rejectDriverApplication = async (
   reviewerId: string = 'admin'
 ): Promise<void> => {
   try {
-    const appRef = doc(db, APPLICATIONS_COL, applicationId);
-    const now = new Date().toISOString();
+    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
+    if (!quotaExceeded) {
+      const appRef = doc(db, APPLICATIONS_COL, applicationId);
+      const now = new Date().toISOString();
 
-    await updateDoc(appRef, {
-      status: 'rejected',
-      rejectionReason: reason,
-      reviewedAt: now,
-      reviewedBy: reviewerId,
-      serverUpdatedAt: serverTimestamp(),
-    });
-
-    // Update driver profile in 'drivers' to rejected
-    const driverRef = doc(db, DRIVERS_COL, driverId);
-    await setDoc(
-      driverRef,
-      {
+      await updateDoc(appRef, {
         status: 'rejected',
         rejectionReason: reason,
-        'documents.status': 'rejected',
-        'documents.rejectionReason': reason,
-        'documents.reviewedAt': now,
-        updatedAt: now,
+        reviewedAt: now,
+        reviewedBy: reviewerId,
         serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+      });
+
+      // Update driver profile in 'drivers' to rejected
+      const driverRef = doc(db, DRIVERS_COL, driverId);
+      await setDoc(
+        driverRef,
+        {
+          status: 'rejected',
+          rejectionReason: reason,
+          'documents.status': 'rejected',
+          'documents.rejectionReason': reason,
+          'documents.reviewedAt': now,
+          updatedAt: now,
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${APPLICATIONS_COL}/${applicationId}`);
-    throw err;
   }
 };

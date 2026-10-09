@@ -868,7 +868,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     passengerNote?: string,
     promoCode?: string
   ): Promise<{ success: boolean; rideId?: string; error?: string }> => {
-    if (currentPassengerRide) {
+    if (currentPassengerRide && ['searching', 'offers_available'].includes(currentPassengerRide.status)) {
+      if (passengerOfferedPrice && passengerOfferedPrice > 0) {
+        const res = await updatePassengerOffer(currentPassengerRide.id, passengerOfferedPrice);
+        return { success: res.success, rideId: currentPassengerRide.id, error: res.error };
+      }
       return { success: false, error: 'لديك رحلة جارية أو قيد التفاوض بالفعل!' };
     }
 

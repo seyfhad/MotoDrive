@@ -26,7 +26,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): boolean {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -44,21 +44,29 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path,
   };
 
+  const errMsg = errInfo.error.toLowerCase();
   const isOfflineOrUnavailable =
-    errInfo.error.includes('unavailable') ||
-    errInfo.error.includes('offline') ||
-    errInfo.error.includes('Could not reach Cloud Firestore backend');
+    errMsg.includes('unavailable') ||
+    errMsg.includes('offline') ||
+    errMsg.includes('could not reach cloud firestore backend') ||
+    errMsg.includes('resource-exhausted') ||
+    errMsg.includes('quota exceeded') ||
+    errMsg.includes('quota limit exceeded');
 
   if (isOfflineOrUnavailable) {
-    console.info(`Firestore operating in resilient offline/cache mode for [${path || 'operation'}].`);
-    return;
+    try {
+      localStorage.setItem('motodrive_firestore_quota_exceeded', 'true');
+    } catch (e) {}
+    console.info(`Firestore quota exhausted or offline. Operating in resilient local/cache mode for [${path || 'operation'}].`);
+    return true;
   }
 
   if (operationType === OperationType.GET || operationType === OperationType.LIST) {
     console.warn(`Firestore read notice [${path}]:`, errInfo.error);
-    return;
+    return true;
   }
 
-  console.error('Firestore Operation Error:', JSON.stringify(errInfo));
-  throw new Error(errInfo.error);
+  console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
+  return true; // Return true to prevent crashing app on quota/network issues
 }
+

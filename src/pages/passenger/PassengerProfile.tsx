@@ -62,16 +62,12 @@ export const PassengerProfile: React.FC = () => {
       <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 shadow-xl text-center space-y-3">
         <div className="relative w-20 h-20 mx-auto">
           <img
-            src={
-              activePassenger.photoUrl ||
-              (activePassenger.role === 'admin' ? '/assets/images/admin_logo.jpg' : '/assets/images/passenger_logo.jpg')
-            }
+            src={activePassenger.photoUrl || '/icon.jpg'}
             alt={activePassenger.name}
             className="w-full h-full rounded-full object-cover border-3 border-amber-500 shadow-xl cursor-pointer hover:opacity-90 transition-opacity"
             onClick={() => setShowEditModal(true)}
             onError={(e) => {
-              (e.target as HTMLImageElement).src =
-                activePassenger.role === 'admin' ? '/assets/images/admin_logo.jpg' : '/assets/images/passenger_logo.jpg';
+              (e.target as HTMLImageElement).src = '/icon.jpg';
             }}
           />
           <button

@@ -8,9 +8,10 @@ import {
   useMapsLibrary,
   MapMouseEvent,
 } from '@vis.gl/react-google-maps';
-import { Navigation } from 'lucide-react';
+import { LeafletFallbackMap } from './LeafletFallbackMap';
 import { Coordinates, DriverProfile } from '../../types';
 import { getRobustUserLocation, startBackgroundLocationTracking } from '../../utils/geo';
+import { Navigation } from 'lucide-react';
 
 export interface GoogleMapViewProps {
   center?: [number, number];
@@ -242,30 +243,40 @@ const MapController: React.FC<{
   return null;
 };
 
-export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
-  center = [36.7538, 3.0588], // Algiers Coordinates
-  zoom = 13,
-  pickup,
-  destination,
-  routeFrom,
-  routeTo,
-  routeColor,
-  drivers = [],
-  activeDriverLocation,
-  activeDriverHeading = 0,
-  activeDriverStatus = 'available',
-  interactive = true,
-  onMapClick,
-  showRadar = false,
-  radarRadiusMeters = 3000,
-  className = 'h-full w-full',
-  theme = 'dark',
-}) => {
+export const GoogleMapView: React.FC<GoogleMapViewProps> = (props) => {
+  const {
+    center = [36.7538, 3.0588],
+    zoom = 13,
+    pickup,
+    destination,
+    routeFrom,
+    routeTo,
+    routeColor,
+    drivers = [],
+    activeDriverLocation,
+    activeDriverHeading = 0,
+    activeDriverStatus = 'available',
+    interactive = true,
+    onMapClick,
+    showRadar = false,
+    radarRadiusMeters = 3000,
+    className = 'h-full w-full',
+    theme = 'dark',
+  } = props;
+
+  const [useFallback, setUseFallback] = useState<boolean>(true);
+
   const [userLiveCoords, setUserLiveCoords] = useState<Coordinates | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<DriverProfile | null>(null);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [locationToast, setLocationToast] = useState<string | null>(null);
   const mapInstance = useMap();
+
+  useEffect(() => {
+    (window as any).gm_authFailure = () => {
+      setUseFallback(true);
+    };
+  }, []);
 
   const handleMapClick = useCallback(
     (e: MapMouseEvent) => {
@@ -334,6 +345,10 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = ({
       requestUserLocation();
     }
   }, [mapInstance, interactive]);
+
+  if (useFallback) {
+    return <LeafletFallbackMap {...props} />;
+  }
 
   return (
     <div className={`relative overflow-hidden rounded-2xl ${className}`} id="google-map-container-root">

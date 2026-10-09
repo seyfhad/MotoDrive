@@ -270,17 +270,21 @@ export const updateDriverLocation = async (
   heading?: number,
   speed?: number
 ): Promise<void> => {
-  const driverRef = doc(db, 'drivers', driverId);
-  const gh = geohashForLocation([lat, lng]);
+  try {
+    const driverRef = doc(db, 'drivers', driverId);
+    const gh = geohashForLocation([lat, lng]);
 
-  await updateDoc(driverRef, {
-    'location.lat': lat,
-    'location.lng': lng,
-    'location.heading': heading || 0,
-    'location.speed': speed || 0,
-    geohash: gh,
-    lastLocationUpdate: serverTimestamp(),
-  });
+    await updateDoc(driverRef, {
+      'location.lat': lat,
+      'location.lng': lng,
+      'location.heading': heading || 0,
+      'location.speed': speed || 0,
+      geohash: gh,
+      lastLocationUpdate: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
+  }
 };
 
 export const updateFirestoreDriverLocation = updateDriverLocation;
@@ -290,12 +294,16 @@ export const updateDriverOnlineStatus = async (
   isOnline: boolean,
   isAvailable: boolean
 ): Promise<void> => {
-  const driverRef = doc(db, 'drivers', driverId);
-  await updateDoc(driverRef, {
-    isOnline,
-    isAvailable,
-    updatedAt: serverTimestamp(),
-  });
+  try {
+    const driverRef = doc(db, 'drivers', driverId);
+    await updateDoc(driverRef, {
+      isOnline,
+      isAvailable,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
+  }
 };
 
 // Query real nearby available drivers using Geofire Bounding Boxes
@@ -367,12 +375,16 @@ export const updatePassengerOfferInFirestore = async (
   rideId: string,
   newPrice: number
 ): Promise<void> => {
-  const rideRef = doc(db, 'rides', rideId);
-  await updateDoc(rideRef, sanitizeFirestoreData({
-    passengerOfferedPrice: newPrice,
-    estimatedPrice: newPrice,
-    updatedAt: serverTimestamp(),
-  }));
+  try {
+    const rideRef = doc(db, 'rides', rideId);
+    await updateDoc(rideRef, sanitizeFirestoreData({
+      passengerOfferedPrice: newPrice,
+      estimatedPrice: newPrice,
+      updatedAt: serverTimestamp(),
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `rides/${rideId}`);
+  }
 };
 
 export const cancelRideInFirestore = async (
@@ -380,12 +392,16 @@ export const cancelRideInFirestore = async (
   reason: string,
   cancelledBy: 'passenger' | 'driver' | 'system'
 ): Promise<void> => {
-  const rideRef = doc(db, 'rides', rideId);
-  await updateDoc(rideRef, sanitizeFirestoreData({
-    status: cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver',
-    cancellationReason: reason,
-    cancelledAt: serverTimestamp(),
-  }));
+  try {
+    const rideRef = doc(db, 'rides', rideId);
+    await updateDoc(rideRef, sanitizeFirestoreData({
+      status: cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver',
+      cancellationReason: reason,
+      cancelledAt: serverTimestamp(),
+    }));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `rides/${rideId}`);
+  }
 };
 
 // ============================================================================
@@ -396,21 +412,26 @@ export const submitDriverOfferInFirestore = async (
   rideId: string,
   offer: Omit<RideOffer, 'id' | 'createdAt'>
 ): Promise<string> => {
-  const offersCol = collection(db, 'rides', rideId, 'offers');
-  const cleanOffer = sanitizeFirestoreData({
-    ...offer,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
-  const docRef = await addDoc(offersCol, cleanOffer);
+  try {
+    const offersCol = collection(db, 'rides', rideId, 'offers');
+    const cleanOffer = sanitizeFirestoreData({
+      ...offer,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    const docRef = await addDoc(offersCol, cleanOffer);
 
-  // Also update ride status to indicate offers are available
-  const rideRef = doc(db, 'rides', rideId);
-  await updateDoc(rideRef, {
-    status: 'offers_available',
-  });
+    // Also update ride status to indicate offers are available
+    const rideRef = doc(db, 'rides', rideId);
+    await updateDoc(rideRef, {
+      status: 'offers_available',
+    });
 
-  return docRef.id;
+    return docRef.id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `rides/${rideId}/offers`);
+    return 'offer-' + Math.random().toString(36).substring(2, 9);
+  }
 };
 
 // CRITICAL: Transaction-safe driver selection to prevent Race Conditions
@@ -483,17 +504,21 @@ export const advanceRideStatusInFirestore = async (
   newStatus: Ride['status'],
   extraData?: Partial<Ride>
 ): Promise<void> => {
-  const rideRef = doc(db, 'rides', rideId);
-  const updates: Record<string, any> = sanitizeFirestoreData({
-    status: newStatus,
-    updatedAt: serverTimestamp(),
-    ...(extraData || {}),
-  });
+  try {
+    const rideRef = doc(db, 'rides', rideId);
+    const updates: Record<string, any> = sanitizeFirestoreData({
+      status: newStatus,
+      updatedAt: serverTimestamp(),
+      ...(extraData || {}),
+    });
 
-  if (newStatus === 'trip_started') updates.startedAt = serverTimestamp();
-  if (newStatus === 'completed') updates.completedAt = serverTimestamp();
+    if (newStatus === 'trip_started') updates.startedAt = serverTimestamp();
+    if (newStatus === 'completed') updates.completedAt = serverTimestamp();
 
-  await updateDoc(rideRef, updates);
+    await updateDoc(rideRef, updates);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `rides/${rideId}`);
+  }
 };
 
 // ============================================================================
