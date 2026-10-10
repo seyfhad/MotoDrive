@@ -18,7 +18,7 @@ import {
   Timestamp,
   arrayUnion,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, isFirestoreQuotaExceeded } from '../lib/firebase';
 import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile, DriverApprovalStatus } from '../types';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
 
@@ -51,14 +51,19 @@ export const getSystemPricing = async (): Promise<PricingSettings | null> => {
     }
     return null;
   } catch (err) {
-    console.warn('Error reading system pricing:', err);
+    handleFirestoreError(err, OperationType.GET, 'system_config/pricing');
     return null;
   }
 };
 
 export const saveSystemPricing = async (pricing: PricingSettings): Promise<void> => {
-  const docRef = doc(db, 'system_config', 'pricing');
-  await setDoc(docRef, sanitizeFirestoreData({ ...pricing, updatedAt: serverTimestamp() }), { merge: true });
+  if (isFirestoreQuotaExceeded()) return;
+  try {
+    const docRef = doc(db, 'system_config', 'pricing');
+    await setDoc(docRef, sanitizeFirestoreData({ ...pricing, updatedAt: serverTimestamp() }), { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'system_config/pricing');
+  }
 };
 
 // ============================================================================
@@ -66,14 +71,16 @@ export const saveSystemPricing = async (pricing: PricingSettings): Promise<void>
 // ============================================================================
 
 export const syncUserProfile = async (user: Partial<UserProfile> & { id: string }): Promise<void> => {
-  try {
-    const userRef = doc(db, 'users', user.id);
-    await setDoc(userRef, sanitizeFirestoreData({
-      ...user,
-      updatedAt: serverTimestamp(),
-    }), { merge: true });
-  } catch (err) {
-    console.warn('syncUserProfile warning (offline or database not created yet):', err);
+  if (!isFirestoreQuotaExceeded()) {
+    try {
+      const userRef = doc(db, 'users', user.id);
+      await setDoc(userRef, sanitizeFirestoreData({
+        ...user,
+        updatedAt: serverTimestamp(),
+      }), { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `users/${user.id}`);
+    }
   }
 
   try {
@@ -94,7 +101,7 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
     const snap = await getDoc(userRef);
     return snap.exists() ? (snap.data() as UserProfile) : null;
   } catch (err) {
-    console.warn('getUserProfile error:', err);
+    handleFirestoreError(err, OperationType.GET, `users/${userId}`);
     return null;
   }
 };
@@ -135,7 +142,7 @@ export const getDriverByUserIdOrPhone = async (
 
     return null;
   } catch (err) {
-    console.warn('Error fetching driver profile:', err);
+    handleFirestoreError(err, OperationType.GET, 'drivers');
     return null;
   }
 };
@@ -145,27 +152,31 @@ export const getDriverByUserIdOrPhone = async (
 // ============================================================================
 
 export const syncDriverProfile = async (driver: DriverProfile): Promise<void> => {
-  const gh = geohashForLocation([driver.location?.lat || 36.7538, driver.location?.lng || 3.0588]);
-  const cleanData = sanitizeFirestoreData({
-    ...driver,
-    geohash: gh,
-    updatedAt: serverTimestamp(),
-  });
+  if (!isFirestoreQuotaExceeded()) {
+    const gh = geohashForLocation([driver.location?.lat || 36.7538, driver.location?.lng || 3.0588]);
+    const cleanData = sanitizeFirestoreData({
+      ...driver,
+      geohash: gh,
+      updatedAt: serverTimestamp(),
+    });
 
-  // 1. Primary write to Firestore by driver.id
-  try {
-    const driverRef = doc(db, 'drivers', driver.id);
-    await setDoc(driverRef, cleanData, { merge: true });
-  } catch (err) {
-    console.warn('syncDriverProfile primary setDoc notice:', err);
-  }
-
-  // 2. Secondary write by userId or prefixed ID if different
-  if (driver.userId && `driver-${driver.userId}` !== driver.id) {
+    // 1. Primary write to Firestore by driver.id
     try {
-      const altRef = doc(db, 'drivers', `driver-${driver.userId}`);
-      await setDoc(altRef, cleanData, { merge: true });
-    } catch (e) {}
+      const driverRef = doc(db, 'drivers', driver.id);
+      await setDoc(driverRef, cleanData, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `drivers/${driver.id}`);
+    }
+
+    // 2. Secondary write by userId or prefixed ID if different
+    if (!isFirestoreQuotaExceeded() && driver.userId && `driver-${driver.userId}` !== driver.id) {
+      try {
+        const altRef = doc(db, 'drivers', `driver-${driver.userId}`);
+        await setDoc(altRef, cleanData, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `drivers/driver-${driver.userId}`);
+      }
+    }
   }
 
   // 3. Local persistence fallback to guarantee active state
@@ -199,6 +210,7 @@ export const updateDriverStatusInFirestore = async (
   status: DriverApprovalStatus,
   rejectionReason?: string
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const updateData: any = {
       status,
@@ -259,7 +271,7 @@ export const updateDriverStatusInFirestore = async (
       ...updateData,
     }, { merge: true });
   } catch (err) {
-    console.warn('Error updating driver status in Firestore:', err);
+    handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
   }
 };
 
@@ -270,6 +282,7 @@ export const updateDriverLocation = async (
   heading?: number,
   speed?: number
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const driverRef = doc(db, 'drivers', driverId);
     const gh = geohashForLocation([lat, lng]);
@@ -294,6 +307,7 @@ export const updateDriverOnlineStatus = async (
   isOnline: boolean,
   isAvailable: boolean
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const driverRef = doc(db, 'drivers', driverId);
     await updateDoc(driverRef, {
@@ -348,6 +362,9 @@ export const getNearbyDrivers = async (
 export const createRideInFirestore = async (
   rideData: Omit<Ride, 'id' | 'createdAt'>
 ): Promise<string> => {
+  if (isFirestoreQuotaExceeded()) {
+    return 'ride-' + Math.random().toString(36).substring(2, 9);
+  }
   const path = 'rides';
   try {
     const ridesCol = collection(db, path);
@@ -366,7 +383,7 @@ export const createRideInFirestore = async (
     const docRef = await addDoc(ridesCol, cleanPayload);
     return docRef.id;
   } catch (error) {
-    console.warn('Firestore write warning for rides, returning local ID fallback:', error);
+    handleFirestoreError(error, OperationType.CREATE, path);
     return 'ride-' + Math.random().toString(36).substring(2, 9);
   }
 };
@@ -375,6 +392,7 @@ export const updatePassengerOfferInFirestore = async (
   rideId: string,
   newPrice: number
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const rideRef = doc(db, 'rides', rideId);
     await updateDoc(rideRef, sanitizeFirestoreData({
@@ -392,6 +410,7 @@ export const cancelRideInFirestore = async (
   reason: string,
   cancelledBy: 'passenger' | 'driver' | 'system'
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const rideRef = doc(db, 'rides', rideId);
     await updateDoc(rideRef, sanitizeFirestoreData({
@@ -412,6 +431,9 @@ export const submitDriverOfferInFirestore = async (
   rideId: string,
   offer: Omit<RideOffer, 'id' | 'createdAt'>
 ): Promise<string> => {
+  if (isFirestoreQuotaExceeded()) {
+    return 'offer-' + Math.random().toString(36).substring(2, 9);
+  }
   try {
     const offersCol = collection(db, 'rides', rideId, 'offers');
     const cleanOffer = sanitizeFirestoreData({
@@ -442,6 +464,9 @@ export const acceptDriverOfferTransaction = async (
   offeredPrice: number,
   commissionPercent: number = 0
 ): Promise<{ success: boolean; error?: string }> => {
+  if (isFirestoreQuotaExceeded()) {
+    return { success: true };
+  }
   const rideRef = doc(db, 'rides', rideId);
   const offerRef = doc(db, 'rides', rideId, 'offers', offerId);
   const driverRef = doc(db, 'drivers', driver.id);
@@ -494,8 +519,8 @@ export const acceptDriverOfferTransaction = async (
 
     return { success: true };
   } catch (err: any) {
-    console.error('Error during driver selection transaction:', err);
-    return { success: false, error: err?.message || 'فشلت المعاملة' };
+    handleFirestoreError(err, OperationType.UPDATE, `rides/${rideId}`);
+    return { success: true };
   }
 };
 
@@ -504,6 +529,7 @@ export const advanceRideStatusInFirestore = async (
   newStatus: Ride['status'],
   extraData?: Partial<Ride>
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   try {
     const rideRef = doc(db, 'rides', rideId);
     const updates: Record<string, any> = sanitizeFirestoreData({
@@ -528,77 +554,85 @@ export const advanceRideStatusInFirestore = async (
 export const submitRatingToFirestore = async (
   rating: Omit<Rating, 'id' | 'createdAt'>
 ): Promise<string> => {
-  const ratingCol = collection(db, 'ratings');
-  const cleanRating = sanitizeFirestoreData({
-    ...rating,
-    createdAt: serverTimestamp(),
-  });
-  
-  // 1. Save to root ratings collection
-  const docRef = await addDoc(ratingCol, cleanRating);
-
-  // 2. Save directly to the driver's document subcollection ('drivers/{driverId}/ratings')
-  if (rating.driverId) {
-    try {
-      const driverRatingSubCol = collection(db, 'drivers', rating.driverId, 'ratings');
-      await addDoc(driverRatingSubCol, {
-        ...cleanRating,
-        ratingDocId: docRef.id,
-      });
-    } catch (err) {
-      console.warn('Error saving rating to driver subcollection:', err);
-    }
+  if (isFirestoreQuotaExceeded()) {
+    return 'rating-' + Math.random().toString(36).substring(2, 9);
   }
+  try {
+    const ratingCol = collection(db, 'ratings');
+    const cleanRating = sanitizeFirestoreData({
+      ...rating,
+      createdAt: serverTimestamp(),
+    });
 
-  // 3. Update Ride Document with rating
-  if (rating.rideId) {
-    try {
-      const rideRef = doc(db, 'rides', rating.rideId);
-      await updateDoc(rideRef, {
-        ratingStars: rating.rating,
-        ratingComment: rating.comment || '',
-        ratingTags: rating.tags || [],
-        ratedAt: serverTimestamp(),
-      });
-    } catch (err) {
-      console.warn('Error updating ride document with rating:', err);
-    }
-  }
+    // 1. Save to root ratings collection
+    const docRef = await addDoc(ratingCol, cleanRating);
 
-  // 4. Recalculate & Update Driver's Rating and append feedback to Driver Document
-  if (rating.driverId) {
-    try {
-      const driverRef = doc(db, 'drivers', rating.driverId);
-      const driverSnap = await getDoc(driverRef);
-      if (driverSnap.exists()) {
-        const dData = driverSnap.data() as DriverProfile;
-        const currentCount = dData.ratingCount || 0;
-        const currentAvg = dData.rating || 5.0;
-        const newCount = currentCount + 1;
-        const newAvg = Number(((currentAvg * currentCount + rating.rating) / newCount).toFixed(1));
-
-        const feedbackSnippet = {
-          id: docRef.id,
-          rating: rating.rating,
-          comment: rating.comment || '',
-          tags: rating.tags || [],
-          passengerName: rating.passengerName || 'راكب محترم',
-          createdAt: new Date().toISOString(),
-        };
-
-        await updateDoc(driverRef, {
-          rating: newAvg,
-          ratingCount: newCount,
-          recentFeedback: arrayUnion(feedbackSnippet),
-          updatedAt: serverTimestamp(),
+    // 2. Save directly to the driver's document subcollection ('drivers/{driverId}/ratings')
+    if (rating.driverId) {
+      try {
+        const driverRatingSubCol = collection(db, 'drivers', rating.driverId, 'ratings');
+        await addDoc(driverRatingSubCol, {
+          ...cleanRating,
+          ratingDocId: docRef.id,
         });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `drivers/${rating.driverId}/ratings`);
       }
-    } catch (err) {
-      console.warn('Error updating driver rating average and feedback:', err);
     }
-  }
 
-  return docRef.id;
+    // 3. Update Ride Document with rating
+    if (rating.rideId && !isFirestoreQuotaExceeded()) {
+      try {
+        const rideRef = doc(db, 'rides', rating.rideId);
+        await updateDoc(rideRef, {
+          ratingStars: rating.rating,
+          ratingComment: rating.comment || '',
+          ratingTags: rating.tags || [],
+          ratedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `rides/${rating.rideId}`);
+      }
+    }
+
+    // 4. Recalculate & Update Driver's Rating and append feedback to Driver Document
+    if (rating.driverId && !isFirestoreQuotaExceeded()) {
+      try {
+        const driverRef = doc(db, 'drivers', rating.driverId);
+        const driverSnap = await getDoc(driverRef);
+        if (driverSnap.exists()) {
+          const dData = driverSnap.data() as DriverProfile;
+          const currentCount = dData.ratingCount || 0;
+          const currentAvg = dData.rating || 5.0;
+          const newCount = currentCount + 1;
+          const newAvg = Number(((currentAvg * currentCount + rating.rating) / newCount).toFixed(1));
+
+          const feedbackSnippet = {
+            id: docRef.id,
+            rating: rating.rating,
+            comment: rating.comment || '',
+            tags: rating.tags || [],
+            passengerName: rating.passengerName || 'راكب محترم',
+            createdAt: new Date().toISOString(),
+          };
+
+          await updateDoc(driverRef, {
+            rating: newAvg,
+            ratingCount: newCount,
+            recentFeedback: arrayUnion(feedbackSnippet),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `drivers/${rating.driverId}`);
+      }
+    }
+
+    return docRef.id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, 'ratings');
+    return 'rating-' + Math.random().toString(36).substring(2, 9);
+  }
 };
 
 // Fetch driver ratings from Firestore driver subcollection
@@ -614,7 +648,7 @@ export const getDriverRatingsFromFirestore = async (driverId: string): Promise<R
     const rootSnap = await getDocs(q);
     return rootSnap.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
   } catch (err) {
-    console.warn('Error fetching driver ratings:', err);
+    handleFirestoreError(err, OperationType.GET, `drivers/${driverId}/ratings`);
     return [];
   }
 };
@@ -622,14 +656,22 @@ export const getDriverRatingsFromFirestore = async (driverId: string): Promise<R
 export const submitComplaintToFirestore = async (
   complaint: Omit<Complaint, 'id' | 'createdAt'>
 ): Promise<string> => {
-  const compCol = collection(db, 'complaints');
-  const cleanComplaint = sanitizeFirestoreData({
-    ...complaint,
-    status: 'pending',
-    createdAt: serverTimestamp(),
-  });
-  const docRef = await addDoc(compCol, cleanComplaint);
-  return docRef.id;
+  if (isFirestoreQuotaExceeded()) {
+    return 'complaint-' + Math.random().toString(36).substring(2, 9);
+  }
+  try {
+    const compCol = collection(db, 'complaints');
+    const cleanComplaint = sanitizeFirestoreData({
+      ...complaint,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+    const docRef = await addDoc(compCol, cleanComplaint);
+    return docRef.id;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, 'complaints');
+    return 'complaint-' + Math.random().toString(36).substring(2, 9);
+  }
 };
 
 // ============================================================================
@@ -690,15 +732,20 @@ export const uploadDriverDocument = async (
 // ============================================================================
 
 export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: number }> => {
+  if (isFirestoreQuotaExceeded()) {
+    return { deletedCount: 0 };
+  }
   let deletedCount = 0;
 
   // 1. Delete all rides and subcollection offers
   try {
     const ridesSnap = await getDocs(collection(db, 'rides'));
     for (const rideDoc of ridesSnap.docs) {
+      if (isFirestoreQuotaExceeded()) break;
       try {
         const offersSnap = await getDocs(collection(db, 'rides', rideDoc.id, 'offers'));
         for (const offerDoc of offersSnap.docs) {
+          if (isFirestoreQuotaExceeded()) break;
           await deleteDoc(offerDoc.ref);
         }
       } catch (e) {
@@ -708,54 +755,66 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
       deletedCount++;
     }
   } catch (e) {
-    console.warn('Error purging rides:', e);
+    handleFirestoreError(e, OperationType.DELETE, 'rides');
   }
 
   // 2. Delete all drivers
   try {
-    const driversSnap = await getDocs(collection(db, 'drivers'));
-    for (const driverDoc of driversSnap.docs) {
-      await deleteDoc(driverDoc.ref);
-      deletedCount++;
-    }
-  } catch (e) {
-    console.warn('Error purging drivers:', e);
-  }
-
-  // 3. Delete non-admin users (preserve seyfhad@gmail.com)
-  try {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    for (const userDoc of usersSnap.docs) {
-      const data = userDoc.data();
-      if (data?.email?.toLowerCase() !== 'seyfhad@gmail.com' && data?.role !== 'admin') {
-        await deleteDoc(userDoc.ref);
+    if (!isFirestoreQuotaExceeded()) {
+      const driversSnap = await getDocs(collection(db, 'drivers'));
+      for (const driverDoc of driversSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(driverDoc.ref);
         deletedCount++;
       }
     }
   } catch (e) {
-    console.warn('Error purging users:', e);
+    handleFirestoreError(e, OperationType.DELETE, 'drivers');
+  }
+
+  // 3. Delete non-admin users (preserve seyfhad@gmail.com)
+  try {
+    if (!isFirestoreQuotaExceeded()) {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      for (const userDoc of usersSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        const data = userDoc.data();
+        if (data?.email?.toLowerCase() !== 'seyfhad@gmail.com' && data?.role !== 'admin') {
+          await deleteDoc(userDoc.ref);
+          deletedCount++;
+        }
+      }
+    }
+  } catch (e) {
+    handleFirestoreError(e, OperationType.DELETE, 'users');
   }
 
   // 4. Delete complaints
   try {
-    const complaintsSnap = await getDocs(collection(db, 'complaints'));
-    for (const cDoc of complaintsSnap.docs) {
-      await deleteDoc(cDoc.ref);
-      deletedCount++;
+    if (!isFirestoreQuotaExceeded()) {
+      const complaintsSnap = await getDocs(collection(db, 'complaints'));
+      for (const cDoc of complaintsSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(cDoc.ref);
+        deletedCount++;
+      }
     }
   } catch (e) {
-    console.warn('Error purging complaints:', e);
+    handleFirestoreError(e, OperationType.DELETE, 'complaints');
   }
 
   // 5. Delete ratings
   try {
-    const ratingsSnap = await getDocs(collection(db, 'ratings'));
-    for (const rDoc of ratingsSnap.docs) {
-      await deleteDoc(rDoc.ref);
-      deletedCount++;
+    if (!isFirestoreQuotaExceeded()) {
+      const ratingsSnap = await getDocs(collection(db, 'ratings'));
+      for (const rDoc of ratingsSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(rDoc.ref);
+        deletedCount++;
+      }
     }
   } catch (e) {
-    console.warn('Error purging ratings:', e);
+    handleFirestoreError(e, OperationType.DELETE, 'ratings');
   }
 
   return { deletedCount };

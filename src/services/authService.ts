@@ -15,27 +15,89 @@ import {
   ConfirmationResult,
   sendEmailVerification,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc as fbSetDoc, getDocs, collection, query, where, serverTimestamp } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import { auth, db } from '../lib/firebase';
+import { auth, db, isFirestoreQuotaExceeded, markFirestoreQuotaExceeded } from '../lib/firebase';
 import { UserProfile, DriverProfile, UserRole } from '../types';
 import { sanitizeFirestoreData } from './firestoreService';
 
+const setDoc = async (reference: any, data: any, options?: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  try {
+    if (options !== undefined) {
+      await fbSetDoc(reference, data, options);
+    } else {
+      await fbSetDoc(reference, data);
+    }
+  } catch (err: any) {
+    const msg = String(err?.message || err).toLowerCase();
+    if (msg.includes('resource-exhausted') || msg.includes('quota')) {
+      markFirestoreQuotaExceeded();
+      return;
+    }
+    throw err;
+  }
+};
+
+
+// Normalize Algerian phone number so 0661234567, +213661234567, 06 61 23 45 67 map to the exact same account
+export const normalizeAlgerianPhone = (rawPhone: string): string => {
+  const digitsAndPlus = rawPhone.trim().replace(/[\s\-().]/g, '');
+  if (digitsAndPlus.startsWith('+213')) {
+    return '0' + digitsAndPlus.slice(4);
+  }
+  if (digitsAndPlus.startsWith('00213')) {
+    return '0' + digitsAndPlus.slice(5);
+  }
+  if (digitsAndPlus.startsWith('213') && digitsAndPlus.length >= 11) {
+    return '0' + digitsAndPlus.slice(3);
+  }
+  return digitsAndPlus;
+};
+
 // Utility to search existing UserProfile & DriverProfile by Phone
 export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
-  const cleanPhone = phone.trim();
-  try {
-    const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
-    const snap = await getDocs(q);
-    let profile: UserProfile | null = null;
-    let driver: DriverProfile | null = null;
+  const cleanPhone = normalizeAlgerianPhone(phone);
+  const rawTrimmed = phone.trim().replace(/\s+/g, '');
+  let profile: UserProfile | null = null;
+  let driver: DriverProfile | null = null;
 
-    if (!snap.empty) {
-      const docData = snap.docs[0].data();
-      profile = { id: snap.docs[0].id, ...docData } as UserProfile;
+  // 1. Check local persistent phone directory first for instant & offline accuracy
+  try {
+    const raw = localStorage.getItem('motodrive_phone_directory');
+    if (raw) {
+      const dir = JSON.parse(raw);
+      const entry = dir[cleanPhone] || dir[rawTrimmed];
+      if (entry?.profile) profile = entry.profile;
+      if (entry?.driver) driver = entry.driver;
+    }
+  } catch (e) {}
+
+  try {
+    // 2. Check deterministic user document ID (`user-${cleanPhone}`)
+    const detUserRef = doc(db, 'users', `user-${cleanPhone}`);
+    const detSnap = await getDoc(detUserRef);
+    if (detSnap.exists()) {
+      profile = { id: detSnap.id, ...detSnap.data() } as UserProfile;
     }
 
-    // Check drivers collection
+    // 3. Query users collection by phone if not found by deterministic ID
+    if (!profile) {
+      const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const docData = snap.docs[0].data();
+        profile = { id: snap.docs[0].id, ...docData } as UserProfile;
+      } else if (rawTrimmed !== cleanPhone) {
+        const q2 = query(collection(db, 'users'), where('phone', '==', rawTrimmed));
+        const snap2 = await getDocs(q2);
+        if (!snap2.empty) {
+          profile = { id: snap2.docs[0].id, ...snap2.docs[0].data() } as UserProfile;
+        }
+      }
+    }
+
+    // 4. Check drivers collection
     const dq = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
     const dSnap = await getDocs(dq);
     if (!dSnap.empty) {
@@ -48,7 +110,7 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       }
     }
 
-    // Fallback: Check driver_applications collection by phone or userId
+    // 5. Fallback: Check driver_applications collection by phone or userId
     if (!driver) {
       const appQ = query(collection(db, 'driver_applications'), where('phone', '==', cleanPhone));
       const appSnap = await getDocs(appQ);
@@ -56,7 +118,7 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
         const appData = appSnap.docs[0].data();
         driver = {
           id: appData.driverId || `driver-${cleanPhone}`,
-          userId: appData.userId || cleanPhone,
+          userId: appData.userId || `user-${cleanPhone}`,
           name: appData.fullName || cleanPhone,
           phone: appData.phone || cleanPhone,
           email: appData.email,
@@ -89,22 +151,24 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
     return { profile, driver };
   } catch (err) {
     console.warn('Error querying user by phone:', err);
-    return { profile: null, driver: null };
+    return { profile, driver };
   }
 };
 
 // Quick helper to check if a phone number exists in local directory
 export const getCachedUserByPhone = (phone: string): { profile: UserProfile | null; driver: DriverProfile | null } => {
-  const cleanPhone = phone.trim().replace(/\s+/g, '');
+  const cleanPhone = normalizeAlgerianPhone(phone);
+  const rawTrimmed = phone.trim().replace(/\s+/g, '');
   if (!cleanPhone) return { profile: null, driver: null };
   try {
     const raw = localStorage.getItem('motodrive_phone_directory');
     if (raw) {
       const dir = JSON.parse(raw);
-      if (dir[cleanPhone]) {
+      const entry = dir[cleanPhone] || dir[rawTrimmed];
+      if (entry) {
         return {
-          profile: dir[cleanPhone].profile || null,
-          driver: dir[cleanPhone].driver || null,
+          profile: entry.profile || null,
+          driver: entry.driver || null,
         };
       }
     }
@@ -143,8 +207,14 @@ export const registerOrRestoreUserByPhone = async (
   role: UserRole = 'passenger',
   motorcycleData?: DriverRegistrationData
 ): Promise<PhoneUserLookupResult> => {
-  const cleanPhone = phone.trim().replace(/\s+/g, '');
-  const cleanName = name.trim() || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
+  const cleanPhone = normalizeAlgerianPhone(phone);
+  const rawInputName = name.trim();
+  const isGenericName =
+    !rawInputName ||
+    rawInputName === 'راكب MotoDrive' ||
+    rawInputName === 'سائق MotoDrive' ||
+    rawInputName === 'مستخدم MotoDrive';
+  const cleanName = rawInputName || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
 
   // 1. Look up in localStorage directory
   let directory: Record<string, { profile: UserProfile; driver?: DriverProfile | null }> = {};
@@ -153,7 +223,7 @@ export const registerOrRestoreUserByPhone = async (
     if (raw) directory = JSON.parse(raw);
   } catch (e) {}
 
-  // 2. Query Firestore users and drivers by phone
+  // 2. Query Firestore & local directory by phone
   let foundProfile: UserProfile | null = null;
   let foundDriver: DriverProfile | null = null;
 
@@ -176,17 +246,24 @@ export const registerOrRestoreUserByPhone = async (
   const isExisting = Boolean(foundProfile);
 
   if (foundProfile) {
-    // Existing user found! Preserve identity and update role/name if provided
+    // Existing user found! Preserve original account ID, trips, ratings, emergency contact, etc.
+    // Keep their saved name unless they previously had a generic placeholder and typed a real name
+    const existingHasRealName =
+      foundProfile.name &&
+      foundProfile.name !== 'راكب MotoDrive' &&
+      foundProfile.name !== 'سائق MotoDrive' &&
+      foundProfile.name !== 'مستخدم MotoDrive' &&
+      foundProfile.name !== 'ضيف MotoDrive';
+
     finalProfile = {
       ...foundProfile,
-      name: cleanName && cleanName !== 'راكب MotoDrive' && cleanName !== 'سائق MotoDrive'
-        ? cleanName
-        : foundProfile.name,
+      phone: cleanPhone,
+      name: existingHasRealName ? foundProfile.name : (!isGenericName ? rawInputName : foundProfile.name),
       role: role === 'driver' ? 'driver' : (foundProfile.role || role),
     };
   } else {
-    // New user creation
-    const uid = 'user-' + Math.random().toString(36).substring(2, 9);
+    // New user creation with deterministic phone-based ID so same phone always maps to same account
+    const uid = `user-${cleanPhone}`;
     finalProfile = {
       id: uid,
       name: cleanName,
@@ -1152,10 +1229,21 @@ export const signOutUser = async () => {
   localStorage.removeItem('motodrive_current_role');
   localStorage.removeItem('motodrive_current_user');
   try {
+    const preservedKeys = new Set([
+      'motodrive_phone_directory',
+      'motodrive_saved_rides',
+      'motodrive_saved_ratings',
+      'motodrive_saved_complaints',
+      'motodrive_remembered_phone',
+      'motodrive_last_phone',
+      'motodrive_registered_phone',
+      'motodrive_firestore_quota_exceeded',
+      'motodrive_firestore_quota_date',
+    ]);
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (key.startsWith('motodrive') || key.includes('sb-'))) {
+      if (key && !preservedKeys.has(key) && (key.startsWith('motodrive_active_') || key.includes('sb-'))) {
         keysToRemove.push(key);
       }
     }

@@ -1,4 +1,6 @@
-import { auth } from '../lib/firebase';
+import { auth, isFirestoreQuotaExceeded, markFirestoreQuotaExceeded } from '../lib/firebase';
+
+export { isFirestoreQuotaExceeded, markFirestoreQuotaExceeded };
 
 export enum OperationType {
   CREATE = 'create',
@@ -54,19 +56,13 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     errMsg.includes('quota limit exceeded');
 
   if (isOfflineOrUnavailable) {
-    try {
-      localStorage.setItem('motodrive_firestore_quota_exceeded', 'true');
-    } catch (e) {}
-    console.info(`Firestore quota exhausted or offline. Operating in resilient local/cache mode for [${path || 'operation'}].`);
+    markFirestoreQuotaExceeded();
     return true;
   }
 
   if (operationType === OperationType.GET || operationType === OperationType.LIST) {
-    console.warn(`Firestore read notice [${path}]:`, errInfo.error);
     return true;
   }
 
-  console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
-  return true; // Return true to prevent crashing app on quota/network issues
+  return true;
 }
-

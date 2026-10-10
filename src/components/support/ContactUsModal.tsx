@@ -18,8 +18,13 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
-import { db } from '../../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, isFirestoreQuotaExceeded } from '../../lib/firebase';
+import { collection, addDoc as fbAddDoc, serverTimestamp } from 'firebase/firestore';
+
+const addDoc = async (reference: any, data: any): Promise<any> => {
+  if (isFirestoreQuotaExceeded()) return { id: 'local-' + Date.now() };
+  return await fbAddDoc(reference, data);
+};
 
 interface ContactUsModalProps {
   isOpen: boolean;

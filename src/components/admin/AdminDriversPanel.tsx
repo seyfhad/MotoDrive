@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { db } from '../../lib/firebase';
+import { db, isFirestoreQuotaExceeded } from '../../lib/firebase';
 import {
   collection,
   onSnapshot,
   doc,
-  deleteDoc,
+  deleteDoc as fbDeleteDoc,
 } from 'firebase/firestore';
+
+const deleteDoc = async (reference: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  await fbDeleteDoc(reference);
+};
 import { updateDriverStatusInFirestore } from '../../services/firestoreService';
 import { approveDriverApplication, rejectDriverApplication } from '../../services/driverApplicationsService';
 import {

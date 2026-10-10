@@ -1,10 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { syncUserProfile } from '../../services/firestoreService';
-import { db } from '../../services/firebase';
+import { db, isFirestoreQuotaExceeded } from '../../services/firebase';
 import { compressImageToBase64 } from '../../utils/imageCompressor';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc as fbSetDoc, serverTimestamp } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
+
+const setDoc = async (reference: any, data: any, options?: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  if (options !== undefined) {
+    await fbSetDoc(reference, data, options);
+  } else {
+    await fbSetDoc(reference, data);
+  }
+};
 import {
   X,
   User,

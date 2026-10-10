@@ -96,7 +96,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Submit Login handler
   const handleLoginSubmit = async () => {
     const cleanPhone = normalPhone.trim().replace(/\s+/g, '');
-    const cleanName = normalName.trim() || 'مستخدم MotoDrive';
+    const cleanName = normalName.trim() || 'راكب MotoDrive';
 
     if (!cleanPhone || cleanPhone.length < 8) {
       setErrorMsg('يرجى كتابة رقم هاتف صحيح متكون من 10 أرقام.');
@@ -107,19 +107,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const { profile, driver } = await findUserAndDriverByPhone(cleanPhone);
+      const { driver } = await findUserAndDriverByPhone(cleanPhone);
       const isOwnerPhone = cleanPhone === '0662688714' || cleanPhone === '+213662688714' || cleanPhone === '213662688714';
-
-      if (!profile && !driver && !isOwnerPhone) {
-        setErrorMsg('⚠️ هذا الرقم غير مسجل في النظام. يرجى الانتقال إلى تبويب "إنشاء حساب جديد" لتسجيل حسابك أولاً.');
-        setIsSubmitting(false);
-        return;
-      }
 
       if (selectedRole === 'driver') {
         if (!driver && !isOwnerPhone) {
           setErrorMsg(
-            '⚠️ لم يتم العثور على حساب أو طلب سائق بهذا الرقم. يرجى التبديل لـ "إنشاء حساب جديد" لتقديم الطلب ورفع الوثائق.'
+            '⚠️ لم يتم العثور على حساب أو طلب سائق بهذا الرقم. يرجى التبديل لـ "تسجيل سائق جديد" لتقديم الطلب ورفع الوثائق.'
           );
           setIsSubmitting(false);
           return;
@@ -156,7 +150,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (onSuccess) onSuccess();
         onClose();
       } else {
-        // Passenger login
+        // Direct Passenger Login by Phone & Name (automatically restores existing account + trips if phone is already registered)
         const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
         setCurrentUser(res.user);
         setActivePassenger(res.profile);
@@ -166,10 +160,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           localStorage.setItem('motodrive_remembered_phone', cleanPhone);
         } catch (e) {}
 
-        broadcastNotification(
-          'مرحباً بعودتك!',
-          `تم تسجيل الدخول بنجاح كراكب: ${res.profile.name}`
-        );
+        if (res.isExisting) {
+          broadcastNotification(
+            'مرحباً بعودتك!',
+            `تم التعرف على رقمك وفتح حسابك القديم مع جميع رحلاتك المحفوظة: ${res.profile.name}`
+          );
+        } else {
+          broadcastNotification(
+            'مرحباً بك!',
+            `تم تسجيل الدخول بنجاح كراكب: ${res.profile.name}`
+          );
+        }
 
         if (onSuccess) onSuccess();
         onClose();
@@ -182,44 +183,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Submit Register handler for Passenger
-  const handleRegisterPassengerSubmit = async () => {
-    const cleanPhone = normalPhone.trim().replace(/\s+/g, '');
-    const cleanName = normalName.trim();
-
-    if (!cleanPhone || cleanPhone.length < 8) {
-      setErrorMsg('يرجى كتابة رقم هاتف صحيح.');
-      return;
-    }
-    if (!cleanName || cleanName === 'مستخدم MotoDrive' || cleanName === 'راكب MotoDrive' || cleanName.length < 2) {
-      setErrorMsg('⚠️ الاسم الكامل إلزامي لتسجيل حساب راكب جديد. يرجى إدخال الاسم.');
-      return;
-    }
-
-    setIsSubmitting(true);
+  const handlePassengerPhoneInput = (val: string) => {
+    setNormalPhone(val);
     setErrorMsg(null);
-
-    try {
-      const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
-      setCurrentUser(res.user);
-      setActivePassenger(res.profile);
-      setCurrentRole('passenger');
-
-      if (res.isExisting) {
-        broadcastNotification(
-          'هذا الرقم مسجل بالفعل!',
-          `تم الدخول تلقائياً إلى حسابك الراكب الحالي: ${res.profile.name}`
-        );
-      } else {
-        broadcastNotification('مرحباً بك!', `تم إنشاء حساب راكب جديد بنجاح باسم: ${cleanName}`);
-      }
-
-      if (onSuccess) onSuccess();
-      onClose();
-    } catch (err) {
-      setErrorMsg('تعذر إنشاء الحساب. يرجى المحاولة لاحقاً.');
-    } finally {
-      setIsSubmitting(false);
+    const cached = getCachedUserByPhone(val);
+    if (cached?.profile) {
+      setNormalName(cached.profile.name);
     }
   };
 
@@ -251,7 +220,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <div className="text-center">
             <h3 className="text-base font-black text-white flex items-center gap-1.5 justify-center">
-              <span>{authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</span>
+              <span>تسجيل الدخول</span>
               <Sparkles className="w-4 h-4 text-amber-400" />
             </h3>
             <p className="text-[11px] text-slate-400">MotoDrive Algérie</p>
@@ -327,52 +296,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         ) : (
           <div className="space-y-4 animate-in fade-in duration-300">
-            {/* Top Auth Mode Toggle: Login vs Register */}
-            <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setErrorMsg(null);
-                }}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  authMode === 'login'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>تسجيل الدخول</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('register');
-                  setErrorMsg(null);
-                }}
-                className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  authMode === 'register'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>إنشاء حساب جديد</span>
-              </button>
-            </div>
-
             {/* Role Switcher: Passenger vs Driver */}
             <div className="bg-slate-950 border border-slate-800 p-1 rounded-xl flex items-center justify-between gap-1">
               <button
                 type="button"
                 onClick={() => {
                   setSelectedRole('passenger');
+                  setAuthMode('login');
                   setErrorMsg(null);
                 }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   selectedRole === 'passenger'
-                    ? 'bg-slate-800 text-amber-400 border border-amber-500/40'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -386,9 +321,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setSelectedRole('driver');
                   setErrorMsg(null);
                 }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   selectedRole === 'driver'
-                    ? 'bg-slate-800 text-amber-400 border border-amber-500/40'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -396,6 +331,43 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <span>سائق</span>
               </button>
             </div>
+
+            {/* Only show Login vs Register sub-toggle for Drivers */}
+            {selectedRole === 'driver' && (
+              <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setErrorMsg(null);
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    authMode === 'login'
+                      ? 'bg-slate-800 text-amber-400 border border-amber-500/40 font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>دخول سائق مسجل</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('register');
+                    setErrorMsg(null);
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    authMode === 'register'
+                      ? 'bg-slate-800 text-amber-400 border border-amber-500/40 font-black'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>تسجيل سائق جديد</span>
+                </button>
+              </div>
+            )}
 
             {errorMsg && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs leading-relaxed space-y-1">
@@ -407,29 +379,51 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
 
-            {authMode === 'login' ? (
-              /* LOGIN MODE FORM */
+            {selectedRole === 'driver' && authMode === 'register' ? (
+              /* DRIVER REGISTER MODE */
+              <div className="space-y-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl">
+                <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 pb-1 border-b border-slate-800">
+                  <MotoIcon className="w-4 h-4" />
+                  <span>تقديم طلب تسجيل سائق جديد (الوثائق الـ 4)</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  يتطلب تسجيل السائق إرفاق 4 صور (السيلفي، الدراجة، رخصة السياقة، والبطاقة الرمادية) وإدخال معلومات الدراجة لاعتمادها من المالك.
+                </p>
+                <button
+                  type="button"
+                  id="open-driver-register-modal-btn"
+                  onClick={() => {
+                    onClose();
+                    window.dispatchEvent(new CustomEvent('open-driver-registration'));
+                  }}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+                >
+                  📝 تعبئة نموذج السائق وإرفاق الوثائق الـ 4
+                </button>
+              </div>
+            ) : (
+              /* DIRECT PASSENGER LOGIN OR DRIVER LOGIN FORM */
               <div className="space-y-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl">
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 pb-1 border-b border-slate-800">
                   <LogIn className="w-3.5 h-3.5" />
                   <span>
                     {selectedRole === 'driver'
                       ? 'تسجيل دخول سائق مسجل سابقاً'
-                      : 'تسجيل دخول راكب برقم الهاتف'}
+                      : 'تسجيل الدخول المباشر للراكب (بالرقم والاسم)'}
                   </span>
                 </div>
 
                 <div className="space-y-2.5">
                   <div>
                     <label className="text-[11px] text-slate-400 block mb-1">
-                      رقم الهاتف المسجل:
+                      رقم الهاتف:
                     </label>
                     <input
                       type="tel"
                       id="login-phone-input"
                       placeholder="0550123456"
                       value={normalPhone}
-                      onChange={(e) => setNormalPhone(e.target.value)}
+                      onChange={(e) => handlePassengerPhoneInput(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-left"
                       dir="ltr"
                     />
@@ -438,7 +432,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {selectedRole === 'passenger' && (
                     <div>
                       <label className="text-[11px] text-slate-400 block mb-1">
-                        الاسم الكامل (اختياري):
+                        الاسم الكامل:
                       </label>
                       <input
                         type="text"
@@ -460,81 +454,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting
-                    ? 'جاري فحص وتأكيد الحساب...'
+                    ? 'جاري فتح الحساب واسترجاع البيانات...'
                     : selectedRole === 'driver'
                     ? '🔑 تسجيل دخول السائق ومتابعة الطلب'
-                    : '🔑 تسجيل الدخول الآن'}
+                    : '🔑 تسجيل الدخول ومتابعة الرحلات'}
                 </button>
-              </div>
-            ) : (
-              /* REGISTER MODE FORM */
-              <div className="space-y-3 bg-slate-950/90 border border-slate-800 p-4 rounded-2xl">
-                {selectedRole === 'driver' ? (
-                  <div className="space-y-3">
-                    <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 pb-1 border-b border-slate-800">
-                      <MotoIcon className="w-4 h-4" />
-                      <span>تقديم طلب تسجيل سائق جديد (الوثائق الـ 4)</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      يتطلب تسجيل السائق إرفاق 4 صور (السيلفي، الدراجة، رخصة السياقة، والبطاقة الرمادية) وإدخال معلومات الدراجة لاعتمادها من المالك.
-                    </p>
-                    <button
-                      type="button"
-                      id="open-driver-register-modal-btn"
-                      onClick={() => {
-                        onClose();
-                        window.dispatchEvent(new CustomEvent('open-driver-registration'));
-                      }}
-                      className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer"
-                    >
-                      📝 تعبئة نموذج السائق وإرفاق الوثائق الـ 4
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 pb-1 border-b border-slate-800">
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>إنشاء حساب راكب جديد</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-[11px] text-slate-400 block mb-1">الاسم الكامل:</label>
-                        <input
-                          type="text"
-                          id="register-name-input"
-                          placeholder="مثال: أحمد بلقاسم"
-                          value={normalName}
-                          onChange={(e) => setNormalName(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] text-slate-400 block mb-1">رقم الهاتف:</label>
-                        <input
-                          type="tel"
-                          id="register-phone-input"
-                          placeholder="0550123456"
-                          value={normalPhone}
-                          onChange={(e) => setNormalPhone(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono text-left"
-                          dir="ltr"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      id="submit-register-passenger-btn"
-                      onClick={handleRegisterPassengerSubmit}
-                      disabled={isSubmitting}
-                      className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50"
-                    >
-                      {isSubmitting ? 'جاري التسجيل...' : '🚀 إنشاء حساب راكب جديد'}
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 

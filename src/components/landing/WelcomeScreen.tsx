@@ -550,72 +550,24 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           </div>
         )}
 
-        {/* PASSENGER DIRECT FORM */}
+        {/* PASSENGER DIRECT LOGIN BY PHONE & NAME (NO SEPARATE CREATE ACCOUNT BUTTON) */}
         {activeFormTab === 'passenger' && (
           <form onSubmit={handlePassengerSubmit} className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-2xl backdrop-blur-md animate-in fade-in duration-200">
-            {/* Passenger Sub-Mode Switcher: Create Account vs Login */}
-            <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setPassengerMode('register');
-                  setFormError(null);
-                }}
-                className={`py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                  passengerMode === 'register'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>إنشاء حساب راكب جديد</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPassengerMode('login');
-                  setFormError(null);
-                }}
-                className={`py-2 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                  passengerMode === 'login'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>تسجيل دخول راكب</span>
-              </button>
-            </div>
-
             <div className="text-right">
               <h3 className="text-xs font-black text-amber-400 flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span>
-                  {passengerMode === 'register' ? 'إنشاء حساب راكب جديد' : 'تسجيل دخول راكب برقم الهاتف'}
-                </span>
+                <LogIn className="w-4 h-4 text-amber-400" />
+                <span>تسجيل الدخول المباشر للراكب (بالاسم ورقم الهاتف)</span>
               </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                إذا كنت مسجلاً بهذا الرقم سابقاً، سيتم فتح حسابك القديم تلقائياً مع استرجاع جميع رحلاتك وبياناتك المحفوظة.
+              </p>
             </div>
 
             <div className="space-y-2.5">
               <div>
                 <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                  {passengerMode === 'register' ? 'الاسم الكامل:' : 'الاسم الكامل (اختياري عند وجود حساب سابق):'}
+                  رقم الهاتف (للتعرف على حسابك وحفظ رحلاتك):
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={passengerName}
-                    onChange={(e) => setPassengerName(e.target.value)}
-                    placeholder="مثال: أحمد العالي"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                  />
-                  <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3 pointer-events-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-bold text-slate-300 block mb-1">رقم الهاتف (للتواصل وحفظ الحساب):</label>
                 <div className="relative">
                   <input
                     type="tel"
@@ -628,6 +580,22 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
                   <Phone className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3 pointer-events-none" />
                 </div>
               </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  الاسم الكامل:
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={passengerName}
+                    onChange={(e) => setPassengerName(e.target.value)}
+                    placeholder="مثال: أحمد العالي"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                  />
+                  <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3 pointer-events-none" />
+                </div>
+              </div>
             </div>
 
             <button
@@ -638,15 +606,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
               {isPassengerSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جاري المتابعة...</span>
+                  <span>جاري فتح حسابك واسترجاع بياناتك...</span>
                 </>
               ) : (
                 <>
-                  <span>
-                    {passengerMode === 'register'
-                      ? '🚀 إنشاء الحساب والانطلاق كراكب'
-                      : '🔑 تسجيل الدخول ومتابعة الرحلات'}
-                  </span>
+                  <LogIn className="w-4 h-4" />
+                  <span>تسجيل الدخول ومتابعة الرحلات</span>
                 </>
               )}
             </button>

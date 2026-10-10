@@ -8,6 +8,7 @@ import {
   findNearestLocalLocation,
   findNearestAlgerianWilaya,
   calculateDistanceKm,
+  fetchAccurateRoadRoute,
   estimateDurationMinutes,
   reverseGeocodeCoords,
   searchAlgeriaPlaces,
@@ -198,7 +199,25 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     }
   };
 
-  const distanceKm = calculateDistanceKm(pickup, destination);
+  const [roadDistanceKm, setRoadDistanceKm] = useState<number>(() =>
+    calculateDistanceKm(pickup, destination)
+  );
+
+  React.useEffect(() => {
+    let active = true;
+    const initialDist = calculateDistanceKm(pickup, destination);
+    setRoadDistanceKm(initialDist);
+    fetchAccurateRoadRoute(pickup, destination).then((res) => {
+      if (active && res.distanceKm > 0) {
+        setRoadDistanceKm(res.distanceKm);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [pickup.lat, pickup.lng, destination.lat, destination.lng]);
+
+  const distanceKm = roadDistanceKm;
   const estimatedDuration = estimateDurationMinutes(distanceKm);
 
   const discountPercent = appliedPromo === 'MOTO20' ? 20 : appliedPromo === 'SAHL10' ? 10 : 0;
@@ -397,8 +416,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 className="w-full flex items-center justify-between text-right p-2 rounded-xl hover:bg-slate-900 transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500 text-emerald-400 flex items-center justify-center text-xs shrink-0">
-                    📍
+                  <div className="w-7 h-7 rounded-full bg-yellow-300/15 border border-yellow-300 text-yellow-200 flex items-center justify-center text-xs shrink-0">
+                    <MapPin className="w-3.5 h-3.5 text-yellow-200" />
                   </div>
                   <div className="truncate">
                     <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق (Pickup)</div>

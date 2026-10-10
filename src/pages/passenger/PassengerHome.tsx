@@ -127,11 +127,25 @@ export const PassengerHome: React.FC = () => {
           zoom={14}
           pickup={currentPassengerRide?.pickup || selectedPickup}
           destination={currentPassengerRide?.destination || selectedDestination}
+          routeFrom={
+            currentPassengerRide &&
+            ['accepted', 'driver_arriving', 'trip_started'].includes(currentPassengerRide.status)
+              ? currentPassengerRide.driverLocation ||
+                drivers.find((d) => d.id === currentPassengerRide.driverId)?.location ||
+                currentPassengerRide.pickup
+              : currentPassengerRide?.pickup || selectedPickup
+          }
+          routeTo={
+            currentPassengerRide &&
+            ['accepted', 'driver_arriving'].includes(currentPassengerRide.status)
+              ? currentPassengerRide.pickup
+              : currentPassengerRide?.destination || selectedDestination
+          }
           drivers={drivers}
           activeDriverLocation={
             currentPassengerRide?.driverLocation ||
             drivers.find((d) => d.id === currentPassengerRide?.driverId)?.location ||
-            currentPassengerRide?.offers?.find((o) => o.driverId === currentPassengerRide?.driverId)?.location
+            currentPassengerRide?.offers?.find((o) => o.driverId === currentPassengerRide?.driverId)?.driverLocation
           }
           showRadar={currentPassengerRide?.status === 'searching'}
           interactive={true}
@@ -241,8 +255,8 @@ export const PassengerHome: React.FC = () => {
                     onClick={() => setShowBookingModal(true)}
                     className="flex-1 flex items-center gap-3 text-right hover:opacity-90 transition-opacity truncate"
                   >
-                    <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500 text-emerald-400 flex items-center justify-center text-xs shrink-0">
-                      📍
+                    <div className="w-7 h-7 rounded-full bg-yellow-300/15 border border-yellow-300 text-yellow-200 flex items-center justify-center text-xs shrink-0">
+                      <MapPin className="w-3.5 h-3.5 text-yellow-200" />
                     </div>
                     <div className="truncate flex-1">
                       <div className="text-[10px] text-emerald-400 font-semibold">موقع الانطلاق</div>

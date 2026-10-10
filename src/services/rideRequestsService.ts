@@ -2,17 +2,15 @@ import {
   collection,
   doc,
   getDoc,
-  getDocs,
   setDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
-  orderBy,
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, isFirestoreQuotaExceeded } from '../lib/firebase';
 import { RideRequest, DriverProfile } from '../types';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
 
@@ -37,20 +35,18 @@ export const createRideRequest = async (
     createdAt: now,
   };
 
+  if (isFirestoreQuotaExceeded()) {
+    return requestId;
+  }
+
   try {
-    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
-    if (!quotaExceeded) {
-      await setDoc(newDocRef, {
-        ...payload,
-        serverCreatedAt: serverTimestamp(),
-        serverUpdatedAt: serverTimestamp(),
-      });
-    }
+    await setDoc(newDocRef, {
+      ...payload,
+      serverCreatedAt: serverTimestamp(),
+      serverUpdatedAt: serverTimestamp(),
+    });
   } catch (err) {
-    const handled = handleFirestoreError(err, OperationType.CREATE, `${RIDE_REQUESTS_COL}/${requestId}`);
-    if (!handled) {
-      throw err;
-    }
+    handleFirestoreError(err, OperationType.CREATE, `${RIDE_REQUESTS_COL}/${requestId}`);
   }
   return requestId;
 };
@@ -122,98 +118,83 @@ export const acceptRideRequest = async (
   requestId: string,
   driver: DriverProfile
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   const reqRef = doc(db, RIDE_REQUESTS_COL, requestId);
   const now = new Date().toISOString();
 
   try {
-    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
-    if (!quotaExceeded) {
-      await updateDoc(reqRef, {
-        status: 'accepted',
-        driverId: driver.id,
-        driverName: driver.name,
-        driverPhone: driver.phone,
-        driverPhoto: driver.photoUrl || '',
-        driverLocation: driver.location || null,
-        motorcycle: driver.motorcycle || null,
-        acceptedAt: now,
-        serverUpdatedAt: serverTimestamp(),
-      });
-    }
+    await updateDoc(reqRef, {
+      status: 'accepted',
+      driverId: driver.id,
+      driverName: driver.name,
+      driverPhone: driver.phone,
+      driverPhoto: driver.photoUrl || '',
+      driverLocation: driver.location || null,
+      motorcycle: driver.motorcycle || null,
+      acceptedAt: now,
+      serverUpdatedAt: serverTimestamp(),
+    });
   } catch (err) {
-    const handled = handleFirestoreError(err, OperationType.UPDATE, `${RIDE_REQUESTS_COL}/${requestId}`);
-    if (!handled) {
-      throw err;
-    }
+    handleFirestoreError(err, OperationType.UPDATE, `${RIDE_REQUESTS_COL}/${requestId}`);
   }
 };
 
 export const completeRideRequest = async (
   requestId: string
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   const reqRef = doc(db, RIDE_REQUESTS_COL, requestId);
 
   try {
-    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
-    if (!quotaExceeded) {
-      const snap = await getDoc(reqRef);
-      if (snap.exists()) {
-        const data = snap.data() as RideRequest;
-        const completedAt = new Date().toISOString();
+    const snap = await getDoc(reqRef);
+    if (snap.exists()) {
+      const data = snap.data() as RideRequest;
+      const completedAt = new Date().toISOString();
 
-        const archiveRef = doc(db, COMPLETED_RIDES_COL, requestId);
-        await setDoc(archiveRef, {
-          id: requestId,
-          passengerId: data.passengerId,
-          passengerName: data.passengerName,
-          passengerPhone: data.passengerPhone,
-          driverId: data.driverId || null,
-          driverName: data.driverName || '',
-          driverPhone: data.driverPhone || '',
-          driverPhoto: data.driverPhoto || '',
-          status: 'completed',
-          pickup: data.pickup,
-          destination: data.destination,
-          distanceKm: data.distanceKm,
-          estimatedDurationMins: data.estimatedDurationMins,
-          finalPrice: data.fare,
-          estimatedPrice: data.fare,
-          recommendedPrice: data.fare,
-          passengerOfferedPrice: data.fare,
-          platformCommission: 0,
-          driverEarning: data.fare,
-          paymentMethod: 'cash',
-          paymentStatus: 'paid',
-          requestedAt: data.createdAt,
-          acceptedAt: data.acceptedAt || data.createdAt,
-          completedAt,
-          serverCompletedAt: serverTimestamp(),
-        }, { merge: true });
+      const archiveRef = doc(db, COMPLETED_RIDES_COL, requestId);
+      await setDoc(archiveRef, {
+        id: requestId,
+        passengerId: data.passengerId,
+        passengerName: data.passengerName,
+        passengerPhone: data.passengerPhone,
+        driverId: data.driverId || null,
+        driverName: data.driverName || '',
+        driverPhone: data.driverPhone || '',
+        driverPhoto: data.driverPhoto || '',
+        status: 'completed',
+        pickup: data.pickup,
+        destination: data.destination,
+        distanceKm: data.distanceKm,
+        estimatedDurationMins: data.estimatedDurationMins,
+        finalPrice: data.fare,
+        estimatedPrice: data.fare,
+        recommendedPrice: data.fare,
+        passengerOfferedPrice: data.fare,
+        platformCommission: 0,
+        driverEarning: data.fare,
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        requestedAt: data.createdAt,
+        acceptedAt: data.acceptedAt || data.createdAt,
+        completedAt,
+        serverCompletedAt: serverTimestamp(),
+      }, { merge: true });
 
-        await deleteDoc(reqRef);
-      }
+      await deleteDoc(reqRef);
     }
   } catch (err) {
-    const handled = handleFirestoreError(err, OperationType.DELETE, `${RIDE_REQUESTS_COL}/${requestId}`);
-    if (!handled) {
-      throw err;
-    }
+    handleFirestoreError(err, OperationType.DELETE, `${RIDE_REQUESTS_COL}/${requestId}`);
   }
 };
 
 export const cancelRideRequest = async (
   requestId: string
 ): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
   const reqRef = doc(db, RIDE_REQUESTS_COL, requestId);
   try {
-    const quotaExceeded = localStorage.getItem('motodrive_firestore_quota_exceeded') === 'true';
-    if (!quotaExceeded) {
-      await deleteDoc(reqRef);
-    }
+    await deleteDoc(reqRef);
   } catch (err) {
-    const handled = handleFirestoreError(err, OperationType.DELETE, `${RIDE_REQUESTS_COL}/${requestId}`);
-    if (!handled) {
-      throw err;
-    }
+    handleFirestoreError(err, OperationType.DELETE, `${RIDE_REQUESTS_COL}/${requestId}`);
   }
 };

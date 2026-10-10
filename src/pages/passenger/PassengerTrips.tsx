@@ -30,7 +30,13 @@ export const PassengerTrips: React.FC = () => {
     loadTripsData();
   }, [activePassenger.id]);
 
-  const passengerRides = rides.filter(r => r.passengerId === activePassenger.id);
+  const passengerRides = rides.filter(
+    r =>
+      r.passengerId === activePassenger.id ||
+      (activePassenger.phone &&
+        r.passengerPhone &&
+        r.passengerPhone.trim().replace(/\s+/g, '') === activePassenger.phone.trim().replace(/\s+/g, ''))
+  );
 
   const filteredRides = passengerRides.filter(r => {
     if (filter === 'completed') return r.status === 'completed';

@@ -31,8 +31,18 @@ export const ALGERIA_LOCATIONS = COMPREHENSIVE_ALGERIA_LOCATIONS;
 // Default center: Algiers Center
 export const DEFAULT_MAP_CENTER: [number, number] = [36.7538, 3.0588];
 
-// Calculate Haversine distance in Kilometers
-export function calculateDistanceKm(
+// In-memory cache for real OSRM road distances & route geometries
+const roadRouteCache = new Map<
+  string,
+  { distanceKm: number; durationMins: number; coordinates: [number, number][] }
+>();
+
+function getRouteCacheKey(p1: { lat: number; lng: number }, p2: { lat: number; lng: number }): string {
+  return `${p1.lat.toFixed(3)},${p1.lng.toFixed(3)}->${p2.lat.toFixed(3)},${p2.lng.toFixed(3)}`;
+}
+
+// Pure Haversine straight-line air distance in Kilometers
+export function calculateAirDistanceKm(
   point1: { lat: number; lng: number },
   point2: { lat: number; lng: number }
 ): number {
@@ -46,15 +56,82 @@ export function calculateDistanceKm(
       Math.sin(dLng / 2) *
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c;
-  return Math.round(d * 10) / 10; // 1 decimal place
+  return R * c;
 }
 
-// Estimate duration in minutes (motorcycles in Algerian traffic average ~25-35 km/h + 2 min buffer)
+// Calculate accurate Algerian road driving distance in Kilometers
+// Uses OSRM real road distance when cached, or Haversine * 1.40 Algerian road tortuosity factor (e.g. Ténès to Chlef: 38.57 * 1.4 = 54.0 km)
+export function calculateDistanceKm(
+  point1: { lat: number; lng: number },
+  point2: { lat: number; lng: number }
+): number {
+  const airDist = calculateAirDistanceKm(point1, point2);
+  if (airDist < 0.05) return 0;
+
+  const key = getRouteCacheKey(point1, point2);
+  const cached = roadRouteCache.get(key);
+  if (cached) {
+    return cached.distanceKm;
+  }
+
+  // Trigger non-blocking OSRM fetch to populate exact road distance for next render
+  fetchAccurateRoadRoute(point1, point2).catch(() => {});
+
+  // Realistic road winding multiplier across Algerian topography (RN19 Ténès-Chlef 38.57km air -> 54.0km road)
+  const roadDist = airDist * 1.4;
+  return Math.round(roadDist * 10) / 10;
+}
+
+// Fetch real driving route, distance (km), and duration (mins) from OSRM with fallback
+export async function fetchAccurateRoadRoute(
+  point1: { lat: number; lng: number },
+  point2: { lat: number; lng: number }
+): Promise<{ distanceKm: number; durationMins: number; coordinates: [number, number][] }> {
+  const key = getRouteCacheKey(point1, point2);
+  const cached = roadRouteCache.get(key);
+  if (cached) return cached;
+
+  const fallbackDist = Math.round(calculateAirDistanceKm(point1, point2) * 1.4 * 10) / 10;
+  const fallbackDur = estimateDurationMinutes(fallbackDist);
+  const fallbackCoords: [number, number][] = [
+    [point1.lat, point1.lng],
+    [point2.lat, point2.lng],
+  ];
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const url = `https://router.project-osrm.org/route/v1/driving/${point1.lng},${point1.lat};${point2.lng},${point2.lat}?overview=full&geometries=geojson`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const data = await res.json();
+      const route = data.routes?.[0];
+      if (route && typeof route.distance === 'number') {
+        const osrmKm = Math.round((route.distance / 1000) * 10) / 10;
+        const finalKm = osrmKm > 0 ? osrmKm : fallbackDist;
+        const finalDur = estimateDurationMinutes(finalKm);
+        const coords: [number, number][] = route.geometry?.coordinates?.length
+          ? route.geometry.coordinates.map((c: [number, number]) => [c[1], c[0]] as [number, number])
+          : fallbackCoords;
+
+        const result = { distanceKm: finalKm, durationMins: finalDur, coordinates: coords };
+        roadRouteCache.set(key, result);
+        return result;
+      }
+    }
+  } catch {
+    // Use realistic road factor fallback when offline
+  }
+
+  return { distanceKm: fallbackDist, durationMins: fallbackDur, coordinates: fallbackCoords };
+}
+
+// Estimate duration in minutes (motorcycles in Algerian traffic average ~35-42 km/h + 2 min buffer)
 export function estimateDurationMinutes(distanceKm: number): number {
   if (distanceKm <= 0) return 3;
-  // Motorcycle weaves fast through traffic
-  const minutes = Math.round((distanceKm / 30) * 60 + 2);
+  const minutes = Math.round((distanceKm / 36) * 60 + 2);
   return Math.max(3, minutes);
 }
 

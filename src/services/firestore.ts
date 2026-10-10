@@ -1,19 +1,41 @@
 import {
   doc,
-  setDoc,
+  setDoc as fbSetDoc,
   getDoc,
   getDocs,
   collection,
   query,
   where,
-  updateDoc,
-  addDoc,
+  updateDoc as fbUpdateDoc,
+  addDoc as fbAddDoc,
   Timestamp,
-  runTransaction,
+  runTransaction as fbRunTransaction,
   Query,
   QueryConstraint,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, isFirestoreQuotaExceeded } from '../lib/firebase';
+
+const setDoc = async (ref: any, data: any, options?: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  if (options !== undefined) await fbSetDoc(ref, data, options);
+  else await fbSetDoc(ref, data);
+};
+
+const updateDoc = async (ref: any, data: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  await fbUpdateDoc(ref, data);
+};
+
+const addDoc = async (ref: any, data: any): Promise<any> => {
+  if (isFirestoreQuotaExceeded()) return { id: 'local-' + Math.random().toString(36).substring(2, 9) };
+  return await fbAddDoc(ref, data);
+};
+
+const runTransaction = async (firestore: any, updateFn: any): Promise<any> => {
+  if (isFirestoreQuotaExceeded()) return true;
+  return await fbRunTransaction(firestore, updateFn);
+};
+
 import {
   UserProfile,
   DriverProfile,

@@ -8,10 +8,19 @@ import {
   orderBy,
   onSnapshot,
   getDocs,
-  setDoc,
+  setDoc as fbSetDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, isFirestoreQuotaExceeded } from '../lib/firebase';
+
+const setDoc = async (reference: any, data: any, options?: any): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  if (options !== undefined) {
+    await fbSetDoc(reference, data, options);
+  } else {
+    await fbSetDoc(reference, data);
+  }
+};
 import {
   UserRole,
   UserProfile,
@@ -170,12 +179,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [passengers, setPassengers] = useState<UserProfile[]>(INITIAL_PASSENGERS);
   const [drivers, setDrivers] = useState<DriverProfile[]>(INITIAL_DRIVERS);
-  const [rides, setRides] = useState<Ride[]>([]);
+  const [rides, setRides] = useState<Ride[]>(() => {
+    try {
+      const savedRides = localStorage.getItem('motodrive_saved_rides');
+      if (savedRides) {
+        const parsed = JSON.parse(savedRides);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
   const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
   const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>(INITIAL_SERVICE_AREAS);
-  const [complaints, setComplaints] = useState<Complaint[]>(INITIAL_COMPLAINTS);
+  const [complaints, setComplaints] = useState<Complaint[]>(() => {
+    try {
+      const savedComplaints = localStorage.getItem('motodrive_saved_complaints');
+      if (savedComplaints) {
+        const parsed = JSON.parse(savedComplaints);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return INITIAL_COMPLAINTS;
+  });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [ratings, setRatings] = useState<Rating[]>([]);
+  const [ratings, setRatings] = useState<Rating[]>(() => {
+    try {
+      const savedRatings = localStorage.getItem('motodrive_saved_ratings');
+      if (savedRatings) {
+        const parsed = JSON.parse(savedRatings);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
 
   // Simulation switch (default to false for real Firebase mode, toggleable in UI)
   const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
@@ -191,6 +227,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
     return DEFAULT_PENDING_DRIVER;
   });
+
+  // Persist rides, complaints, ratings, and activePassenger profile into localStorage so user accounts & trip history are always remembered
+  useEffect(() => {
+    try {
+      localStorage.setItem('motodrive_saved_rides', JSON.stringify(rides));
+    } catch (e) {}
+  }, [rides]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('motodrive_saved_complaints', JSON.stringify(complaints));
+    } catch (e) {}
+  }, [complaints]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('motodrive_saved_ratings', JSON.stringify(ratings));
+    } catch (e) {}
+  }, [ratings]);
+
+  useEffect(() => {
+    try {
+      if (activePassenger && activePassenger.phone && activePassenger.id !== 'passenger-guest') {
+        const cleanPhone = activePassenger.phone.trim().replace(/\s+/g, '');
+        const raw = localStorage.getItem('motodrive_phone_directory');
+        const dir = raw ? JSON.parse(raw) : {};
+        dir[cleanPhone] = {
+          ...(dir[cleanPhone] || {}),
+          profile: activePassenger,
+        };
+        localStorage.setItem('motodrive_phone_directory', JSON.stringify(dir));
+      }
+    } catch (e) {}
+  }, [activePassenger]);
 
   // Track GPS location watcher
   const geoWatchIdRef = useRef<number | null>(null);
@@ -440,7 +510,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               uniqueRidesMap.set(ride.id, ride);
             }
           }
-          setRides(Array.from(uniqueRidesMap.values()));
+          setRides((prevRides) => {
+            // Merge cloud rides with locally persisted rides so offline/previous trips are never lost
+            const mergedMap = new Map<string, Ride>();
+            for (const localRide of prevRides) {
+              mergedMap.set(localRide.id, localRide);
+            }
+            for (const cloudRide of uniqueRidesMap.values()) {
+              mergedMap.set(cloudRide.id, cloudRide);
+            }
+            return Array.from(mergedMap.values()).sort(
+              (a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime()
+            );
+          });
         },
         (err) => {
           if (err?.code !== 'unavailable') {
@@ -835,10 +917,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [activeDriver.isOnline, activeDriver.id]);
 
-  // Derive Current Active Rides
+  // Derive Current Active Rides (matched by passengerId or passengerPhone so restored phone accounts always resume active trips)
   const currentPassengerRide = rides.find(
     r =>
-      r.passengerId === activePassenger.id &&
+      (r.passengerId === activePassenger.id ||
+        (activePassenger.phone &&
+          r.passengerPhone &&
+          r.passengerPhone.trim().replace(/\s+/g, '') === activePassenger.phone.trim().replace(/\s+/g, ''))) &&
       !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
   ) || null;
 
@@ -935,6 +1020,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const rideDocId = await createRideInFirestore(ridePayload);
 
+      const newLocalRide: Ride = {
+        ...ridePayload,
+        id: rideDocId,
+        offers: [],
+      };
+      setRides((prev) => [newLocalRide, ...prev.filter((r) => r.id !== rideDocId)]);
+
       // Save to Firestore collection 'ride_requests' with status: 'pending' (Real-time queue)
       try {
         await createRideRequest({
@@ -977,7 +1069,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const offer = (ride.offers || []).find(o => o.id === offerId);
     if (!offer) return { success: false, error: 'عرض السائق غير متوفر أو منتهي' };
 
-    const driver = drivers.find(d => d.id === offer.driverId);
+    const driver = drivers.find(d => d.id === offer.driverId) || activeDriver;
     if (!driver) return { success: false, error: 'بيانات السائق غير موجودة' };
 
     // Atomically lock driver selection via Firestore Transaction
@@ -990,6 +1082,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (result.success) {
+      setRides(prev =>
+        prev.map(r => {
+          if (r.id !== rideId) return r;
+          return {
+            ...r,
+            status: 'accepted',
+            selectedDriverId: driver.id,
+            driverId: driver.id,
+            driverName: driver.name,
+            driverPhone: driver.phone,
+            driverPhoto: driver.photoUrl,
+            driverRating: driver.rating ?? 5.0,
+            driverMotorcycle: driver.motorcycle,
+            driverLocation: offer.driverLocation || driver.location,
+            finalPrice: offer.offeredPrice,
+            acceptedAt: new Date().toISOString(),
+            offers: (r.offers || []).map(o =>
+              o.id === offerId ? { ...o, status: 'accepted' as const } : o
+            ),
+          };
+        })
+      );
+
       // Update status to accepted in ride_requests collection
       acceptRideRequest(rideId, driver).catch(e => console.warn('Notice updating ride_requests accepted status:', e));
 
@@ -1033,6 +1148,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updatePassengerOfferInFirestore(rideId, newOfferedPrice);
+      setRides(prev =>
+        prev.map(r =>
+          r.id === rideId
+            ? { ...r, passengerOfferedPrice: newOfferedPrice, estimatedPrice: newOfferedPrice }
+            : r
+        )
+      );
       addNotification(
         'all_drivers',
         'driver',
@@ -1046,11 +1168,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelRide = async (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
+    const newStatus = cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver';
+    setRides(prev =>
+      prev.map(r =>
+        r.id === rideId ? { ...r, status: newStatus, cancellationReason: reason } : r
+      )
+    );
     try {
       await cancelRideInFirestore(rideId, reason, cancelledBy);
       await cancelRideRequest(rideId);
     } catch (e) {
-      console.error('Error cancelling ride in Firestore:', e);
+      console.warn('Error cancelling ride in Firestore:', e);
     }
   };
 
@@ -1062,7 +1190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     driverId: string,
     offeredPrice: number
   ): Promise<{ success: boolean; error?: string }> => {
-    const driver = drivers.find(d => d.id === driverId);
+    const driver = drivers.find(d => d.id === driverId) || activeDriver;
     if (!driver) return { success: false, error: 'السائق غير مسجل' };
     if (driver.status !== 'approved') return { success: false, error: 'حساب السائق غير معتمد' };
     if (!driver.isOnline) return { success: false, error: 'يجب أن تكون في وضع Online لتقديم العروض' };
@@ -1073,30 +1201,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const distToPickup = calculateDistanceKm(driver.location, targetRide.pickup);
-    const etaMins = Math.max(1, Math.round(distToPickup * 2.2));
+    const etaMins = Math.max(1, Math.round(distToPickup * 1.8));
     const isCounter = offeredPrice !== targetRide.passengerOfferedPrice;
     const diff = offeredPrice - targetRide.passengerOfferedPrice;
 
+    const offerData: Omit<RideOffer, 'id' | 'createdAt'> = {
+      rideId,
+      driverId: driver.id,
+      driverName: driver.name,
+      driverPhone: driver.phone,
+      driverPhoto: driver.photoUrl,
+      driverRating: driver.rating,
+      driverTripsCount: driver.totalTrips,
+      driverMotorcycle: driver.motorcycle,
+      driverLocation: driver.location,
+      distanceToPickupKm: distToPickup,
+      etaMinutes: etaMins,
+      offeredPrice,
+      isCounterOffer: isCounter,
+      passengerOfferedPrice: targetRide.passengerOfferedPrice,
+      priceDifference: diff,
+      status: 'pending',
+      expiresAt: new Date(Date.now() + (pricing.offerTimeoutSeconds || 30) * 1000).toISOString(),
+    };
+
     try {
-      await submitDriverOfferInFirestore(rideId, {
-        rideId,
-        driverId: driver.id,
-        driverName: driver.name,
-        driverPhone: driver.phone,
-        driverPhoto: driver.photoUrl,
-        driverRating: driver.rating,
-        driverTripsCount: driver.totalTrips,
-        driverMotorcycle: driver.motorcycle,
-        driverLocation: driver.location,
-        distanceToPickupKm: distToPickup,
-        etaMinutes: etaMins,
-        offeredPrice,
-        isCounterOffer: isCounter,
-        passengerOfferedPrice: targetRide.passengerOfferedPrice,
-        priceDifference: diff,
-        status: 'pending',
-        expiresAt: new Date(Date.now() + (pricing.offerTimeoutSeconds || 30) * 1000).toISOString(),
-      });
+      const offerId = await submitDriverOfferInFirestore(rideId, offerData);
+
+      setRides(prev =>
+        prev.map(r => {
+          if (r.id !== rideId) return r;
+          const newOffer: RideOffer = {
+            ...offerData,
+            id: offerId,
+            createdAt: new Date().toISOString(),
+          };
+          return {
+            ...r,
+            status: 'offers_available',
+            offers: [...(r.offers || []), newOffer],
+          };
+        })
+      );
 
       addNotification(
         targetRide.passengerId,
@@ -1107,7 +1253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return { success: true };
     } catch (err: any) {
-      console.error('Error submitting driver offer in Firestore:', err);
+      console.warn('Error submitting driver offer in Firestore:', err);
       return { success: false, error: err.message || 'تعذر إرسال العرض' };
     }
   };
@@ -1121,7 +1267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleDriverOnline = async (driverId: string, isOnline: boolean): Promise<{ success: boolean; error?: string }> => {
-    const driver = drivers.find(d => d.id === driverId);
+    const driver = drivers.find(d => d.id === driverId) || activeDriver;
     if (!driver) return { success: false, error: 'السائق غير موجود' };
 
     if (isOnline && driver.status !== 'approved') {
@@ -1133,6 +1279,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateFirestoreDriverOnlineStatus(driverId, isOnline, isOnline);
+      setActiveDriver(prev => (prev.id === driverId ? { ...prev, isOnline, isAvailable: isOnline } : prev));
+      setDrivers(prev =>
+        prev.map(d => (d.id === driverId ? { ...d, isOnline, isAvailable: isOnline } : d))
+      );
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'تعذر تغيير حالة الاتصال' };
@@ -1153,7 +1303,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetRide.status === 'accepted' || targetRide.status === 'driver_arriving') {
       nextStatus = 'driver_arrived';
       extraData.arrivedAt = new Date().toISOString();
-      addNotification(targetRide.passengerId, 'passenger', '📍 السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
+      addNotification(targetRide.passengerId, 'passenger', '✨ السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
     } else if (targetRide.status === 'driver_arrived') {
       nextStatus = 'trip_started';
       extraData.startedAt = new Date().toISOString();
@@ -1173,15 +1323,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    setRides(prev =>
+      prev.map(r => (r.id === rideId ? { ...r, status: nextStatus, ...extraData } : r))
+    );
+
     try {
       await advanceRideStatusInFirestore(rideId, nextStatus, extraData);
     } catch (e) {
-      console.error('Error advancing ride status in Firestore:', e);
+      console.warn('Error advancing ride status in Firestore:', e);
     }
   };
 
   const updateDriverLocation = (driverId: string, location: Coordinates, heading?: number) => {
-    updateFirestoreDriverLocation(driverId, location.lat, location.lng, heading).catch(console.error);
+    setActiveDriver(prev => (prev.id === driverId ? { ...prev, location, heading } : prev));
+    setDrivers(prev =>
+      prev.map(d => (d.id === driverId ? { ...d, location, heading } : d))
+    );
+    updateFirestoreDriverLocation(driverId, location.lat, location.lng, heading).catch(() => {});
   };
 
   const registerDriver = async (driverData: Partial<DriverProfile>): Promise<{ success: boolean; driverId: string }> => {
