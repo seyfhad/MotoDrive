@@ -11,7 +11,7 @@ export const AdminUsers: React.FC = () => {
   const [suspendReason, setSuspendReason] = useState('مخالفة شروط الاستخدام وقوانين منصة MotoDrive');
 
   const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
-  const [deleteReason, setDeleteReason] = useState('قرار إداري بحذف الحساب نهائياً');
+  const [deleteReason, setDeleteReason] = useState('قرار من المسؤول بحذف الحساب نهائياً');
 
   const filtered = passengers.filter(
     p => p.name.toLowerCase().includes(search.toLowerCase()) || p.phone.includes(search)
@@ -33,7 +33,7 @@ export const AdminUsers: React.FC = () => {
     <div className="space-y-6 text-right text-slate-100" id="admin-users-screen">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
-          <h2 className="text-xl font-black text-white">إدارة حسابات الركاب (Passengers Management)</h2>
+          <h2 className="text-xl font-black text-white">مسؤول حسابات الركاب (Passengers Management)</h2>
           <p className="text-xs text-slate-400">قائمة مستخدمي التطبيق وإحصاءات الرحلات مع إمكانية تعليق أو حذف الحساب مع كتابة السبب</p>
         </div>
       </div>
@@ -98,7 +98,7 @@ export const AdminUsers: React.FC = () => {
                   type="button"
                   onClick={() => {
                     if (isSuspended) {
-                      suspendPassenger(user.id, 'إلغاء تعليق الحساب وتفعيله من طرف الإدارة');
+                      suspendPassenger(user.id, 'إلغاء تعليق الحساب وتفعيله من طرف المسؤول');
                     } else {
                       setSuspendTarget(user);
                     }
@@ -228,7 +228,7 @@ export const AdminUsers: React.FC = () => {
 
             <div className="space-y-1">
               {[
-                'قرار إداري بحذف الحساب نهائياً لمخالفة سياسة المنصة',
+                'قرار من المسؤول بحذف الحساب نهائياً لمخالفة سياسة المنصة',
                 'طلب من المستخدم حذف حسابه نهائياً',
                 'حساب وهمي أو بيانات غير صحيحة',
               ].map(r => (

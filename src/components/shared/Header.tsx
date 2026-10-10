@@ -112,7 +112,7 @@ export const Header: React.FC = () => {
                     {currentUser.displayName || activePassenger?.name?.split(' ')[0] || 'حسابي'}
                   </span>
                   <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold hidden sm:inline">
-                    {currentRole === 'admin' ? 'الإدارة' : currentRole === 'driver' ? 'سائق' : 'راكب'}
+                    {currentRole === 'admin' ? 'المسؤول' : currentRole === 'driver' ? 'سائق' : 'راكب'}
                   </span>
                 </>
               )}
@@ -238,20 +238,6 @@ export const Header: React.FC = () => {
                 ✕
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                pushNotificationService.sendPushNotification(
-                  '🔔 إشعار تجريبي من MotoDrive',
-                  'نظام الإشعارات الفورية والصوتية يعمل بنجاح!',
-                  { soundType: 'new_ride' }
-                );
-              }}
-              className="w-full py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
-            >
-              <span>🔔 إرسال إشعار وتجربة الصوت الآن</span>
-            </button>
 
             <div className="max-h-80 overflow-y-auto space-y-2 pt-1">
               {notifications.length === 0 ? (

@@ -17,7 +17,7 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans dir-rtl" dir="rtl">
-      {/* الشريط العلوي للوحة الإدارة */}
+      {/* الشريط العلوي للوحة المسؤول */}
       <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -26,7 +26,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
             <div>
               <h1 className="text-base font-black text-white flex items-center gap-2">
-                <span>لوحة تحكم الإدارة</span>
+                <span>لوحة تحكم المسؤول</span>
                 <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
                   MotoDrive Admin
                 </span>
@@ -38,7 +38,7 @@ export const AdminDashboard: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                broadcastNotification('تنبيه الإدارة', 'تم إرسال إشعار عام لجميع مستخدمي التطبيق');
+                broadcastNotification('تنبيه المسؤول', 'تم إرسال إشعار عام لجميع مستخدمي التطبيق');
                 alert('تم إرسال الإشعار العام بنجاح');
               }}
               className="p-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl border border-slate-700 transition-colors"

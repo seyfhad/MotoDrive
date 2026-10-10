@@ -245,8 +245,8 @@ const MapController: React.FC<{
 
 export const GoogleMapView: React.FC<GoogleMapViewProps> = (props) => {
   const {
-    center = [36.7538, 3.0588],
-    zoom = 13,
+    center = [36.1652, 1.3345],
+    zoom = 14,
     pickup,
     destination,
     routeFrom,
@@ -376,20 +376,6 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = (props) => {
           center={center}
           zoom={zoom}
         />
-
-        {/* User Live GPS Marker with pulsating accuracy ring */}
-        {userLiveCoords && (
-          <AdvancedMarker
-            position={{ lat: userLiveCoords.lat, lng: userLiveCoords.lng }}
-            title="موقعي الفعلي المباشر (GPS)"
-          >
-            <div className="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-              <div className="w-5 h-5 rounded-full bg-sky-500 border-2 border-white shadow-2xl z-10"></div>
-              <div className="absolute w-9 h-9 rounded-full bg-sky-400/40 animate-ping"></div>
-              <div className="absolute w-16 h-16 rounded-full bg-sky-500/10 border border-sky-400/30"></div>
-            </div>
-          </AdvancedMarker>
-        )}
 
         {/* 1. Pickup Advanced Marker */}
         {pickup && (
@@ -568,13 +554,6 @@ export const GoogleMapView: React.FC<GoogleMapViewProps> = (props) => {
           >
             ✕
           </button>
-        </div>
-      )}
-
-      {/* Visual GPS Center Target when interactive */}
-      {interactive && onMapClick && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40">
-          <div className="w-4 h-4 rounded-full border-2 border-amber-400/80 bg-amber-400/20"></div>
         </div>
       )}
     </div>

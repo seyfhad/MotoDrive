@@ -21,6 +21,7 @@ import {
 import { db, isFirestoreQuotaExceeded } from '../lib/firebase';
 import { Coordinates, DriverProfile, Ride, RideOffer, PricingSettings, Rating, Complaint, UserProfile, DriverApprovalStatus } from '../types';
 import { handleFirestoreError, OperationType } from './firestoreErrorHandler';
+import { saveUserToSecureVault, saveActiveSessionSecurely, loadActiveSessionSecurely, removeRideFromSecureVault } from './dataVaultService';
 
 // Helper to recursively remove all undefined properties to prevent Firestore crashes
 export const sanitizeFirestoreData = <T extends Record<string, any>>(obj: T): T => {
@@ -84,13 +85,15 @@ export const syncUserProfile = async (user: Partial<UserProfile> & { id: string 
   }
 
   try {
-    const rawSess = localStorage.getItem('motodrive_user_session');
-    if (rawSess) {
-      const sess = JSON.parse(rawSess);
-      if (sess.user && sess.user.id === user.id) {
-        sess.user = { ...sess.user, ...user };
-        localStorage.setItem('motodrive_user_session', JSON.stringify(sess));
+    const { user: currentSessUser, driver: currentSessDriver } = loadActiveSessionSecurely();
+    if (currentSessUser && currentSessUser.id === user.id) {
+      const mergedUser = { ...currentSessUser, ...user };
+      saveActiveSessionSecurely(mergedUser, currentSessDriver);
+      if (mergedUser.phone) {
+        saveUserToSecureVault(mergedUser.phone, mergedUser, currentSessDriver).catch(() => {});
       }
+    } else if (user.phone && user.name) {
+      saveUserToSecureVault(user.phone, user as UserProfile).catch(() => {});
     }
   } catch (e) {}
 };
@@ -179,28 +182,30 @@ export const syncDriverProfile = async (driver: DriverProfile): Promise<void> =>
     }
   }
 
-  // 3. Local persistence fallback to guarantee active state
+  // 3. Multi-layer redundant local & IndexedDB persistence
   try {
     localStorage.setItem('motodrive_active_driver', JSON.stringify(driver));
     if (driver.phone) {
       localStorage.setItem(`motodrive_pending_driver_${driver.phone}`, JSON.stringify(driver));
     }
 
-    const rawDir = localStorage.getItem('motodrive_phone_directory');
-    if (rawDir) {
-      const dir = JSON.parse(rawDir);
-      if (driver.phone && dir[driver.phone]) {
-        dir[driver.phone].driver = driver;
-        localStorage.setItem('motodrive_phone_directory', JSON.stringify(dir));
-      }
-    }
-    const rawSess = localStorage.getItem('motodrive_user_session');
-    if (rawSess) {
-      const sess = JSON.parse(rawSess);
-      if (sess.driver && (sess.driver.id === driver.id || sess.driver.phone === driver.phone)) {
-        sess.driver = driver;
-        localStorage.setItem('motodrive_user_session', JSON.stringify(sess));
-      }
+    const { user: currentSessUser } = loadActiveSessionSecurely();
+    const associatedUser: UserProfile =
+      currentSessUser && (currentSessUser.id === driver.userId || currentSessUser.phone === driver.phone)
+        ? currentSessUser
+        : {
+            id: driver.userId || `user-${driver.phone}`,
+            name: driver.name,
+            phone: driver.phone,
+            role: 'driver',
+            status: 'active',
+            cancellationCount: driver.cancellationCount || 0,
+            createdAt: driver.createdAt || new Date().toISOString(),
+          };
+
+    saveUserToSecureVault(driver.phone, associatedUser, driver).catch(() => {});
+    if (currentSessUser && (currentSessUser.id === driver.userId || currentSessUser.phone === driver.phone)) {
+      saveActiveSessionSecurely(currentSessUser, driver);
     }
   } catch (e) {}
 };
@@ -377,7 +382,7 @@ export const createRideInFirestore = async (
       destinationGeohash: destGh,
       status: 'searching',
       createdAt: serverTimestamp(),
-      expiresAt: Timestamp.fromMillis(Date.now() + 5 * 60 * 1000), // 5 mins expiration
+      expiresAt: Timestamp.fromMillis(Date.now() + 8 * 60 * 1000), // 08 mins expiration
     });
 
     const docRef = await addDoc(ridesCol, cleanPayload);
@@ -385,6 +390,21 @@ export const createRideInFirestore = async (
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
     return 'ride-' + Math.random().toString(36).substring(2, 9);
+  }
+};
+
+export const deleteExpiredRideFromFirestore = async (rideId: string): Promise<void> => {
+  await removeRideFromSecureVault(rideId);
+  if (isFirestoreQuotaExceeded()) return;
+  try {
+    await deleteDoc(doc(db, 'rides', rideId));
+  } catch (err) {
+    // Ignore if already deleted or permission restricted
+  }
+  try {
+    await deleteDoc(doc(db, 'ride_requests', rideId));
+  } catch (err) {
+    // Ignore if already deleted
   }
 };
 

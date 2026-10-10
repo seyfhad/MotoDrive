@@ -199,7 +199,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigateTab })
               onClick={() => onNavigateTab('complaints')}
               className="text-xs text-red-400 hover:underline font-semibold"
             >
-              إدارة الشكاوى
+              مسؤول الشكاوى
             </button>
           </div>
 

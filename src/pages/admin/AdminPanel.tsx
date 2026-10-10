@@ -48,7 +48,7 @@ export const AdminPanel: React.FC = () => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const [showBroadcastModal, setShowBroadcastModal] = useState(false);
-  const [broadcastTitle, setBroadcastTitle] = useState('إشعار من إدارة MotoDrive');
+  const [broadcastTitle, setBroadcastTitle] = useState('إشعار من مسؤول MotoDrive');
   const [broadcastBody, setBroadcastBody] = useState('مرحباً بكم، تم تحديث أسعار وتغطية الرحلات!');
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
 
@@ -58,9 +58,9 @@ export const AdminPanel: React.FC = () => {
         <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto text-2xl">
           🔒
         </div>
-        <h3 className="text-lg font-black text-white">غير مصرح بالدخول للإدارة</h3>
+        <h3 className="text-lg font-black text-white">غير مصرح بالدخول للمسؤول</h3>
         <p className="text-xs text-slate-300 leading-relaxed">
-          عذراً، لوحة التحكم الإدارية مخصصة حصرياً لمالك التطبيق الرئيسي (<span className="text-amber-400 font-mono">seyfhad@gmail.com</span>).
+          عذراً، لوحة تحكم المسؤول مخصصة حصرياً لمالك التطبيق الرئيسي (<span className="text-amber-400 font-mono">seyfhad@gmail.com</span>).
         </p>
         <button
           onClick={() => setCurrentRole('passenger')}
@@ -264,7 +264,7 @@ export const AdminPanel: React.FC = () => {
             <div className="text-center space-y-1">
               <h3 className="text-base font-black text-white">تسجيل الخروج</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                هل أنت متأكد من رغبتك في تسجيل الخروج من لوحة الإدارة والعودة للشاشة الرئيسية؟
+                هل أنت متأكد من رغبتك في تسجيل الخروج من لوحة المسؤول والعودة للشاشة الرئيسية؟
               </p>
             </div>
 
@@ -342,7 +342,7 @@ export const AdminPanel: React.FC = () => {
                     type="text"
                     value={broadcastTitle}
                     onChange={(e) => setBroadcastTitle(e.target.value)}
-                    placeholder="مثال: إشعار من إدارة MotoDrive"
+                    placeholder="مثال: إشعار من مسؤول MotoDrive"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
                   />
                 </div>

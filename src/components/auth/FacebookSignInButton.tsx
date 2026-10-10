@@ -21,17 +21,13 @@ export const FacebookSignInButton: React.FC<FacebookSignInButtonProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { broadcastNotification } = useApp();
   const handleFacebookSignIn = async () => {
     try {
       setLoading(true);
       setErrorMsg(null);
       const res: any = await signInWithFacebookOAuth(role as UserRole);
       if (res && (res.profile || res.user)) {
-        broadcastNotification('تم تسجيل الدخول بنجاح', `مرحباً بك، ${res.profile?.name || 'مستخدم فيسبوك'}!`);
         onSuccess?.();
-      } else {
-        broadcastNotification('جاري المتابعة مع Facebook', 'يرجى إكمال المصادقة للمتابعة.');
       }
     } catch (err: any) {
       let rawMsg = err?.message || 'فشل الاتصال بفيسبوك. يرجى المحاولة مرة أخرى.';

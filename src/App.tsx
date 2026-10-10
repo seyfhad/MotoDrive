@@ -320,7 +320,7 @@ const AppContent: React.FC = () => {
           onClose={() => setIsAndroidModalOpen(false)}
         />
 
-        {/* Contact Us & Technical Support Modal (+213662688714 / Direct Message to Admin) */}
+        {/* Contact Us & Technical Support Modal (0542524728 / Direct Message to Admin) */}
         <ContactUsModal
           isOpen={isContactUsOpen}
           onClose={() => setIsContactUsOpen(false)}

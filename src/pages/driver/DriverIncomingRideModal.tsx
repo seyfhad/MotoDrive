@@ -10,8 +10,8 @@ interface DriverIncomingRideModalProps {
 }
 
 export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = ({ ride, onClose }) => {
-  const { submitDriverOffer, rejectRide, activeDriver, pricing } = useApp();
-  const [timeLeft, setTimeLeft] = useState(25);
+  const { acceptRide, submitDriverOffer, rejectRide, activeDriver, pricing } = useApp();
+  const [timeLeft, setTimeLeft] = useState(60);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showCounterForm, setShowCounterForm] = useState(false);
@@ -19,16 +19,16 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
   const passengerPrice = ride.passengerOfferedPrice || ride.estimatedPrice;
   const [counterPrice, setCounterPrice] = useState(passengerPrice + 40);
 
-  // 25-second countdown timer for decision
+  // 60-second countdown timer for decision (pauses while entering counter offer)
   useEffect(() => {
+    if (showCounterForm || isSubmitting) return;
     if (timeLeft <= 0) {
-      rejectRide(ride.id, activeDriver.id);
       onClose();
       return;
     }
     const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, showCounterForm, isSubmitting]);
 
   // Calculate commission & net earnings
   const commissionRate = (pricing.driverCommissionPercent || 15) / 100;
@@ -38,13 +38,13 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
   const handleAcceptPassengerPrice = async () => {
     setIsSubmitting(true);
     setErrorMsg(null);
-    const result = await submitDriverOffer(ride.id, activeDriver.id, passengerPrice);
+    const result = await acceptRide(ride.id, activeDriver.id);
     setIsSubmitting(false);
 
     if (result.success) {
       onClose();
     } else {
-      setErrorMsg(result.error || 'تعذر إرسال العرض');
+      setErrorMsg(result.error || 'تعذر قبول الطلب');
     }
   };
 
@@ -73,7 +73,7 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-800">
           <div
             className="h-full bg-amber-500 transition-all duration-1000 ease-linear"
-            style={{ width: `${(timeLeft / 25) * 100}%` }}
+            style={{ width: `${(timeLeft / 60) * 100}%` }}
           />
         </div>
 

@@ -255,7 +255,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     4
                   </div>
                   <div>
-                    <h4 className="font-bold text-white text-xs sm:text-sm">موافقة الإدارة وتفعيل وضع Online</h4>
+                    <h4 className="font-bold text-white text-xs sm:text-sm">موافقة المسؤول وتفعيل وضع Online</h4>
                     <p className="text-slate-400 text-xs mt-1">
                       بعد قيام مالك التطبيق بمراجعة الوثائق وقبول ملفك، ستتلقى تنبيه قبول الحساب. فعل زر "Online" لاستقبال طلبيات الركاب القريبة فورياً.
                     </p>
@@ -335,7 +335,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     }}
                     className="p-3 bg-slate-900 border border-slate-800 hover:border-emerald-500 rounded-xl text-right cursor-pointer transition-colors"
                   >
-                    <div className="text-xs font-bold text-emerald-400">3. لوحة الإدارة</div>
+                    <div className="text-xs font-bold text-emerald-400">3. لوحة المسؤول</div>
                     <div className="text-[10px] text-slate-400 mt-1">مراجعة وثائق السائقين وقبول الحسابات.</div>
                   </button>
                 </div>
@@ -358,7 +358,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                     <Phone className="w-3.5 h-3.5" />
                     <span>خط الدعم المباشر لمراجعي Google Play:</span>
                   </div>
-                  <p className="font-mono text-xs text-white" dir="ltr">+213 662 68 87 14</p>
+                  <p className="font-mono text-xs text-white" dir="ltr">0542524728 / +213 542 52 47 28</p>
                 </div>
                 <button
                   type="button"

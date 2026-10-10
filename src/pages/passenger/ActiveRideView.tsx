@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Ride, RideOffer } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight, BadgeCheck } from 'lucide-react';
+import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, User, X, MessageSquare, Plus, Sparkles, Check, ChevronRight, BadgeCheck, Share2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { RideTracker } from '../../components/Map/RideTracker';
+import { InAppChatModal } from '../../components/chat/InAppChatModal';
+import { ShareLiveRideModal } from '../../components/shared/ShareLiveRideModal';
+import { getRideRequestTimestampMs, PENDING_RIDE_EXPIRY_MS } from '../../services/dataVaultService';
 
 interface ActiveRideViewProps {
   ride: Ride;
@@ -13,6 +16,7 @@ interface ActiveRideViewProps {
 
 export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose }) => {
   const {
+    activePassenger,
     cancelRide,
     submitRating,
     submitComplaint,
@@ -31,12 +35,44 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
   const [cancelReason, setCancelReason] = useState('انتظرت طويلاً');
 
   const [showCallModal, setShowCallModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [complaintReason, setComplaintReason] = useState('سلوك السائق');
   const [complaintDesc, setComplaintDesc] = useState('');
   const [complaintSent, setComplaintSent] = useState(false);
 
   const [isRaisingPrice, setIsRaisingPrice] = useState(false);
+
+  // Live 08-minute countdown timer for unaccepted pending rides
+  const [remainingSeconds, setRemainingSeconds] = useState<number>(() => {
+    const reqMs = getRideRequestTimestampMs(ride) || Date.now();
+    const diffSec = Math.floor((PENDING_RIDE_EXPIRY_MS - (Date.now() - reqMs)) / 1000);
+    return Math.max(0, Math.min(8 * 60, diffSec));
+  });
+
+  useEffect(() => {
+    if (ride.status !== 'searching' && ride.status !== 'offers_available') return;
+
+    const updateTimer = () => {
+      const reqMs = getRideRequestTimestampMs(ride);
+      if (!reqMs) {
+        cancelRide(ride.id, 'انتهت مهلة الطلب (08 دقائق)', 'passenger');
+        return;
+      }
+      const leftSec = Math.floor((PENDING_RIDE_EXPIRY_MS - (Date.now() - reqMs)) / 1000);
+      if (leftSec <= 0) {
+        setRemainingSeconds(0);
+        cancelRide(ride.id, 'انتهت مهلة الطلب (08 دقائق) دون قبول من أي سائق', 'passenger');
+      } else {
+        setRemainingSeconds(leftSec);
+      }
+    };
+
+    updateTimer();
+    const timerId = setInterval(updateTimer, 1000);
+    return () => clearInterval(timerId);
+  }, [ride.id, ride.status, ride.requestedAt]);
 
   const availableTags = ['قيادة آمنة 🪖', 'احترام وأدب ✨', 'نظافة الدراجة 🧼', 'الالتزام بالوقت ⏱️', 'سياقة مريحة 🏍️'];
 
@@ -85,21 +121,24 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
   if (ride.status === 'searching' || ride.status === 'offers_available') {
     const pendingOffers = (ride.offers || []).filter(o => o.status === 'pending');
     const passengerPrice = ride.passengerOfferedPrice || ride.estimatedPrice;
+    const minsLeft = String(Math.floor(remainingSeconds / 60)).padStart(2, '0');
+    const secsLeft = String(remainingSeconds % 60).padStart(2, '0');
 
     return (
       <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-5 text-slate-100 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 space-y-4" id="active-ride-negotiation">
         {/* Top Header & Proposed Price Banner */}
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
               <span className="text-xs font-black text-amber-400">
                 {pendingOffers.length > 0 ? `وصلك ${pendingOffers.length} عروض من سائقين` : 'بث الطلب لسائقي الدراجات...'}
               </span>
             </div>
-            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-              #{ride.id}
-            </span>
+            <div className="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded-xl border border-amber-500/30 text-[11px] font-mono text-amber-300" title="يُحذف الطلب تلقائياً إذا لم يقبله أي سائق خلال 08 دقائق">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>{minsLeft}:{secsLeft}</span>
+            </div>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
@@ -447,13 +486,13 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full text-right space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <h4 className="text-xs font-bold text-red-400">إرسال شكوى للإدارة</h4>
+                <h4 className="text-xs font-bold text-red-400">إرسال شكوى للمسؤول</h4>
                 <button onClick={() => setShowComplaintModal(false)}><X className="w-4 h-4 text-slate-400" /></button>
               </div>
 
               {complaintSent ? (
                 <div className="text-center py-6 text-emerald-400 text-xs font-bold">
-                  تم إرسال شكواك للإدارة وستتم مراجعتها فوراً.
+                  تم إرسال شكواك للمسؤول وستتم مراجعتها فوراً.
                 </div>
               ) : (
                 <>
@@ -478,7 +517,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
                       rows={3}
                       value={complaintDesc}
                       onChange={e => setComplaintDesc(e.target.value)}
-                      placeholder="صف ما حدث بدقة لمساعدة فريق الإدارة..."
+                      placeholder="صف ما حدث بدقة لمساعدة المسؤول..."
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-white focus:outline-none"
                     />
                   </div>
@@ -554,15 +593,38 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
           </div>
         </div>
 
-        {/* Call Action with privacy phone number masking */}
-        <button
-          onClick={() => setShowCallModal(true)}
-          className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors shadow-lg"
-          title="اتصال آمن بالسائق"
-        >
-          <Phone className="w-5 h-5" />
-        </button>
+        {/* Call & In-App Chat Actions */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowChatModal(true)}
+            className="px-3 h-10 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 flex items-center justify-center gap-1.5 text-amber-300 font-bold text-xs transition-colors shadow-lg cursor-pointer"
+            title="دردشة فورية مع السائق"
+          >
+            <MessageSquare className="w-4 h-4 text-amber-400" />
+            <span>دردشة</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowCallModal(true)}
+            className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors shadow-lg cursor-pointer"
+            title="اتصال آمن بالسائق"
+          >
+            <Phone className="w-5 h-5" />
+          </button>
+        </div>
       </div>
+
+      {/* Share Live Ride Tracking with Family via WhatsApp Button */}
+      <button
+        type="button"
+        onClick={() => setShowShareModal(true)}
+        className="w-full py-2.5 px-4 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+      >
+        <Share2 className="w-4 h-4 text-emerald-400" />
+        <span>مشاركة مسار الرحلة الحي مع العائلة (واتساب) 🛡️</span>
+      </button>
 
       {/* Ride Milestones & Addresses */}
       <div className="space-y-2 text-xs bg-slate-950/60 p-3 rounded-2xl border border-slate-800/80">
@@ -614,6 +676,34 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         </button>
       </div>
 
+      {/* In-App Chat Modal */}
+      <InAppChatModal
+        rideId={ride.id}
+        currentUserId={activePassenger.id || ride.passengerId}
+        currentUserName={activePassenger.name || ride.passengerName}
+        currentUserRole="passenger"
+        otherPartyName={ride.driverName || 'السائق'}
+        isOpen={showChatModal}
+        onClose={() => setShowChatModal(false)}
+      />
+
+      {/* Share Live Ride Modal */}
+      <ShareLiveRideModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        rideDetails={{
+          id: ride.id,
+          passengerName: activePassenger.name || ride.passengerName,
+          driverName: ride.driverName,
+          driverPhone: ride.driverPhone,
+          motorcycle: ride.driverMotorcycle
+            ? `${ride.driverMotorcycle.brand} ${ride.driverMotorcycle.model} (${ride.driverMotorcycle.plateNumber})`
+            : 'دراجة MotoDrive',
+          pickupName: ride.pickup.name || ride.pickup.address,
+          destName: ride.destination.name || ride.destination.address,
+        }}
+      />
+
       {/* Masked Safe Calling Dialog */}
       {showCallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -622,11 +712,11 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
               <Phone className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-white">اتصال آمن ومحمي بالسائق</h4>
-              <p className="text-xs text-slate-400 mt-1">يتم الاتصال برقم مؤقت للحفاظ على خصوصية رقمك الشخصي</p>
+              <h4 className="text-sm font-bold text-white">اتصال بالسائق</h4>
+              <p className="text-xs text-slate-400 mt-1">يمكنك الاتصال بالسائق مباشرة لتنسيق موقع الالتقاء</p>
             </div>
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-base font-bold text-amber-400">
-              0550 ** ** 33
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-base font-bold text-amber-400" dir="ltr">
+              {ride.driverPhone || '0550000000'}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -636,7 +726,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
                 إلغاء
               </button>
               <a
-                href="tel:0555000000"
+                href={`tel:${ride.driverPhone || '0550000000'}`}
                 onClick={() => setShowCallModal(false)}
                 className="py-2.5 bg-emerald-500 text-slate-950 rounded-xl text-xs font-black flex items-center justify-center"
               >

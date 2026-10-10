@@ -46,11 +46,6 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
         setCurrentRole(role);
       }
 
-      broadcastNotification(
-        'مرحباً بك في MotoDrive',
-        `تم تسجيل دخولك بنجاح كـ ${user.displayName || user.email || 'مستخدم'}`
-      );
-
       if (onSuccess) {
         onSuccess();
       }

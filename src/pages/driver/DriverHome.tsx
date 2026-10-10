@@ -7,7 +7,7 @@ import { formatCurrencyDZD } from '../../utils/pricing';
 import { Power, Wallet, History, Star, Shield, AlertCircle, CheckCircle, Navigation, Clock, RefreshCw } from 'lucide-react';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { updateFirestoreDriverLocation, updateDriverOnlineStatus } from '../../services/firestoreService';
-import { reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
+import { reverseGeocodeCoords, getRobustUserLocation, calculateDistanceKm } from '../../utils/geo';
 import { RegisterDriverModal } from '../../components/shared/RegisterDriverModal';
 import { DriverPendingApprovalView } from './DriverPendingApprovalView';
 import { TripRatingModal } from '../../components/passenger/TripRatingModal';
@@ -27,6 +27,7 @@ export const DriverHome: React.FC = () => {
     toggleDriverOnline,
     currentDriverRide,
     pendingDriverRideRequests,
+    acceptRide,
     rides,
   } = useApp();
 
@@ -139,8 +140,14 @@ export const DriverHome: React.FC = () => {
           pickup={currentDriverRide?.pickup}
           destination={currentDriverRide?.destination}
           routeFrom={currentDriverRide ? activeDriver.location : undefined}
-          routeTo={currentDriverRide ? currentDriverRide.pickup : undefined}
-          routeColor="#10b981"
+          routeTo={
+            currentDriverRide
+              ? ['accepted', 'driver_arriving'].includes(currentDriverRide.status)
+                ? currentDriverRide.pickup
+                : currentDriverRide.destination
+              : undefined
+          }
+          routeColor="#facc15"
           activeDriverLocation={activeDriver.location}
           activeDriverHeading={activeDriver.heading}
           activeDriverStatus={
@@ -216,7 +223,7 @@ export const DriverHome: React.FC = () => {
                   <span>حساب السائق قيد المراجعة</span>
                 </div>
                 <p className="text-[11px] leading-relaxed text-amber-300">
-                  تم استلام ملف وثائقك ومعلومات الدراجة ({activeDriver.motorcycle.brand} {activeDriver.motorcycle.model}). ستقوم الإدارة بمراجعة البطاقة ورخصة السياقة لتفعيل حسابك قريباً.
+                  تم استلام ملف وثائقك ومعلومات الدراجة ({activeDriver.motorcycle.brand} {activeDriver.motorcycle.model}). سيقوم المسؤول بمراجعة البطاقة ورخصة السياقة لتفعيل حسابك قريباً.
                 </p>
               </div>
             )}
@@ -233,70 +240,98 @@ export const DriverHome: React.FC = () => {
               </div>
             )}
 
-            {/* Incoming Ride Requests Stacked List (Directly visible on screen without click) */}
+            {/* Incoming Ride Requests Stacked List (Filtered by Geofencing / Radius Matching) */}
             {activeDriver.isOnline && pendingDriverRideRequests.length > 0 && (
               <div className="space-y-3 animate-in fade-in">
                 <div className="flex items-center justify-between text-xs font-black text-amber-400 px-1">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                    <span>الطلبات الواردة من الركاب مباشرة ({pendingDriverRideRequests.length})</span>
+                    <span>طلبات قريبة ضمن نطاقك ({pendingDriverRideRequests.length})</span>
                   </span>
-                  <span className="text-[10px] text-slate-400">اضغط "عرض" للتفاصيل</span>
+                  <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    رادار جغرافي ذكي (OSRM)
+                  </span>
                 </div>
 
                 <div className="space-y-3">
-                  {pendingDriverRideRequests.map(ride => (
-                    <div
-                      key={ride.id}
-                      className="bg-slate-900 border-2 border-amber-500/60 hover:border-amber-500 rounded-3xl p-4 space-y-3 shadow-xl transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={ride.passengerPhoto || '/icon.jpg'}
-                            alt={ride.passengerName}
-                            className="w-10 h-10 rounded-full object-cover border-2 border-amber-500"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '/icon.jpg';
-                            }}
-                          />
-                          <div>
-                            <div className="font-bold text-white text-sm">{ride.passengerName}</div>
-                            <div className="text-[10px] text-amber-400 font-semibold">
-                              ⭐ {ride.passengerRating || '4.9'}
+                  {pendingDriverRideRequests.map(ride => {
+                    const distToPickup = calculateDistanceKm(activeDriver.location, ride.pickup);
+                    const isVeryClose = distToPickup <= 5;
+                    return (
+                      <div
+                        key={ride.id}
+                        className="bg-slate-900 border-2 border-amber-500/60 hover:border-amber-500 rounded-3xl p-4 space-y-3 shadow-xl transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src={ride.passengerPhoto || '/icon.jpg'}
+                              alt={ride.passengerName}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-amber-500"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = '/icon.jpg';
+                              }}
+                            />
+                            <div>
+                              <div className="font-bold text-white text-sm">{ride.passengerName}</div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] text-amber-400 font-semibold">
+                                  ⭐ {ride.passengerRating || '4.9'}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                    isVeryClose
+                                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                  }`}
+                                >
+                                  يبعد عنك {distToPickup.toFixed(1)} كم
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <div className="text-left">
-                          <div className="text-xl font-black text-amber-400">
-                            {formatCurrencyDZD(ride.passengerOfferedPrice || ride.estimatedPrice)}
+                          <div className="text-left">
+                            <div className="text-xl font-black text-amber-400">
+                              {formatCurrencyDZD(ride.passengerOfferedPrice || ride.estimatedPrice)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 font-medium">{ride.distanceKm} كم • ~{ride.estimatedDurationMins} د</div>
                           </div>
-                          <div className="text-[10px] text-slate-400 font-medium">{ride.distanceKm} كم • ~{ride.estimatedDurationMins} د</div>
+                        </div>
+
+                        {/* Route Summary */}
+                        <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-slate-300">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-emerald-400 font-bold text-xs">📍</span>
+                            <span className="truncate text-white font-medium">{ride.pickup.name || ride.pickup.address}</span>
+                          </div>
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-amber-400 font-bold text-xs">🏁</span>
+                            <span className="truncate text-white font-medium">{ride.destination.name || ride.destination.address}</span>
+                          </div>
+                        </div>
+
+                        {/* Quick Accept or Negotiate Actions (inDrive / Yassir style) */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => acceptRide(ride.id, activeDriver.id)}
+                            className="py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            <span>قبول فوري ({ride.passengerOfferedPrice || ride.estimatedPrice} د.ج)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedModalRide(ride)}
+                            className="py-2.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-black rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                          >
+                            <span>تفاوض / التفاصيل 💬</span>
+                          </button>
                         </div>
                       </div>
-
-                      {/* Route Summary */}
-                      <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800 text-xs space-y-1.5 text-slate-300">
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="text-emerald-400 font-bold text-xs">📍</span>
-                          <span className="truncate text-white font-medium">{ride.pickup.name || ride.pickup.address}</span>
-                        </div>
-                        <div className="flex items-center gap-2 truncate">
-                          <span className="text-amber-400 font-bold text-xs">🏁</span>
-                          <span className="truncate text-white font-medium">{ride.destination.name || ride.destination.address}</span>
-                        </div>
-                      </div>
-
-                      {/* View Details Button */}
-                      <button
-                        onClick={() => setSelectedModalRide(ride)}
-                        className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
-                      >
-                        <span>عرض تفاصيل الطلب والقبول 👁️</span>
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

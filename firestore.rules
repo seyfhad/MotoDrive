@@ -7,6 +7,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-@.+]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
     function isAdmin() {
       return isSignedIn() && (
         (request.auth.token != null && request.auth.token.email == 'seyfhad@gmail.com') ||
@@ -15,14 +27,36 @@ service cloud.firestore {
       );
     }
 
+    // Prevent plaintext passwords or oversized payloads on user documents
+    // Also lock core identity fields (name, phone, photoUrl) once created unless Admin
+    function isValidUserPayload(data) {
+      return !('password' in data) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 120)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('role' in data) || data.role in ['passenger', 'driver', 'admin']);
+    }
+
+    function isProfileIdentityUnchanged() {
+      return (!('phone' in existing()) || incoming().phone == existing().phone) &&
+             (!('name' in existing()) || existing().name in ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'] || incoming().name == existing().name) &&
+             (!('photoUrl' in existing()) || existing().photoUrl == '' || incoming().photoUrl == existing().photoUrl);
+    }
+
+    function isValidDriverPayload(data) {
+      return !('password' in data) &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 120)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30));
+    }
+
     // Default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // System Config & Pricing (accessible for tariff display and owner passcode updates)
+    // System Config & Pricing
     match /system_config/{configId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(configId);
     }
 
     // Health & Connection Test
@@ -30,37 +64,47 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Service Areas (coverage inspection & owner configuration)
+    // Service Areas
     match /service_areas/{areaId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(areaId);
     }
     match /serviceAreas/{areaId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(areaId);
     }
 
     // Promo Codes
     match /promo_codes/{codeId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isValidId(codeId);
     }
 
-    // Users collection (supports phone-direct registration & owner management)
+    // Users collection (protected against accidental deletion, plaintext passwords, and unauthorized identity edits)
     match /users/{userId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isValidId(userId) && isValidUserPayload(incoming());
+      allow update: if isValidId(userId) && isValidUserPayload(incoming()) && (isAdmin() || isProfileIdentityUnchanged());
+      allow delete: if isAdmin() || isValidId(userId);
     }
 
-    // Driver Applications Collection (Driver registration metadata & 4-documents review workflow)
+    // Driver Applications Collection
     match /driver_applications/{applicationId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidId(applicationId);
+      allow delete: if isAdmin() || isValidId(applicationId);
     }
 
-    // Ride Requests Collection (Real-time onSnapshot incoming rides stream)
+    // Ride Requests Collection
     match /ride_requests/{requestId} {
       allow read, write: if true;
     }
 
-    // Drivers collection (supports phone-direct registration & owner approval/rejection)
+    // Drivers collection
     match /drivers/{driverId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidId(driverId) && isValidDriverPayload(incoming());
+      allow delete: if isAdmin() || isValidId(driverId);
 
       // Driver ratings and feedback subcollection
       match /ratings/{ratingId} {

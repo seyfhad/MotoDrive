@@ -39,10 +39,20 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const { requestRide, pricing } = useApp();
 
   const [pickup, setPickup] = useState<Coordinates>(
-    initialPickup || ALGERIA_LOCATIONS[0].coords // Default: Guelma Centre or first hotspot
+    initialPickup || {
+      lat: 36.1652,
+      lng: 1.3345,
+      name: 'ساحة التضامن - وسط مدينة الشلف',
+      address: 'ساحة التضامن وأول نوفمبر، وسط مدينة الشلف',
+    }
   );
   const [destination, setDestination] = useState<Coordinates>(
-    initialDestination || ALGERIA_LOCATIONS[19].coords // Default: Hammam Debagh
+    initialDestination || {
+      lat: 36.1780,
+      lng: 1.3480,
+      name: 'جامعة حسيبة بن بوعلي - الشلف',
+      address: 'حي السلام / أولاد فارس، الشلف',
+    }
   );
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);
@@ -51,8 +61,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
-  const [promoCode, setPromoCode] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState<string | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<string[]>([]);
   const [customNote, setCustomNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,7 +69,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   // Automatically detect passenger's current Wilaya
   const currentWilaya = useMemo(() => {
     const nearest = findNearestAlgerianWilaya(pickup.lat, pickup.lng);
-    return nearest?.name || 'قالمة';
+    return nearest?.name || 'الشلف';
   }, [pickup.lat, pickup.lng]);
 
   // Real-time location search: instant results on any letter typed
@@ -220,8 +228,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const distanceKm = roadDistanceKm;
   const estimatedDuration = estimateDurationMinutes(distanceKm);
 
-  const discountPercent = appliedPromo === 'MOTO20' ? 20 : appliedPromo === 'SAHL10' ? 10 : 0;
-  const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
+  const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, 0);
   const recommendedPrice = fareBreakdown.roundedPrice;
 
   // Passenger offered price state strictly locked to recommended fixed price
@@ -236,15 +243,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     setSelectedNotes(prev =>
       prev.includes(note) ? prev.filter(n => n !== note) : [...prev, note]
     );
-  };
-
-  const handleApplyPromo = () => {
-    if (promoCode.trim().toUpperCase() === 'MOTO20' || promoCode.trim().toUpperCase() === 'SAHL10') {
-      setAppliedPromo(promoCode.trim().toUpperCase());
-      setErrorMsg(null);
-    } else {
-      setErrorMsg('رمز العرض الترويجي غير صالح أو منتهي');
-    }
   };
 
   const handleConfirmRide = async () => {
@@ -262,8 +260,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       pickup,
       destination,
       recommendedPrice,
-      fullNote || undefined,
-      appliedPromo || undefined
+      fullNote || undefined
     );
     setIsSubmitting(false);
 
@@ -538,31 +535,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
               />
             </div>
-
-            {/* Promo Code Input */}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="كود خصم (MOTO20 أو SAHL10)"
-                value={promoCode}
-                onChange={e => setPromoCode(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 flex-1 uppercase"
-              />
-              <button
-                type="button"
-                onClick={handleApplyPromo}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl text-xs font-bold transition-colors"
-              >
-                تطبيق
-              </button>
-            </div>
-
-            {appliedPromo && (
-              <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
-                <Check className="w-3.5 h-3.5" />
-                <span>تم تطبيق الكود {appliedPromo} (-{discountPercent}%) بنجاح!</span>
-              </div>
-            )}
 
             {errorMsg && (
               <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-xl">

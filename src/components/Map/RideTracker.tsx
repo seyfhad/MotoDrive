@@ -32,6 +32,7 @@ export const RideTracker: React.FC<RideTrackerProps> = ({
   rideId,
   initialRide,
   onClose,
+  userRole = 'passenger',
 }) => {
   const [ride, setRide] = useState<Ride | null>(initialRide || null);
   const [driver, setDriver] = useState<DriverProfile | null>(null);
@@ -209,13 +210,19 @@ export const RideTracker: React.FC<RideTrackerProps> = ({
       dynamicDistanceKm = calculateDistanceKm(effectiveDriverCoords, ride.pickup);
       dynamicEtaMinutes = estimateDurationMinutes(dynamicDistanceKm);
     }
-    statusText = 'السائق في الطريق إليك';
+    statusText =
+      userRole === 'driver'
+        ? `مسار الوصول إلى موقع الراكب (${ride.passengerName})`
+        : 'السائق في الطريق إليك الآن';
   } else if (isAtPickup) {
     routeFrom = ride.pickup;
     routeTo = ride.destination;
     dynamicDistanceKm = calculateDistanceKm(ride.pickup, ride.destination);
     dynamicEtaMinutes = estimateDurationMinutes(dynamicDistanceKm);
-    statusText = 'السائق وصل إلى موقعك وبانتظارك';
+    statusText =
+      userRole === 'driver'
+        ? 'أنت في موقع الراكب — المسار جاهز نحو الوجهة'
+        : 'السائق وصل إلى موقعك وبانتظارك';
   } else if (isTripInProgress) {
     routeFrom = effectiveDriverCoords || ride.pickup;
     routeTo = ride.destination;
@@ -225,8 +232,8 @@ export const RideTracker: React.FC<RideTrackerProps> = ({
     }
     statusText = 'الرحلة جارية نحو الوجهة';
   } else if (isCompleted) {
-    routeFrom = ride.pickup;
-    routeTo = ride.destination;
+    routeFrom = undefined;
+    routeTo = undefined;
     statusText = 'اكتملت الرحلة بنجاح';
   }
 
@@ -243,14 +250,16 @@ export const RideTracker: React.FC<RideTrackerProps> = ({
       {/* Top Floating Status Ribbon */}
       <div className="bg-slate-900/95 backdrop-blur-md px-4 py-3 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-300 animate-pulse"></span>
+          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse"></span>
           <div>
             <div className="text-xs font-black text-white flex items-center gap-1.5">
               <span>{statusText}</span>
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+              <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
             </div>
             <div className="text-[10px] text-slate-400">
-              مسار مباشر يتحدث تلقائياً مع حركة السائق
+              {userRole === 'driver'
+                ? 'الخط الأصفر يوضح طريق تواجد الراكب لتتبعه مباشرة'
+                : 'الخط الأصفر يوضح طريق تواجد السائق لتتبعه مباشرة'}
             </div>
           </div>
         </div>
@@ -277,9 +286,9 @@ export const RideTracker: React.FC<RideTrackerProps> = ({
           zoom={15}
           pickup={ride.pickup}
           destination={isApproachingPickup ? undefined : ride.destination}
-          routeFrom={routeFrom}
-          routeTo={routeTo}
-          routeColor="#fde047"
+          routeFrom={routeFrom || undefined}
+          routeTo={routeTo || undefined}
+          routeColor="#facc15"
           activeDriverLocation={effectiveDriverCoords}
           activeDriverHeading={liveHeading}
           activeDriverStatus={driver?.isAvailable === false ? 'busy' : 'available'}

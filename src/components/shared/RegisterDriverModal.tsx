@@ -227,22 +227,30 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    // Check if driver application already exists for this phone number
+    // Strictly block registering a second account with the same phone number or with a different name
     try {
       const existing = await findUserAndDriverByPhone(phone.trim());
-      if (existing.driver) {
+      if (existing.driver && existing.driver.status !== 'rejected') {
         setIsSubmitting(false);
-        setErrorMsg(`⚠️ هذا الرقم (${phone.trim()}) مسجل بالفعل بطلب سائق. تم توجيهك لمتابعة حالة الطلب.`);
-        try {
-          localStorage.setItem('motodrive_registered_phone', phone.trim());
-          localStorage.setItem('motodrive_active_driver_phone', phone.trim());
-        } catch (e) {}
-        setActiveDriver(existing.driver);
-        setCurrentRole('driver');
-        setTimeout(() => {
-          onClose();
-        }, 2200);
+        setErrorMsg(
+          `⚠️ رقم الهاتف (${phone.trim()}) مسجل بالفعل بحساب السائق "${existing.driver.name}". يمنع تسجيل حسابين برقم واحد.`
+        );
         return;
+      }
+      if (
+        existing.profile &&
+        existing.profile.name &&
+        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existing.profile.name)
+      ) {
+        const normExisting = existing.profile.name.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normTyped = name.trim().replace(/\s+/g, ' ').toLowerCase();
+        if (normExisting !== normTyped) {
+          setIsSubmitting(false);
+          setErrorMsg(
+            `⚠️ رقم الهاتف (${phone.trim()}) مسجل مسبقاً باسم "${existing.profile.name}". لا يمكن التسجيل بنفس الرقم واسم مختلف.`
+          );
+          return;
+        }
       }
     } catch (e) {}
 
@@ -363,11 +371,6 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       setActiveDriver(newDriver);
       setCurrentRole('driver');
 
-      broadcastNotification(
-        'طلب تسجيل سائق جديد',
-        `أرسل السائق ${name.trim()} وثائقه الـ 4 لدراجته (${brand} ${model}) بانتظار موافقة الإدارة.`
-      );
-
       setIsSubmitting(false);
       setIsSubmittedSuccess(true);
     } catch (err: any) {
@@ -413,7 +416,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
             <div className="space-y-1.5">
               <h4 className="text-lg font-black text-white">تم إرسال طلبك والوثائق الـ 4 بنجاح!</h4>
               <p className="text-xs text-amber-300 font-extrabold bg-amber-500/10 py-1.5 px-3 rounded-xl border border-amber-500/20 inline-block">
-                طلب التسجيل قيد المراجعة والمعالجة من الإدارة
+                طلب التسجيل قيد المراجعة والمعالجة من المسؤول
               </p>
             </div>
 

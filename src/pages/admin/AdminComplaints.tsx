@@ -26,7 +26,7 @@ export const AdminComplaints: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
-          <h2 className="text-xl font-black text-white">إدارة الشكاوى وحل النزاعات (Complaints & Disputes)</h2>
+          <h2 className="text-xl font-black text-white">مسؤول الشكاوى وحل النزاعات (Complaints & Disputes)</h2>
           <p className="text-xs text-slate-400">متابعة شكاوى الركاب والسائقين بخصوص الأمان والأسعار وجودة الخدمة</p>
         </div>
       </div>
@@ -127,7 +127,7 @@ export const AdminComplaints: React.FC = () => {
             </div>
 
             <div className="space-y-2 text-xs">
-              <label className="text-slate-400 font-bold block">ملاحظات الإدارة والإجراء المتخذ:</label>
+              <label className="text-slate-400 font-bold block">ملاحظات المسؤول والإجراء المتخذ:</label>
               <textarea
                 rows={3}
                 value={adminNote}

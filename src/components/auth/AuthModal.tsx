@@ -84,7 +84,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setIsSigningOut(true);
       await signOutUser();
       setCurrentUser(null);
-      broadcastNotification('تم تسجيل الخروج', 'لقد قمت بتسجيل الخروج من حسابك بنجاح');
       onClose();
     } catch (err) {
       console.error('Sign-out error:', err);
@@ -107,8 +106,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const { driver } = await findUserAndDriverByPhone(cleanPhone);
-      const isOwnerPhone = cleanPhone === '0662688714' || cleanPhone === '+213662688714' || cleanPhone === '213662688714';
+      const { profile: existingProfile, driver } = await findUserAndDriverByPhone(cleanPhone);
+      const isOwnerPhone = cleanPhone === '0542524728' || cleanPhone === '+213542524728' || cleanPhone === '213542524728';
 
       if (selectedRole === 'driver') {
         if (!driver && !isOwnerPhone) {
@@ -130,27 +129,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }
         setCurrentRole('driver');
 
-        if (driver && driver.status === 'pending') {
-          broadcastNotification(
-            'طلبك قيد المراجعة',
-            `أهلاً بك يا ${driver.name}. طلبك والوثائق قيد تدقيق الإدارة حالياً.`
-          );
-        } else if (driver && driver.status === 'rejected') {
+        if (driver && driver.status === 'rejected') {
           broadcastNotification(
             'تم رفض طلبك',
             `سبب الرفض: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
-          );
-        } else {
-          broadcastNotification(
-            'مرحباً بعودتك!',
-            `تم تسجيل دخولك بنجاح كـ سائق معتمد: ${driver?.name || cleanPhone}`
           );
         }
 
         if (onSuccess) onSuccess();
         onClose();
       } else {
-        // Direct Passenger Login by Phone & Name (automatically restores existing account + trips if phone is already registered)
+        // Prevent registering or logging in with the same phone number under a different name
+        if (
+          existingProfile &&
+          existingProfile.name &&
+          !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existingProfile.name)
+        ) {
+          const normExisting = existingProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
+          const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
+          if (normTyped && normTyped !== 'راكب motodrive' && normTyped !== 'مستخدم motodrive' && normExisting !== normTyped) {
+            setErrorMsg(
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existingProfile.name}". يمنع تسجيل حسابين برقم واحد أو تغيير الاسم المسجل.`
+            );
+            setNormalName(existingProfile.name);
+            setIsSubmitting(false);
+            return;
+          }
+        }
+
+        // Direct Passenger Login by Phone & Name
         const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
         setCurrentUser(res.user);
         setActivePassenger(res.profile);
@@ -160,24 +167,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           localStorage.setItem('motodrive_remembered_phone', cleanPhone);
         } catch (e) {}
 
-        if (res.isExisting) {
-          broadcastNotification(
-            'مرحباً بعودتك!',
-            `تم التعرف على رقمك وفتح حسابك القديم مع جميع رحلاتك المحفوظة: ${res.profile.name}`
-          );
-        } else {
-          broadcastNotification(
-            'مرحباً بك!',
-            `تم تسجيل الدخول بنجاح كراكب: ${res.profile.name}`
-          );
-        }
-
         if (onSuccess) onSuccess();
         onClose();
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      setErrorMsg('حدث خطأ أثناء فحص البيانات. التأكد من الاتصال بالإنترنت.');
+      setErrorMsg(err?.message || 'حدث خطأ أثناء فحص البيانات. التأكد من الاتصال بالإنترنت.');
     } finally {
       setIsSubmitting(false);
     }

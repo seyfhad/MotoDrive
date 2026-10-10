@@ -65,7 +65,7 @@ export const AdminDrivers: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
-          <h2 className="text-xl font-black text-white">إدارة واعتماد السائقين (Drivers Management)</h2>
+          <h2 className="text-xl font-black text-white">مسؤول اعتماد السائقين (Drivers Management)</h2>
           <p className="text-xs text-slate-400">مراجعة ملفات السائقين، رخص السياقة، وحالة التفعيل الأمني</p>
         </div>
 
@@ -306,7 +306,7 @@ export const AdminDrivers: React.FC = () => {
 
             {/* Decision Controls */}
             <div className="pt-3 border-t border-slate-800 space-y-2">
-              <div className="text-xs font-bold text-slate-300">اتخاذ القرار الإداري:</div>
+              <div className="text-xs font-bold text-slate-300">اتخاذ قرار المسؤول:</div>
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => handleApprove(selectedDriver.id)}

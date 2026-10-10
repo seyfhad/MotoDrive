@@ -41,13 +41,13 @@ function getRemainingRouteFromDriver(
 }
 
 export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
-  center = [36.7538, 3.0588],
-  zoom = 13,
+  center = [36.1652, 1.3345],
+  zoom = 14,
   pickup,
   destination,
   routeFrom,
   routeTo,
-  routeColor = '#fde047',
+  routeColor = '#facc15',
   drivers = [],
   activeDriverLocation,
   activeDriverHeading = 0,
@@ -62,15 +62,17 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const userMarkerLayerRef = useRef<L.LayerGroup | null>(null);
   const fullRouteCoordsRef = useRef<[number, number][]>([]);
   const lastFittedKeyRef = useRef<string>('');
 
   const [isLocating, setIsLocating] = useState(false);
   const [locationToast, setLocationToast] = useState<string | null>(null);
-  const [userLiveCoords, setUserLiveCoords] = useState<Coordinates | null>(null);
+  const [userGPSPosition, setUserGPSPosition] = useState<Coordinates>({
+    lat: center[0],
+    lng: center[1],
+  });
 
-  // Initialize map with Google Maps Arabic Dark Mode tiles + Light Yellow accent filter
+  // Initialize exact Google Maps Dark Navy/Slate style matching the attached reference screenshot
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (!mapInstanceRef.current) {
@@ -81,10 +83,37 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
         attributionControl: false,
       });
 
-      L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=ar&gl=DZ&x={x}&y={y}&z={z}', {
+      // Official Google Maps Dark Mode server-side styling (apistyle):
+      // - Land: #1d2633 (deep dark navy-slate)
+      // - All roads (local, arterial, and highways): normal dark slate gray (#2c3748 / #354356) without any prominent yellow road lines on the base map
+      // - Water / rivers (e.g. Oued Chlef): #0f3d6b (rich deep blue)
+      // - Parks / green areas: #1b382c (dark forest green)
+      // - Labels: crisp light slate #9ca5b3 with #17202b halo
+      const darkApiStyle = encodeURIComponent(
+        [
+          's.e:g|p.c:#ff1d2633',
+          's.e:l.t.f|p.c:#ff9ca5b3',
+          's.e:l.t.s|p.c:#ff17202b',
+          's.t:3|s.e:g|p.c:#ff2c3748',
+          's.t:3|s.e:g.s|p.c:#ff1f2937',
+          's.t:49|s.e:g|p.c:#ff354356',
+          's.t:49|s.e:g.s|p.c:#ff1f2937',
+          's.t:50|s.e:g|p.c:#ff3b4a5e',
+          's.t:50|s.e:g.s|p.c:#ff1f2937',
+          's.t:6|s.e:g|p.c:#ff0f3d6b',
+          's.t:2|s.e:g|p.c:#ff1b382c',
+        ].join(',')
+      );
+
+      const tileUrl =
+        theme === 'dark'
+          ? `https://mt{s}.google.com/vt/lyrs=m&hl=ar&gl=DZ&apistyle=${darkApiStyle}&x={x}&y={y}&z={z}`
+          : 'https://mt{s}.google.com/vt/lyrs=m&hl=ar&gl=DZ&x={x}&y={y}&z={z}';
+
+      L.tileLayer(tileUrl, {
         subdomains: ['0', '1', '2', '3'],
         maxZoom: 20,
-        className: theme === 'dark' ? 'motodrive-google-dark-tiles' : '',
+        className: theme === 'dark' ? 'motodrive-algeria-dark-tiles' : '',
       }).addTo(map);
 
       if (interactive && onMapClick) {
@@ -98,11 +127,9 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
 
       const routeLayer = L.layerGroup().addTo(map);
       const markersLayer = L.layerGroup().addTo(map);
-      const userLayerGroup = L.layerGroup().addTo(map);
 
       routeLayerRef.current = routeLayer;
       markersLayerRef.current = markersLayer;
-      userMarkerLayerRef.current = userLayerGroup;
       mapInstanceRef.current = map;
     }
 
@@ -114,15 +141,27 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
     };
   }, []);
 
-  // Continuous background GPS tracking for the blue user dot
+  // Keep map centered when `center` prop updates across any Wilaya in Algeria
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !center) return;
+    setUserGPSPosition({ lat: center[0], lng: center[1] });
+    if (!pickup && !destination) {
+      map.panTo([center[0], center[1]]);
+    }
+  }, [center?.[0], center?.[1]]);
+
+  // Continuous background GPS tracking
   useEffect(() => {
     if (!interactive) return;
 
     const stopTracking = startBackgroundLocationTracking({
       enableHighAccuracy: true,
       intervalMs: 10000,
-      onLocationUpdate: (res) => {
-        setUserLiveCoords(res.coords);
+      onLocationUpdate: (loc) => {
+        if (loc?.coords && typeof loc.coords.lat === 'number' && typeof loc.coords.lng === 'number') {
+          setUserGPSPosition({ lat: loc.coords.lat, lng: loc.coords.lng });
+        }
       },
     });
 
@@ -131,32 +170,7 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
     };
   }, [interactive]);
 
-  // Render User Live GPS Blue Dot marker
-  useEffect(() => {
-    const userLayer = userMarkerLayerRef.current;
-    if (!userLayer) return;
-    userLayer.clearLayers();
-
-    if (userLiveCoords) {
-      const gpsIcon = L.divIcon({
-        className: 'custom-leaflet-gps-marker',
-        html: `
-          <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; transform: translate(-22px, -22px); pointer-events: none;">
-            <div style="position: absolute; width: 44px; height: 44px; border-radius: 9999px; background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(56, 189, 248, 0.35);"></div>
-            <div style="width: 20px; height: 20px; border-radius: 9999px; background-color: #0ea5e9; border: 2.5px solid #ffffff; box-shadow: 0 0 14px rgba(14, 165, 233, 0.9); z-index: 10;"></div>
-          </div>
-        `,
-        iconSize: [0, 0],
-        iconAnchor: [0, 0],
-      });
-      L.marker([userLiveCoords.lat, userLiveCoords.lng], {
-        icon: gpsIcon,
-        interactive: false,
-      }).addTo(userLayer);
-    }
-  }, [userLiveCoords]);
-
-  // Helper to draw the sleek, simple, dynamic route polyline
+  // Helper to draw the sleek, dynamic yellow tracking route polyline ONLY during an accepted/active ride
   const drawDynamicRoute = (coords: [number, number][]) => {
     const routeLayer = routeLayerRef.current;
     if (!routeLayer) return;
@@ -164,42 +178,42 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
 
     if (coords.length < 2) return;
 
-    // 1. Soft glowing outer halo
+    // 1. Dark Gray road casing for high contrast
     L.polyline(coords, {
-      color: '#fef08a',
+      color: '#1e293b',
       weight: 9,
-      opacity: 0.24,
+      opacity: 0.85,
       lineCap: 'round',
       lineJoin: 'round',
     }).addTo(routeLayer);
 
-    // 2. Clean, vibrant light-yellow/amber main tracking line
+    // 2. Vibrant Yellow active tracking line between Driver and Passenger
     L.polyline(coords, {
-      color: routeColor || '#fde047',
-      weight: 4.5,
-      opacity: 0.95,
+      color: routeColor || '#facc15',
+      weight: 5,
+      opacity: 0.98,
       lineCap: 'round',
       lineJoin: 'round',
     }).addTo(routeLayer);
 
     // 3. Subtle directional flow dashes along the path
     L.polyline(coords, {
-      color: '#ffffff',
-      weight: 1.8,
-      opacity: 0.55,
+      color: '#fef08a',
+      weight: 2,
+      opacity: 0.75,
       dashArray: '6, 12',
       lineCap: 'round',
     }).addTo(routeLayer);
   };
 
-  // Fetch road geometry when endpoints change
+  // Fetch road geometry ONLY when explicit routeFrom and routeTo are provided (after ride acceptance)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const routeLayer = routeLayerRef.current;
     if (!map || !routeLayer) return;
 
-    const startCoord = routeFrom || pickup;
-    const endCoord = routeTo || destination;
+    const startCoord = routeFrom;
+    const endCoord = routeTo;
 
     if (!startCoord || !endCoord) {
       fullRouteCoordsRef.current = [];
@@ -245,7 +259,7 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
     }
   }, [activeDriverLocation?.lat, activeDriverLocation?.lng]);
 
-  // Render clean markers (Pickup, Destination, Active Driver, Nearby Drivers) with Light Yellow accents
+  // Render clean markers (Blue GPS dot with halo, Pickup, Destination, Active Driver, Nearby Drivers)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersLayer = markersLayerRef.current;
@@ -253,21 +267,46 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
 
     markersLayer.clearLayers();
 
-    // 1. Pickup Marker (Light Yellow pin icon instead of red emoji)
-    if (pickup) {
+    // 0. User GPS Blue Dot with translucent blue halo (matches the exact Google Maps blue dot in the reference image)
+    const gpsCoords = pickup || userGPSPosition;
+    if (gpsCoords) {
+      L.circle([gpsCoords.lat, gpsCoords.lng], {
+        radius: 120,
+        color: '#3b82f6',
+        weight: 1,
+        opacity: 0.45,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.22,
+      }).addTo(markersLayer);
+
+      const blueDotIcon = L.divIcon({
+        className: 'custom-leaflet-marker',
+        html: `
+          <div style="position: relative; width: 18px; height: 18px; transform: translate(-9px, -9px); display: flex; align-items: center; justify-content: center;">
+            <div style="width: 15px; height: 15px; border-radius: 9999px; background-color: #4285F4; border: 2.5px solid #ffffff; box-shadow: 0 0 10px rgba(66, 133, 244, 0.9);"></div>
+          </div>
+        `,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+      });
+      L.marker([gpsCoords.lat, gpsCoords.lng], { icon: blueDotIcon, interactive: false }).addTo(markersLayer);
+    }
+
+    // 1. Pickup Marker (Only when destination or active route is present so the center of the map stays clean like the screenshot)
+    if (pickup && (destination || routeTo || activeDriverLocation || showRadar)) {
       const pickupLabel = pickup.name || 'الانطلاق';
       const pickupIcon = L.divIcon({
         className: 'custom-leaflet-marker',
         html: `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
-            <div style="background-color: #10b981; color: #fef08a; width: 38px; height: 38px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; border: 2px solid #fef08a; box-shadow: 0 6px 16px rgba(0,0,0,0.45);">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="#fef08a" stroke="#064e3b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <div style="background-color: #10b981; color: #fef08a; width: 36px; height: 36px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; border: 2px solid #fef08a; box-shadow: 0 6px 16px rgba(0,0,0,0.55);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#fef08a" stroke="#064e3b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
                 <circle cx="12" cy="10" r="3" fill="#064e3b"/>
               </svg>
             </div>
             <div style="width: 8px; height: 8px; background-color: #10b981; transform: rotate(45deg); margin-top: -4px;"></div>
-            <div style="margin-top: 2px; background-color: rgba(15, 23, 42, 0.95); color: #fef08a; border: 1px solid rgba(254, 240, 138, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 6px; white-space: nowrap; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.4); direction: rtl;">
+            <div style="margin-top: 2px; background-color: rgba(15, 23, 42, 0.96); color: #fef08a; border: 1px solid rgba(254, 240, 138, 0.45); font-size: 11px; padding: 2px 8px; border-radius: 6px; white-space: nowrap; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,0.5); direction: rtl;">
               ${pickupLabel}
             </div>
           </div>
@@ -278,16 +317,18 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       L.marker([pickup.lat, pickup.lng], { icon: pickupIcon }).addTo(markersLayer);
     }
 
-    // 2. Destination Marker
+    // 2. Destination Marker (Google Maps Red Teardrop Pin + Label)
     if (destination) {
       const destLabel = destination.name || 'الوجهة';
       const destIcon = L.divIcon({
         className: 'custom-leaflet-marker',
         html: `
           <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
-            <div style="background-color: #eab308; color: #020617; width: 38px; height: 38px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 17px; border: 2px solid #fef08a; box-shadow: 0 6px 16px rgba(0,0,0,0.45);">🏁</div>
-            <div style="width: 8px; height: 8px; background-color: #eab308; transform: rotate(45deg); margin-top: -4px;"></div>
-            <div style="margin-top: 2px; background-color: rgba(15, 23, 42, 0.95); color: #fef08a; border: 1px solid rgba(254, 240, 138, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 6px; white-space: nowrap; font-weight: 700; box-shadow: 0 4px 12px rgba(0,0,0,0.4); direction: rtl;">
+            <svg width="34" height="42" viewBox="0 0 24 30" fill="none" style="filter: drop-shadow(0 5px 10px rgba(0,0,0,0.55));">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="#EA4335"/>
+              <circle cx="12" cy="11.5" r="4.5" fill="#75140C"/>
+            </svg>
+            <div style="margin-top: 2px; background-color: rgba(23, 32, 43, 0.96); color: #f8fafc; border: 1px solid rgba(234, 67, 53, 0.55); font-size: 11px; padding: 2px 8px; border-radius: 6px; white-space: nowrap; font-weight: 800; box-shadow: 0 4px 12px rgba(0,0,0,0.5); direction: rtl;">
               ${destLabel}
             </div>
           </div>
@@ -298,7 +339,7 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(markersLayer);
     }
 
-    // 3. Active Driver Marker (smooth, clean moving motorcycle marker)
+    // 3. Active Driver Marker
     if (activeDriverLocation) {
       const driverIcon = L.divIcon({
         className: 'custom-leaflet-marker',
@@ -320,7 +361,7 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
         .addTo(markersLayer);
     }
 
-    // 4. Nearby Drivers (Light Yellow & Emerald accents instead of red)
+    // 4. Nearby Drivers
     drivers
       .filter((d) => d.isOnline && d.status === 'approved')
       .forEach((driver) => {
@@ -368,12 +409,16 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       }).addTo(markersLayer);
     }
   }, [
+    userGPSPosition.lat,
+    userGPSPosition.lng,
     pickup?.lat,
     pickup?.lng,
     pickup?.name,
     destination?.lat,
     destination?.lng,
     destination?.name,
+    routeTo?.lat,
+    routeTo?.lng,
     drivers,
     activeDriverLocation?.lat,
     activeDriverLocation?.lng,
@@ -388,37 +433,25 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
     try {
       const res = await getRobustUserLocation();
       const userCoords = res.coords;
-      setUserLiveCoords(userCoords);
+      setUserGPSPosition(userCoords);
       if (mapInstanceRef.current) {
-        mapInstanceRef.current.setView([userCoords.lat, userCoords.lng], 16);
+        mapInstanceRef.current.setView([userCoords.lat, userCoords.lng], 15);
       }
       if (onMapClick) {
         onMapClick(userCoords);
       }
       if (res.message) {
         setLocationToast(res.message);
-        setTimeout(() => setLocationToast(null), 5000);
+        setTimeout(() => setLocationToast(null), 4000);
       }
     } catch {
-      setLocationToast("💡 يرجى التأكد من تشغيل خيار 'الموقع' (GPS).");
-      setTimeout(() => setLocationToast(null), 5000);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.setView([center[0], center[1]], 14);
+      }
     } finally {
       setIsLocating(false);
     }
   };
-
-  // Auto-locate user once on mount when interactive
-  const hasAutoLocatedRef = useRef(false);
-  useEffect(() => {
-    if (interactive && !hasAutoLocatedRef.current) {
-      hasAutoLocatedRef.current = true;
-      getRobustUserLocation()
-        .then((res) => {
-          setUserLiveCoords(res.coords);
-        })
-        .catch(() => {});
-    }
-  }, [interactive]);
 
   const handleZoomIn = () => {
     if (mapInstanceRef.current) {
@@ -435,36 +468,18 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
   return (
     <div
       className={`relative overflow-hidden rounded-2xl ${className}`}
-      style={{ backgroundColor: '#06142e' }}
+      style={{ backgroundColor: '#1d2633' }}
     >
-      {/* Inline SVG Filter that preserves the exact Dark Navy/Slate Map while converting red tile symbols into Light Yellow */}
-      <svg width="0" height="0" className="absolute pointer-events-none">
-        <defs>
-          <filter id="motodrive-red-to-light-yellow" colorInterpolationFilters="sRGB">
-            <feColorMatrix
-              type="matrix"
-              values="
-                1.00  0.00  0.00  0  0
-                0.78  0.55  0.00  0  0
-                0.30  0.00  0.85  0  0
-                0.00  0.00  0.00  1  0
-              "
-            />
-          </filter>
-        </defs>
-      </svg>
-
-      {/* Scoped CSS for Google Maps Dark Mode tile color scheme + Light Yellow symbols */}
+      {/* Scoped CSS matching the exact dark navy/slate aesthetic of the attached screenshot across all of Algeria */}
       <style>{`
-        .motodrive-google-dark-tiles {
-          filter: invert(100%) hue-rotate(185deg) brightness(93%) contrast(92%) saturate(135%) url(#motodrive-red-to-light-yellow);
+        .motodrive-algeria-dark-tiles {
+          filter: brightness(1.02) contrast(1.04) saturate(1.08);
         }
         .leaflet-container {
-          background-color: #06142e !important;
+          background-color: #1d2633 !important;
           font-family: inherit;
         }
-        .custom-leaflet-marker,
-        .custom-leaflet-gps-marker {
+        .custom-leaflet-marker {
           background: transparent !important;
           border: none !important;
         }
@@ -472,33 +487,33 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
 
       <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-      {/* Locate Me button */}
+      {/* Locate Me Button with Yellow Arrow ("تحديد الموقع") */}
       {interactive && (
         <button
           type="button"
           id="map-locate-me-recenter-btn"
           onClick={handleLocateMe}
           disabled={isLocating}
-          className="absolute bottom-28 right-2.5 sm:right-3.5 z-20 flex items-center gap-2 px-3.5 py-2.5 rounded-2xl bg-slate-950/95 hover:bg-slate-900 border border-yellow-300/70 hover:border-yellow-200 text-yellow-200 shadow-2xl transition-all active:scale-95 cursor-pointer backdrop-blur-md group"
-          title="تحديد موقعي الفعلي وإعادة تمركز الخريطة (GPS)"
+          className="absolute bottom-28 right-3 sm:right-4 z-20 w-11 h-11 rounded-full bg-[#0f172a]/95 hover:bg-slate-900 border-2 border-yellow-400 text-yellow-400 shadow-[0_0_16px_rgba(250,204,21,0.7)] flex items-center justify-center transition-all active:scale-95 cursor-pointer backdrop-blur-md group"
+          title="تحديد الموقع والتركيز عليه بدقة"
+          aria-label="تحديد الموقع"
         >
           {isLocating ? (
-            <span className="w-4 h-4 border-2 border-yellow-300 border-t-transparent rounded-full animate-spin"></span>
+            <span className="w-5 h-5 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
           ) : (
-            <Navigation className="w-4 h-4 text-yellow-300 transition-transform group-hover:scale-110" />
+            <Navigation className="w-5 h-5 text-yellow-400 fill-yellow-400/20 transition-transform group-hover:scale-110" />
           )}
-          <span className="text-xs font-black tracking-tight text-white">تحديد موقعي</span>
         </button>
       )}
 
-      {/* Dark Google Maps-style Zoom Controls (+ / -) */}
+      {/* Dark Google Maps-style Zoom Controls (+ / -) matching the bottom-right of the screenshot */}
       {interactive && (
-        <div className="absolute bottom-5 right-2.5 sm:right-3.5 z-20 flex flex-col rounded-lg overflow-hidden bg-[#1e2433]/95 border border-slate-700/70 shadow-2xl backdrop-blur-md">
+        <div className="absolute bottom-5 right-3 sm:right-4 z-20 flex flex-col rounded-xl overflow-hidden bg-[#162032]/95 border border-slate-700/80 shadow-2xl backdrop-blur-md">
           <button
             type="button"
             onClick={handleZoomIn}
             aria-label="تكبير الخريطة"
-            className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800/80 text-2xl font-light transition-colors border-b border-slate-700/70 cursor-pointer select-none"
+            className="w-10 h-10 flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800/80 text-2xl font-light transition-colors border-b border-slate-700/80 cursor-pointer select-none"
           >
             +
           </button>
@@ -506,7 +521,7 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
             type="button"
             onClick={handleZoomOut}
             aria-label="تصغير الخريطة"
-            className="w-10 h-10 flex items-center justify-center text-slate-300 hover:text-white hover:bg-slate-800/80 text-2xl font-light transition-colors cursor-pointer select-none"
+            className="w-10 h-10 flex items-center justify-center text-slate-200 hover:text-white hover:bg-slate-800/80 text-2xl font-light transition-colors cursor-pointer select-none"
           >
             −
           </button>
@@ -514,8 +529,8 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       )}
 
       {locationToast && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 max-w-[90%] bg-slate-950/95 border border-yellow-300/50 text-slate-100 text-xs py-2 px-3.5 rounded-xl shadow-2xl backdrop-blur-md text-center dir-rtl flex items-center gap-2 animate-bounce">
-          <span className="text-yellow-300 font-bold shrink-0">✨</span>
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 max-w-[90%] bg-slate-950/95 border border-sky-400/50 text-slate-100 text-xs py-2 px-3.5 rounded-xl shadow-xl backdrop-blur-md text-center dir-rtl flex items-center gap-2">
+          <span className="text-sky-400 font-bold shrink-0">📍</span>
           <span>{locationToast}</span>
           <button
             onClick={() => setLocationToast(null)}
@@ -523,13 +538,6 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
           >
             ✕
           </button>
-        </div>
-      )}
-
-      {/* Visual GPS Center Target when interactive */}
-      {interactive && onMapClick && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40 z-20">
-          <div className="w-4 h-4 rounded-full border-2 border-yellow-300/80 bg-yellow-300/20"></div>
         </div>
       )}
     </div>

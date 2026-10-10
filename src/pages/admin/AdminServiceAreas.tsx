@@ -46,7 +46,7 @@ export const AdminServiceAreas: React.FC = () => {
             <h2 className="text-xl font-black text-white">نطاق التغطية والـ 58 ولاية جزائرية</h2>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            إدارة وتفعيل خدمة MotoDrive في جميع ولايات الجزائر الـ 58 وضبط نطاقات التغطية
+            مسؤول تفعيل خدمة MotoDrive في جميع ولايات الجزائر الـ 58 وضبط نطاقات التغطية
           </p>
         </div>
 

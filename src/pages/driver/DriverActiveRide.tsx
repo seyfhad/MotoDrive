@@ -2,17 +2,19 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Ride } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRight, DollarSign } from 'lucide-react';
+import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRight, DollarSign, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { RideTracker } from '../../components/Map/RideTracker';
+import { InAppChatModal } from '../../components/chat/InAppChatModal';
 
 interface DriverActiveRideProps {
   ride: Ride;
 }
 
 export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
-  const { advanceRideStatus, cancelRide, pricing } = useApp();
+  const { activeDriver, advanceRideStatus, cancelRide, pricing } = useApp();
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('الراكب لم يحضر');
   const [cashCollected, setCashCollected] = useState(false);
 
@@ -59,7 +61,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
         </span>
       </div>
 
-      {/* Passenger Info & Safe Call */}
+      {/* Passenger Info & Safe Call + In-App Chat */}
       <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img
@@ -79,13 +81,25 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
           </div>
         </div>
 
-        <a
-          href={`tel:${ride.passengerPhone}`}
-          className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors"
-          title="الاتصال بالراكب"
-        >
-          <Phone className="w-5 h-5" />
-        </a>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowChatModal(true)}
+            className="px-3 h-10 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 flex items-center justify-center gap-1.5 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
+            title="دردشة فورية مع الراكب"
+          >
+            <MessageSquare className="w-4 h-4 text-amber-400" />
+            <span>دردشة</span>
+          </button>
+
+          <a
+            href={`tel:${ride.passengerPhone}`}
+            className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors"
+            title="الاتصال بالراكب"
+          >
+            <Phone className="w-5 h-5" />
+          </a>
+        </div>
       </div>
 
       {/* Passenger Note (if any) */}
@@ -183,7 +197,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full text-right space-y-3">
             <h4 className="text-sm font-bold text-red-400">إلغاء الرحلة من قبل السائق</h4>
-            <p className="text-xs text-slate-400">يرجى تحديد سبب الإلغاء لمراجعته من قبل الإدارة:</p>
+            <p className="text-xs text-slate-400">يرجى تحديد سبب الإلغاء لمراجعته من قبل المسؤول:</p>
             <div className="space-y-1.5">
               {['الراكب لم يحضر بعد الانتظار', 'عطل طارئ في الدراجة', 'موقع الانطلاق غير مناسب أو مغلق'].map(r => (
                 <button
@@ -214,6 +228,16 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
           </div>
         </div>
       )}
+      {/* In-App Chat Modal for Driver */}
+      <InAppChatModal
+        rideId={ride.id}
+        currentUserId={activeDriver.id || ride.driverId || 'driver'}
+        currentUserName={activeDriver.name || ride.driverName || 'السائق'}
+        currentUserRole="driver"
+        otherPartyName={ride.passengerName || 'الراكب'}
+        isOpen={showChatModal}
+        onClose={() => setShowChatModal(false)}
+      />
       </div>
     </div>
   );

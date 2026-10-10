@@ -20,6 +20,13 @@ import { Capacitor } from '@capacitor/core';
 import { auth, db, isFirestoreQuotaExceeded, markFirestoreQuotaExceeded } from '../lib/firebase';
 import { UserProfile, DriverProfile, UserRole } from '../types';
 import { sanitizeFirestoreData } from './firestoreService';
+import {
+  loadPhoneDirectoryFromStorage,
+  saveUserToSecureVault,
+  getUserFromIndexedDBVault,
+  saveActiveSessionSecurely,
+  clearActiveSessionOnly,
+} from './dataVaultService';
 
 const setDoc = async (reference: any, data: any, options?: any): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
@@ -55,23 +62,29 @@ export const normalizeAlgerianPhone = (rawPhone: string): string => {
   return digitsAndPlus;
 };
 
-// Utility to search existing UserProfile & DriverProfile by Phone
+// Utility to search existing UserProfile & DriverProfile by Phone across LocalStorage, IndexedDB Vault, and Firestore
 export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile: UserProfile | null; driver: DriverProfile | null }> => {
   const cleanPhone = normalizeAlgerianPhone(phone);
   const rawTrimmed = phone.trim().replace(/\s+/g, '');
   let profile: UserProfile | null = null;
   let driver: DriverProfile | null = null;
 
-  // 1. Check local persistent phone directory first for instant & offline accuracy
+  // 1. Check redundant local phone directory (primary + backup)
   try {
-    const raw = localStorage.getItem('motodrive_phone_directory');
-    if (raw) {
-      const dir = JSON.parse(raw);
-      const entry = dir[cleanPhone] || dir[rawTrimmed];
-      if (entry?.profile) profile = entry.profile;
-      if (entry?.driver) driver = entry.driver;
-    }
+    const dir = loadPhoneDirectoryFromStorage();
+    const entry = dir[cleanPhone] || dir[rawTrimmed];
+    if (entry?.profile) profile = entry.profile;
+    if (entry?.driver) driver = entry.driver;
   } catch (e) {}
+
+  // 1b. Check IndexedDB Vault if not yet in localStorage
+  if (!profile) {
+    try {
+      const idbEntry = await getUserFromIndexedDBVault(cleanPhone);
+      if (idbEntry.profile) profile = idbEntry.profile;
+      if (idbEntry.driver) driver = idbEntry.driver;
+    } catch (e) {}
+  }
 
   try {
     // 2. Check deterministic user document ID (`user-${cleanPhone}`)
@@ -148,6 +161,11 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       }
     }
 
+    // Persist discovered record into redundant vault
+    if (profile) {
+      await saveUserToSecureVault(cleanPhone, profile, driver);
+    }
+
     return { profile, driver };
   } catch (err) {
     console.warn('Error querying user by phone:', err);
@@ -161,16 +179,13 @@ export const getCachedUserByPhone = (phone: string): { profile: UserProfile | nu
   const rawTrimmed = phone.trim().replace(/\s+/g, '');
   if (!cleanPhone) return { profile: null, driver: null };
   try {
-    const raw = localStorage.getItem('motodrive_phone_directory');
-    if (raw) {
-      const dir = JSON.parse(raw);
-      const entry = dir[cleanPhone] || dir[rawTrimmed];
-      if (entry) {
-        return {
-          profile: entry.profile || null,
-          driver: entry.driver || null,
-        };
-      }
+    const dir = loadPhoneDirectoryFromStorage();
+    const entry = dir[cleanPhone] || dir[rawTrimmed];
+    if (entry) {
+      return {
+        profile: entry.profile || null,
+        driver: entry.driver || null,
+      };
     }
   } catch (e) {}
   return { profile: null, driver: null };
@@ -216,12 +231,8 @@ export const registerOrRestoreUserByPhone = async (
     rawInputName === 'مستخدم MotoDrive';
   const cleanName = rawInputName || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
 
-  // 1. Look up in localStorage directory
-  let directory: Record<string, { profile: UserProfile; driver?: DriverProfile | null }> = {};
-  try {
-    const raw = localStorage.getItem('motodrive_phone_directory');
-    if (raw) directory = JSON.parse(raw);
-  } catch (e) {}
+  // 1. Look up in redundant local directory
+  const directory = loadPhoneDirectoryFromStorage();
 
   // 2. Query Firestore & local directory by phone
   let foundProfile: UserProfile | null = null;
@@ -246,14 +257,35 @@ export const registerOrRestoreUserByPhone = async (
   const isExisting = Boolean(foundProfile);
 
   if (foundProfile) {
-    // Existing user found! Preserve original account ID, trips, ratings, emergency contact, etc.
-    // Keep their saved name unless they previously had a generic placeholder and typed a real name
+    // Check if existing profile has a real registered name
     const existingHasRealName =
-      foundProfile.name &&
+      Boolean(foundProfile.name) &&
       foundProfile.name !== 'راكب MotoDrive' &&
       foundProfile.name !== 'سائق MotoDrive' &&
       foundProfile.name !== 'مستخدم MotoDrive' &&
       foundProfile.name !== 'ضيف MotoDrive';
+
+    // STRICT CHECK: Prevent registering or opening an account with the same phone number under a different name
+    if (existingHasRealName && !isGenericName) {
+      const normalizedExistingName = foundProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
+      const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
+      if (normalizedExistingName !== normalizedInputName) {
+        throw new Error(
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${foundProfile.name}". يمنع تسجيل أكثر من حساب بنفس الرقم أو استخدام اسم مختلف. يرجى كتابة الاسم المسجل "${foundProfile.name}" للدخول إلى حسابك.`
+        );
+      }
+    }
+
+    // Also block creating a second driver account if a driver already exists with a different name
+    if (role === 'driver' && foundDriver && foundDriver.name) {
+      const normalizedDriverName = foundDriver.name.trim().replace(/\s+/g, ' ').toLowerCase();
+      const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!isGenericName && normalizedDriverName !== normalizedInputName) {
+        throw new Error(
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً لحساب السائق "${foundDriver.name}". لا يمكن تسجيل حسابين بنفس الرقم.`
+        );
+      }
+    }
 
     finalProfile = {
       ...foundProfile,
@@ -351,20 +383,12 @@ export const registerOrRestoreUserByPhone = async (
     console.warn('Firestore sync warning:', syncErr);
   }
 
-  // Cache in localStorage directory and user session
+  // Cache in redundant vault (Primary + Backup LocalStorage + IndexedDB) and user session
   try {
-    directory[cleanPhone] = { profile: finalProfile, driver: finalDriver };
-    localStorage.setItem('motodrive_phone_directory', JSON.stringify(directory));
+    await saveUserToSecureVault(cleanPhone, finalProfile, finalDriver);
+    saveActiveSessionSecurely(finalProfile, finalDriver);
     localStorage.setItem('motodrive_remembered_phone', cleanPhone);
     localStorage.setItem('motodrive_last_phone', cleanPhone);
-    localStorage.setItem(
-      'motodrive_user_session',
-      JSON.stringify({
-        user: finalProfile,
-        driver: finalDriver,
-        timestamp: Date.now(),
-      })
-    );
     if (finalProfile.role) {
       localStorage.setItem('motodz_v2_role', finalProfile.role);
     }
@@ -438,9 +462,9 @@ export const subscribeToAuth = (
         const snapData = userSnap.data() as UserProfile;
         if (
           firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' &&
-          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456')
+          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456' || snapData.phone === '0662688714')
         ) {
-          snapData.phone = '0662688714';
+          snapData.phone = '0542524728';
         }
         callback(firebaseUser, snapData);
       } else {
@@ -448,7 +472,7 @@ export const subscribeToAuth = (
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-          phone: firebaseUser.phoneNumber || (isOwner ? '0662688714' : '0550123456'),
+          phone: firebaseUser.phoneNumber || (isOwner ? '0542524728' : '0550123456'),
           email: firebaseUser.email || undefined,
           photoUrl: firebaseUser.photoURL || undefined,
           role: isOwner ? 'admin' : 'passenger',
@@ -475,7 +499,7 @@ export const subscribeToAuth = (
       const fallbackProfile: UserProfile = {
         id: firebaseUser.uid,
         name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-        phone: firebaseUser.phoneNumber || (isOwner ? '0662688714' : '0550123456'),
+        phone: firebaseUser.phoneNumber || (isOwner ? '0542524728' : '0550123456'),
         email: firebaseUser.email || undefined,
         photoUrl: firebaseUser.photoURL || undefined,
         role: isOwner ? 'admin' : 'passenger',
@@ -936,7 +960,6 @@ export const signUpWithEmailPass = async (
   try {
     await setDoc(userDocRef, {
       ...profile,
-      password: cleanPass,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -1094,8 +1117,8 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     if (user.email && !profile.email) updates.email = user.email;
     if (user.email === 'seyfhad@gmail.com') {
       updates.role = 'admin';
-      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456') {
-        updates.phone = '0662688714';
+      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456' || profile.phone === '0662688714') {
+        updates.phone = '0542524728';
       }
     }
 
@@ -1111,7 +1134,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     profile = {
       id: user.uid,
       name: user.displayName || 'مستخدم MotoDrive',
-      phone: user.phoneNumber || (user.email === 'seyfhad@gmail.com' ? '0662688714' : '0550123456'),
+      phone: user.phoneNumber || (user.email === 'seyfhad@gmail.com' ? '0542524728' : '0550123456'),
       email: user.email || undefined,
       photoUrl: user.photoURL || undefined,
       role: user.email === 'seyfhad@gmail.com' ? 'admin' : role,
@@ -1224,16 +1247,17 @@ import { signInWithFacebookOAuth as executeFacebookAuth } from './facebookAuthSe
 
 export const signOutUser = async () => {
   cachedAccessToken = null;
-  localStorage.removeItem('motodrive_user_session');
-  localStorage.removeItem('motodrive_user_role');
-  localStorage.removeItem('motodrive_current_role');
-  localStorage.removeItem('motodrive_current_user');
+  clearActiveSessionOnly();
   try {
     const preservedKeys = new Set([
       'motodrive_phone_directory',
+      'motodrive_phone_directory_backup_v2',
       'motodrive_saved_rides',
+      'motodrive_saved_rides_backup_v2',
       'motodrive_saved_ratings',
+      'motodrive_saved_ratings_backup_v2',
       'motodrive_saved_complaints',
+      'motodrive_saved_complaints_backup_v2',
       'motodrive_remembered_phone',
       'motodrive_last_phone',
       'motodrive_registered_phone',

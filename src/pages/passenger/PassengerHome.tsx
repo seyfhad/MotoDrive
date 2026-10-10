@@ -6,7 +6,7 @@ import { ActiveRideView } from './ActiveRideView';
 import { ALGERIA_LOCATIONS, reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2, Home, Briefcase, Bookmark } from 'lucide-react';
 import {
   PassengerDashboardSkeleton,
   PassengerTripHistorySkeleton,
@@ -16,6 +16,11 @@ import {
 import { supabaseService } from '../../services/supabaseService';
 import { TripRatingModal } from '../../components/passenger/TripRatingModal';
 import { Ride } from '../../types';
+import {
+  getSavedFavoritePlaces,
+  saveFavoritePlace,
+  SavedFavoritePlaces,
+} from '../../services/dbService';
 
 export const PassengerHome: React.FC = () => {
   const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
@@ -29,6 +34,7 @@ export const PassengerHome: React.FC = () => {
   const [mapNotice, setMapNotice] = useState<string | null>(null);
   const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
   const [ratingRide, setRatingRide] = useState<Ride | null>(null);
+  const [favoritePlaces, setFavoritePlaces] = useState<SavedFavoritePlaces>({ home: null, work: null });
 
   // الكشف التلقائي عن أي رحلة مكتملة حديثاً لم يقم الراكب بتقييمها بعد لإظهار بطاقة التقييم
   useEffect(() => {
@@ -61,6 +67,44 @@ export const PassengerHome: React.FC = () => {
   useEffect(() => {
     handleGetRealGPSLocation();
   }, []);
+
+  // جلب العناوين المفضلة (المنزل / العمل) من الكاش المحلي IndexedDB
+  useEffect(() => {
+    getSavedFavoritePlaces(activePassenger.id).then((saved) => {
+      setFavoritePlaces(saved);
+    });
+  }, [activePassenger.id]);
+
+  const handleSelectOrSaveFavorite = async (type: 'home' | 'work') => {
+    const existing = favoritePlaces[type];
+    if (existing) {
+      setSelectedDestination(existing);
+      setShowBookingModal(true);
+    } else {
+      // Save current destination or current pickup as favorite
+      const targetToSave = selectedDestination || selectedPickup;
+      if (targetToSave) {
+        const label = type === 'home' ? 'المنزل 🏠' : 'العمل 💼';
+        const placeWithLabel: Coordinates = {
+          ...targetToSave,
+          name: targetToSave.name || label,
+        };
+        const updated = await saveFavoritePlace(activePassenger.id, type, placeWithLabel);
+        setFavoritePlaces(updated);
+        setMapNotice(`✅ تم حفظ "${label}" في عناوينك المفضلة بنجاح!`);
+        setTimeout(() => setMapNotice(null), 4000);
+      } else {
+        setMapSelectionMode('destination');
+        setMapNotice('انقر على الخريطة لتحديد الموقع ثم اضغط حفظ في المفضلة');
+      }
+    }
+  };
+
+  const handleClearFavorite = async (e: React.MouseEvent, type: 'home' | 'work') => {
+    e.stopPropagation();
+    const updated = await saveFavoritePlace(activePassenger.id, type, null);
+    setFavoritePlaces(updated);
+  };
 
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
   const handleGetRealGPSLocation = async () => {
@@ -123,29 +167,36 @@ export const PassengerHome: React.FC = () => {
       {/* Interactive Map Header / Background */}
       <div className="h-72 sm:h-96 w-full relative">
         <LeafletMap
-          center={selectedPickup ? [selectedPickup.lat, selectedPickup.lng] : [36.7538, 3.0588]}
+          center={selectedPickup ? [selectedPickup.lat, selectedPickup.lng] : [36.1652, 1.3345]}
           zoom={14}
           pickup={currentPassengerRide?.pickup || selectedPickup}
           destination={currentPassengerRide?.destination || selectedDestination}
           routeFrom={
             currentPassengerRide &&
-            ['accepted', 'driver_arriving', 'trip_started'].includes(currentPassengerRide.status)
+            ['accepted', 'driver_arriving', 'driver_arrived', 'trip_started'].includes(currentPassengerRide.status)
               ? currentPassengerRide.driverLocation ||
                 drivers.find((d) => d.id === currentPassengerRide.driverId)?.location ||
                 currentPassengerRide.pickup
-              : currentPassengerRide?.pickup || selectedPickup
+              : undefined
           }
           routeTo={
             currentPassengerRide &&
             ['accepted', 'driver_arriving'].includes(currentPassengerRide.status)
               ? currentPassengerRide.pickup
-              : currentPassengerRide?.destination || selectedDestination
+              : currentPassengerRide &&
+                ['driver_arrived', 'trip_started'].includes(currentPassengerRide.status)
+              ? currentPassengerRide.destination
+              : undefined
           }
+          routeColor="#facc15"
           drivers={drivers}
           activeDriverLocation={
-            currentPassengerRide?.driverLocation ||
-            drivers.find((d) => d.id === currentPassengerRide?.driverId)?.location ||
-            currentPassengerRide?.offers?.find((o) => o.driverId === currentPassengerRide?.driverId)?.driverLocation
+            currentPassengerRide &&
+            ['accepted', 'driver_arriving', 'driver_arrived', 'trip_started'].includes(currentPassengerRide.status)
+              ? currentPassengerRide?.driverLocation ||
+                drivers.find((d) => d.id === currentPassengerRide?.driverId)?.location ||
+                currentPassengerRide?.offers?.find((o) => o.driverId === currentPassengerRide?.driverId)?.driverLocation
+              : undefined
           }
           showRadar={currentPassengerRide?.status === 'searching'}
           interactive={true}
@@ -163,19 +214,8 @@ export const PassengerHome: React.FC = () => {
           </span>
         </div>
 
-        {/* Floating GPS Button & Map Pinning Controls */}
+        {/* Map Destination Pinning Control */}
         <div className="absolute bottom-12 left-4 z-20 flex flex-col gap-2">
-          <button
-            id="gps-floating-locate-btn"
-            onClick={handleGetRealGPSLocation}
-            disabled={isLocating}
-            className="p-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-amber-500/40 text-amber-400 shadow-xl flex items-center gap-2 text-xs font-bold transition-transform active:scale-95 disabled:opacity-50"
-            title="تحديد موقعي الفعلي عبر GPS"
-          >
-            <Navigation className={`w-4 h-4 ${isLocating ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">موقعي الفعلي (GPS)</span>
-          </button>
-
           <button
             onClick={() => setMapSelectionMode(mapSelectionMode === 'destination' ? null : 'destination')}
             className={`p-2.5 rounded-2xl border text-xs font-bold shadow-xl flex items-center gap-1.5 transition-all ${
@@ -293,6 +333,67 @@ export const PassengerHome: React.FC = () => {
                     </div>
                   </div>
                 </button>
+              </div>
+
+              {/* Saved Favorite Places Bar (Home & Work - like Yassir / inDrive) */}
+              <div className="grid grid-cols-2 gap-2">
+                <div
+                  onClick={() => handleSelectOrSaveFavorite('home')}
+                  role="button"
+                  tabIndex={0}
+                  className="p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-2 transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                      <Home className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="truncate text-right">
+                      <div className="text-[11px] font-bold text-white">المنزل</div>
+                      <div className="text-[9px] text-slate-400 truncate">
+                        {favoritePlaces.home ? favoritePlaces.home.name : '+ حفظ الموقع الحالي'}
+                      </div>
+                    </div>
+                  </div>
+                  {favoritePlaces.home && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleClearFavorite(e, 'home')}
+                      className="text-[10px] text-slate-500 hover:text-red-400 px-1"
+                      title="تغيير عنوان المنزل"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <div
+                  onClick={() => handleSelectOrSaveFavorite('work')}
+                  role="button"
+                  tabIndex={0}
+                  className="p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-2 transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="w-7 h-7 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                      <Briefcase className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="truncate text-right">
+                      <div className="text-[11px] font-bold text-white">العمل</div>
+                      <div className="text-[9px] text-slate-400 truncate">
+                        {favoritePlaces.work ? favoritePlaces.work.name : '+ حفظ الموقع الحالي'}
+                      </div>
+                    </div>
+                  </div>
+                  {favoritePlaces.work && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleClearFavorite(e, 'work')}
+                      className="text-[10px] text-slate-500 hover:text-red-400 px-1"
+                      title="تغيير عنوان العمل"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Main Call to Action Button */}

@@ -28,8 +28,8 @@ export type { AlgeriaLocationItem };
 // Comprehensive Algerian Landmarks, Municipalities & Hotspots (Guelma, Algiers, Oran, Constantine, etc.)
 export const ALGERIA_LOCATIONS = COMPREHENSIVE_ALGERIA_LOCATIONS;
 
-// Default center: Algiers Center
-export const DEFAULT_MAP_CENTER: [number, number] = [36.7538, 3.0588];
+// Default center: Chlef Center (مدينة الشلف، الجزائر)
+export const DEFAULT_MAP_CENTER: [number, number] = [36.1652, 1.3345];
 
 // In-memory cache for real OSRM road distances & route geometries
 const roadRouteCache = new Map<
@@ -381,10 +381,10 @@ export async function getIPUserLocation(): Promise<{ coords: Coordinates; cityNa
  */
 export async function getRobustUserLocation(): Promise<RobustLocationResult> {
   const defaultCoords: Coordinates = {
-    lat: 36.7538,
-    lng: 3.0588,
-    name: 'وسط الجزائر العاصمة',
-    address: 'ساحة البريد المركزي، الجزائر العاصمة',
+    lat: 36.1652,
+    lng: 1.3345,
+    name: 'ساحة التضامن - وسط مدينة الشلف',
+    address: 'ساحة التضامن وأول نوفمبر، وسط مدينة الشلف',
   };
 
   // 1. Native Capacitor Platform Support with explicit permission check & prompt trigger

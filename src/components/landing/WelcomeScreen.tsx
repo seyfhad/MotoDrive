@@ -149,7 +149,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     }
   };
 
-  // Handle Passenger Submission with Phone Memory
+  // Handle Passenger Submission with Strict Single-Account-Per-Phone Check
   const handlePassengerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -164,20 +164,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
     try {
       setIsPassengerSubmitting(true);
+
+      // Check if phone is already registered with a different name
+      const { profile: existingProfile } = await findUserAndDriverByPhone(cleanPhone);
+      if (
+        existingProfile &&
+        existingProfile.name &&
+        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existingProfile.name)
+      ) {
+        const normExisting = existingProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
+        if (normTyped && normTyped !== 'راكب motodrive' && normExisting !== normTyped) {
+          setFormError(
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existingProfile.name}". يمنع تسجيل أكثر من حساب بنفس الرقم أو باسم مختلف.`
+          );
+          setPassengerName(existingProfile.name);
+          setIsPassengerSubmitting(false);
+          return;
+        }
+      }
+
       const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
 
       setCurrentUser(res.user);
       setActivePassenger(res.profile);
       setCurrentRole('passenger');
-
-      if (res.isExisting) {
-        broadcastNotification('الرقم مسجل مسبقاً - مرحباً بعودتك!', `تم استرجاع حسابك كراكب: ${res.profile.name}`);
-      } else {
-        broadcastNotification('مرحباً بك!', `تم تسجيل حسابك كراكب بنجاح باسم: ${cleanName}`);
-      }
     } catch (err: any) {
       console.error('Passenger submit error:', err);
-      setFormError('حدث خطأ أثناء إرسال البيانات. يرجى المحاولة ثانية.');
+      setFormError(err?.message || 'حدث خطأ أثناء إرسال البيانات. يرجى المحاولة ثانية.');
     } finally {
       setIsPassengerSubmitting(false);
     }
@@ -235,20 +249,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       setActiveDriver(driver);
       setCurrentRole('driver');
 
-      if (driver.status === 'pending') {
-        broadcastNotification(
-          'حسابك قيد المراجعة ⏳',
-          `مرحباً ${driver.name}، طلبك قيد المراجعة لدى المالك حالياً.`
-        );
-      } else if (driver.status === 'rejected') {
+      if (driver.status === 'rejected') {
         broadcastNotification(
           'تم رفض طلبك ❌',
-          `سبب الرفض من المالك: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
-        );
-      } else {
-        broadcastNotification(
-          'مرحباً بعودتك يا كابتن! ✅',
-          `تم تسجيل دخولك بنجاح كسائق معتمد: ${driver.name}`
+          `سبب الرفض من المسؤول: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
         );
       }
     } catch (err) {
@@ -259,7 +263,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     }
   };
 
-  // Handle Driver Registration Submission (STRICT 4 PHOTOS VALIDATION)
+  // Handle Driver Registration Submission (STRICT 4 PHOTOS VALIDATION & NO DUPLICATE PHONE)
   const handleDriverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -282,52 +286,32 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       return;
     }
 
-    // Check if phone number is already registered in Firestore
+    // Check if phone number is already registered in Firestore or local vault
     try {
       setIsDriverSubmitting(true);
       const existing = await findUserAndDriverByPhone(cleanPhone);
+
+      // Block if a driver account already exists for this phone number
       if (existing.driver && existing.driver.status !== 'rejected') {
-        const docs = (existing.driver.documents || {}) as any;
-        const hasAllDocs = Boolean(
-          (docs.selfieUrl || docs.personalPhotoUrl) &&
-          (docs.licenseUrl || docs.licenseFrontUrl) &&
-          (docs.vehicleRegistrationUrl || docs.vehicleDocFrontUrl) &&
-          (docs.motorcyclePhotoUrl || docs.motorcycleFrontUrl)
+        setIsDriverSubmitting(false);
+        setFormError(
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كسائق باسم "${existing.driver.name}". يمنع تسجيل حسابين برقم واحد. يرجى اختيار "لدي حساب سائق مسجل" للدخول.`
         );
-        if (hasAllDocs || existing.driver.status === 'approved') {
+        return;
+      }
+
+      // Block if phone belongs to an existing user with a different name
+      if (
+        existing.profile &&
+        existing.profile.name &&
+        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existing.profile.name)
+      ) {
+        const normExisting = existing.profile.name.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
+        if (normExisting !== normTyped) {
           setIsDriverSubmitting(false);
-          try {
-            localStorage.setItem('motodrive_registered_phone', cleanPhone);
-            localStorage.setItem('motodrive_active_driver_phone', cleanPhone);
-            localStorage.setItem(
-              'motodrive_user_session',
-              JSON.stringify({
-                user: existing.profile || {
-                  id: existing.driver.userId || existing.driver.id,
-                  name: existing.driver.name,
-                  phone: cleanPhone,
-                  role: 'driver',
-                  status: 'active',
-                  createdAt: new Date().toISOString(),
-                },
-                driver: existing.driver,
-                timestamp: Date.now(),
-              })
-            );
-          } catch (e) {}
-          setCurrentUser({
-            uid: existing.driver.userId || existing.driver.id,
-            displayName: existing.driver.name,
-            phoneNumber: cleanPhone,
-          } as any);
-          if (existing.profile) setActivePassenger(existing.profile);
-          setActiveDriver(existing.driver);
-          setCurrentRole('driver');
-          broadcastNotification(
-            'هذا الرقم مسجل بالفعل!',
-            existing.driver.status === 'approved'
-              ? `مرحباً بعودتك ${existing.driver.name}، حسابك معتمد ونشط.`
-              : `مرحباً ${existing.driver.name}، هذا الرقم مسجل بالفعل وطلبك قيد المراجعة لدى المالك.`
+          setFormError(
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existing.profile.name}". لا يمكن التسجيل بنفس الرقم واسم مختلف.`
           );
           return;
         }
@@ -435,14 +419,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       setCurrentUser(res.user);
       setActivePassenger(res.profile);
       setCurrentRole('driver');
-
-      broadcastNotification(
-        'تم إرسال طلبك والوثائق الـ 4 للمالك!',
-        'بياناتك وصورك الـ 4 وصلت للمالك وهي قيد المراجعة حالياً.'
-      );
     } catch (err: any) {
       console.error('Driver registration error:', err);
-      setFormError('حدث خطأ أثناء إرسال بيانات السائق. يرجى إعادة المحاولة.');
+      setFormError(err?.message || 'حدث خطأ أثناء إرسال بيانات السائق. يرجى إعادة المحاولة.');
     } finally {
       setIsDriverSubmitting(false);
     }

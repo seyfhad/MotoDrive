@@ -67,6 +67,7 @@ import {
   clearAllTestDataFromFirestore,
   saveSystemPricing,
   sanitizeFirestoreData,
+  deleteExpiredRideFromFirestore,
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
@@ -81,6 +82,24 @@ import {
   completeRideRequest,
   cancelRideRequest,
 } from '../services/rideRequestsService';
+import {
+  hydrateVaultOnStartup,
+  loadActiveSessionSecurely,
+  saveActiveSessionSecurely,
+  saveUserToSecureVault,
+  loadRidesFromSecureStorage,
+  saveRidesToSecureVault,
+  loadRatingsFromSecureStorage,
+  saveRatingsToSecureVault,
+  loadComplaintsFromSecureStorage,
+  saveComplaintsToSecureVault,
+  isPendingRideExpired,
+  removeRideFromSecureVault,
+} from '../services/dataVaultService';
+import {
+  syncOfflineQueueToFirestore,
+  addToOfflineQueue,
+} from '../services/dbService';
 
 interface AppContextType {
   currentRole: UserRole;
@@ -104,6 +123,7 @@ interface AppContextType {
   currentUser: any;
   setCurrentUser: (user: any) => void;
   logout: () => Promise<void>;
+  deleteMyAccount: () => Promise<void>;
 
   // Passenger actions
   currentPassengerRide: Ride | null;
@@ -179,39 +199,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [passengers, setPassengers] = useState<UserProfile[]>(INITIAL_PASSENGERS);
   const [drivers, setDrivers] = useState<DriverProfile[]>(INITIAL_DRIVERS);
-  const [rides, setRides] = useState<Ride[]>(() => {
-    try {
-      const savedRides = localStorage.getItem('motodrive_saved_rides');
-      if (savedRides) {
-        const parsed = JSON.parse(savedRides);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return [];
-  });
+  const [rides, setRides] = useState<Ride[]>(() => loadRidesFromSecureStorage());
   const [pricing, setPricing] = useState<PricingSettings>(DEFAULT_PRICING);
   const [serviceAreas, setServiceAreas] = useState<ServiceArea[]>(INITIAL_SERVICE_AREAS);
   const [complaints, setComplaints] = useState<Complaint[]>(() => {
-    try {
-      const savedComplaints = localStorage.getItem('motodrive_saved_complaints');
-      if (savedComplaints) {
-        const parsed = JSON.parse(savedComplaints);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return INITIAL_COMPLAINTS;
+    const saved = loadComplaintsFromSecureStorage();
+    return saved.length > 0 ? saved : INITIAL_COMPLAINTS;
   });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [ratings, setRatings] = useState<Rating[]>(() => {
-    try {
-      const savedRatings = localStorage.getItem('motodrive_saved_ratings');
-      if (savedRatings) {
-        const parsed = JSON.parse(savedRatings);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return [];
-  });
+  const [ratings, setRatings] = useState<Rating[]>(() => loadRatingsFromSecureStorage());
 
   // Simulation switch (default to false for real Firebase mode, toggleable in UI)
   const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
@@ -228,44 +224,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_PENDING_DRIVER;
   });
 
-  // Persist rides, complaints, ratings, and activePassenger profile into localStorage so user accounts & trip history are always remembered
+  // Hydrate and self-heal from IndexedDB Vault on startup
   useEffect(() => {
-    try {
-      localStorage.setItem('motodrive_saved_rides', JSON.stringify(rides));
-    } catch (e) {}
+    hydrateVaultOnStartup().then(({ restoredRidesCount }) => {
+      if (restoredRidesCount > 0) {
+        setRides(loadRidesFromSecureStorage());
+      }
+    });
+  }, []);
+
+  // Persist rides, complaints, ratings, and activePassenger/activeDriver profiles into multi-layer vault
+  useEffect(() => {
+    saveRidesToSecureVault(rides);
   }, [rides]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('motodrive_saved_complaints', JSON.stringify(complaints));
-    } catch (e) {}
+    saveComplaintsToSecureVault(complaints);
   }, [complaints]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('motodrive_saved_ratings', JSON.stringify(ratings));
-    } catch (e) {}
+    saveRatingsToSecureVault(ratings);
   }, [ratings]);
 
   useEffect(() => {
     try {
       if (activePassenger && activePassenger.phone && activePassenger.id !== 'passenger-guest') {
-        const cleanPhone = activePassenger.phone.trim().replace(/\s+/g, '');
-        const raw = localStorage.getItem('motodrive_phone_directory');
-        const dir = raw ? JSON.parse(raw) : {};
-        dir[cleanPhone] = {
-          ...(dir[cleanPhone] || {}),
-          profile: activePassenger,
-        };
-        localStorage.setItem('motodrive_phone_directory', JSON.stringify(dir));
+        saveUserToSecureVault(
+          activePassenger.phone,
+          activePassenger,
+          activeDriver?.id !== DEFAULT_PENDING_DRIVER.id ? activeDriver : undefined
+        );
       }
     } catch (e) {}
-  }, [activePassenger]);
+  }, [activePassenger, activeDriver]);
 
   // Track GPS location watcher
   const geoWatchIdRef = useRef<number | null>(null);
 
-  // Notification Helper with Push Notifications & Audio Chime
+  // Track recent notifications to prevent duplicates and spam
+  const lastNotifRef = useRef<{ key: string; time: number }>({ key: '', time: 0 });
+
+  // Notification Helper (Strictly for essential events only: Ride Offers, Driver Arrival, Admin Account Decisions/Messages)
   const addNotification = useCallback((
     recipientId: string,
     recipientRole: UserRole,
@@ -274,6 +273,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     type: AppNotification['type'] = 'ride_update',
     data?: Record<string, any>
   ) => {
+    const dedupKey = `${recipientId}:${title}:${body}`;
+    const now = Date.now();
+    if (lastNotifRef.current.key === dedupKey && now - lastNotifRef.current.time < 8000) {
+      return;
+    }
+    lastNotifRef.current = { key: dedupKey, time: now };
+
     const newNotif: AppNotification = {
       id: 'NOTIF-' + Math.random().toString(36).substring(2, 9),
       recipientId,
@@ -285,15 +291,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRead: false,
       createdAt: new Date().toISOString(),
     };
-    setNotifications(prev => [newNotif, ...prev]);
+    setNotifications(prev => [newNotif, ...prev.slice(0, 29)]);
 
-    // Send Push Notification & Play Audio Chime
+    // Send Push Notification & Play Audio Chime only for essential events
     let soundType: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general' = 'general';
-    if (title.includes('طلب') || title.includes('رحلة') || title.includes('عرض')) {
+    if (title.includes('طلب') || title.includes('عرض')) {
       soundType = 'new_ride';
     } else if (title.includes('وصل') || title.includes('أقترب') || title.includes('اقترب')) {
       soundType = 'driver_arriving';
-    } else if (title.includes('إدارة') || title.includes('قبول') || title.includes('رفض') || title.includes('تحديث')) {
+    } else if (title.includes('مسؤول') || title.includes('قبول') || title.includes('رفض') || title.includes('موافقة')) {
       soundType = 'admin_update';
     }
 
@@ -307,39 +313,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
   useEffect(() => {
-    // 1a. Hydrate cached local user session for instant startup
+    // 1a. Hydrate cached local user session for instant startup (with automatic backup recovery)
     const hydrateLocalSession = () => {
       try {
-        const cachedSessionStr = localStorage.getItem('motodrive_user_session');
-        if (cachedSessionStr) {
-          const cachedSession = JSON.parse(cachedSessionStr);
-          if (cachedSession?.user) {
-            const cachedUser = { ...cachedSession.user };
-            if (
-              (cachedUser.role === 'admin' || cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com') &&
-              (!cachedUser.phone || cachedUser.phone === '0550000000' || cachedUser.phone === '0550123456')
-            ) {
-              cachedUser.phone = '0662688714';
-            }
-            setActivePassenger(cachedUser);
-            setCurrentUser({
-              uid: cachedUser.id,
-              displayName: cachedUser.name,
-              email: cachedUser.email,
-              photoURL: cachedUser.photoUrl,
-            } as any);
+        const { user: rawCachedUser, driver: cachedDriver } = loadActiveSessionSecurely();
+        if (rawCachedUser) {
+          const cachedUser = { ...rawCachedUser };
+          if (
+            (cachedUser.role === 'admin' || cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com') &&
+            (!cachedUser.phone || cachedUser.phone === '0550000000' || cachedUser.phone === '0550123456' || cachedUser.phone === '0662688714')
+          ) {
+            cachedUser.phone = '0542524728';
+          }
+          setActivePassenger(cachedUser);
+          setCurrentUser({
+            uid: cachedUser.id,
+            displayName: cachedUser.name,
+            email: cachedUser.email,
+            photoURL: cachedUser.photoUrl,
+          } as any);
 
-            if (cachedSession?.driver) {
-              setActiveDriver(cachedSession.driver);
-            }
+          if (cachedDriver) {
+            setActiveDriver(cachedDriver);
+          }
 
-            if (cachedUser.role === 'admin' || cachedUser.email === 'seyfhad@gmail.com') {
-              setCurrentRole('admin');
-            } else if (cachedUser.role === 'driver') {
-              setCurrentRole('driver');
-            } else {
-              setCurrentRole('passenger');
-            }
+          if (cachedUser.role === 'admin' || cachedUser.email === 'seyfhad@gmail.com') {
+            setCurrentRole('admin');
+          } else if (cachedUser.role === 'driver') {
+            setCurrentRole('driver');
+          } else {
+            setCurrentRole('passenger');
           }
         }
       } catch (e) {
@@ -356,25 +359,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
             userProfile.email?.toLowerCase() === 'seyfhad@gmail.com' ||
             userProfile.role === 'admin') &&
-          (!userProfile.phone || userProfile.phone === '0550000000' || userProfile.phone === '0550123456')
+          (!userProfile.phone || userProfile.phone === '0550000000' || userProfile.phone === '0550123456' || userProfile.phone === '0662688714')
         ) {
-          userProfile.phone = '0662688714';
+          userProfile.phone = '0542524728';
         }
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
         setActivePassenger(userProfile);
 
-        // Save active session to local storage for fast boot
-        localStorage.setItem(
-          'motodrive_user_session',
-          JSON.stringify({ user: userProfile, timestamp: Date.now() })
-        );
+        // Save active session to redundant vault for fast & safe boot
+        saveActiveSessionSecurely(userProfile);
 
         // Auto-restore DriverProfile if user has one in Firestore
         getDriverByUserIdOrPhone(userProfile.id, userProfile.phone, userProfile.email)
           .then((driverProfile) => {
             if (driverProfile) {
               setActiveDriver(driverProfile);
+              saveActiveSessionSecurely(userProfile, driverProfile);
             }
           })
           .catch((err) => {
@@ -397,9 +398,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
         }
       } else {
-        // Do NOT wipe local phone or passcode-admin session if one is saved in localStorage
-        const existingLocalSession = localStorage.getItem('motodrive_user_session');
-        if (!existingLocalSession) {
+        // Do NOT wipe local phone or passcode-admin session if one is saved in primary or backup vault
+        const { user: existingSessionUser } = loadActiveSessionSecurely();
+        if (!existingSessionUser) {
           setCurrentUser(null);
           setActivePassenger(GUEST_PASSENGER);
         } else {
@@ -472,6 +473,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const fetchedRides: Ride[] = [];
           for (const rideDoc of querySnap.docs) {
             const rideData = { id: rideDoc.id, ...rideDoc.data() } as Ride;
+            // Automatically delete unaccepted ride requests older than 08 minutes
+            if (isPendingRideExpired(rideData)) {
+              deleteExpiredRideFromFirestore(rideData.id).catch(() => {});
+              continue;
+            }
             if (
               ['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(
                 rideData.status
@@ -501,7 +507,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const existingTime = new Date(existing.requestedAt || 0).getTime();
                 const newTime = new Date(ride.requestedAt || 0).getTime();
                 if (newTime >= existingTime) {
+                  // Delete the older duplicate pending request
+                  deleteExpiredRideFromFirestore(existing.id).catch(() => {});
                   uniqueRidesMap.set(key, ride);
+                } else {
+                  deleteExpiredRideFromFirestore(ride.id).catch(() => {});
                 }
               } else {
                 uniqueRidesMap.set(key, ride);
@@ -511,13 +521,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
           }
           setRides((prevRides) => {
-            // Merge cloud rides with locally persisted rides so offline/previous trips are never lost
+            // Merge cloud rides with locally persisted completed rides, dropping expired pending rides
             const mergedMap = new Map<string, Ride>();
             for (const localRide of prevRides) {
-              mergedMap.set(localRide.id, localRide);
+              if (!localRide || isPendingRideExpired(localRide)) continue;
+              const isLocalPending =
+                localRide.status === 'searching' || localRide.status === 'offers_available';
+              if (!isLocalPending) {
+                mergedMap.set(localRide.id, localRide);
+              }
             }
             for (const cloudRide of uniqueRidesMap.values()) {
-              mergedMap.set(cloudRide.id, cloudRide);
+              if (!isPendingRideExpired(cloudRide)) {
+                mergedMap.set(cloudRide.id, cloudRide);
+              }
             }
             return Array.from(mergedMap.values()).sort(
               (a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime()
@@ -682,7 +699,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           driverData.id,
           'driver',
           '🎉 تهانينا! تمت الموافقة على حسابك',
-          'تم قبول ملفك واعتماد وثائقك رسمياً من قبل الإدارة! يمكنك الآن تفعيل وضع (متصل) والبدء في استقبال طلبات الركاب.',
+          'تم قبول ملفك واعتماد وثائقك رسمياً من قبل المسؤول! يمكنك الآن تفعيل وضع (متصل) والبدء في استقبال طلبات الركاب.',
           'admin_update'
         );
       } else if (prevStatus !== 'rejected' && driverData.status === 'rejected') {
@@ -917,9 +934,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [activeDriver.isOnline, activeDriver.id]);
 
+  // --------------------------------------------------------------------------
+  // AUTO-DELETE UNACCEPTED PENDING RIDE REQUESTS AFTER 08 MINUTES
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    const cleanupExpiredRides = () => {
+      setRides((prevRides) => {
+        const expired = prevRides.filter((r) => isPendingRideExpired(r));
+        if (expired.length === 0) return prevRides;
+
+        for (const expRide of expired) {
+          deleteExpiredRideFromFirestore(expRide.id).catch(() => {});
+          removeRideFromSecureVault(expRide.id).catch(() => {});
+          if (
+            expRide.passengerId === activePassenger.id ||
+            (activePassenger.phone &&
+              expRide.passengerPhone &&
+              expRide.passengerPhone.trim().replace(/\s+/g, '') ===
+                activePassenger.phone.trim().replace(/\s+/g, ''))
+          ) {
+            addNotification(
+              activePassenger.id,
+              'passenger',
+              '⏱️ انتهت مهلة الطلب (08 دقائق)',
+              'لم يتم قبول الطلب من أي سائق خلال 8 دقائق، لذلك تم حذفه تلقائياً. يمكنك طلب رحلة جديدة الآن.'
+            );
+          }
+        }
+
+        return prevRides.filter((r) => !isPendingRideExpired(r));
+      });
+    };
+
+    cleanupExpiredRides();
+    const interval = setInterval(cleanupExpiredRides, 5000);
+    return () => clearInterval(interval);
+  }, [activePassenger.id, activePassenger.phone, addNotification]);
+
   // Derive Current Active Rides (matched by passengerId or passengerPhone so restored phone accounts always resume active trips)
   const currentPassengerRide = rides.find(
     r =>
+      !isPendingRideExpired(r) &&
       (r.passengerId === activePassenger.id ||
         (activePassenger.phone &&
           r.passengerPhone &&
@@ -933,12 +988,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
   ) || null;
 
-  // Driver incoming requests (searching or offers_available and driver is online)
+  // Driver incoming requests with Geofencing / Radius Matching (Yassir / inDrive style: prioritizes requests within 5 km road distance, sorted closest first)
   const pendingDriverRideRequests = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
-    ? rides.filter(r => 
-        (r.status === 'searching' || r.status === 'offers_available') &&
-        !(r.offers || []).some(o => o.driverId === activeDriver.id && o.status === 'declined')
-      )
+    ? rides
+        .filter(r => {
+          if (isPendingRideExpired(r)) return false;
+          if (r.status !== 'searching' && r.status !== 'offers_available') return false;
+          if ((r.offers || []).some(o => o.driverId === activeDriver.id && o.status === 'declined')) return false;
+          const distToPickup = calculateDistanceKm(activeDriver.location, r.pickup);
+          // Match within 5 km primary radius (or up to 25 km if driver is in the same wilaya/suburb)
+          const isDefaultCoords =
+            Math.abs(activeDriver.location.lat - 36.7538) < 0.01 &&
+            Math.abs(activeDriver.location.lng - 3.0588) < 0.01;
+          return distToPickup <= 5 || distToPickup <= 25 || isDefaultCoords;
+        })
+        .sort((a, b) => {
+          const distA = calculateDistanceKm(activeDriver.location, a.pickup);
+          const distB = calculateDistanceKm(activeDriver.location, b.pickup);
+          return distA - distB;
+        })
     : [];
 
   const pendingDriverRideRequest = pendingDriverRideRequests[0] || null;
@@ -1155,12 +1223,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : r
         )
       );
-      addNotification(
-        'all_drivers',
-        'driver',
-        '⚡ الراكب رفع السعر المقترح!',
-        `تم تحديث السعر المقترح للرحلة #${rideId} إلى ${newOfferedPrice} د.ج.`
-      );
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'تعذر تحديث السعر' };
@@ -1168,6 +1230,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelRide = async (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
+    const target = rides.find(r => r.id === rideId);
+    const isStillPending = target && (target.status === 'searching' || target.status === 'offers_available');
+
+    if (isStillPending) {
+      setRides(prev => prev.filter(r => r.id !== rideId));
+      try {
+        await deleteExpiredRideFromFirestore(rideId);
+      } catch (e) {
+        console.warn('Error deleting pending ride in Firestore:', e);
+      }
+      return;
+    }
+
     const newStatus = cancelledBy === 'passenger' ? 'cancelled_by_passenger' : 'cancelled_by_driver';
     setRides(prev =>
       prev.map(r =>
@@ -1262,8 +1337,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const ride = rides.find(r => r.id === rideId);
     if (!ride) return { success: false, error: 'الرحلة غير موجودة' };
     const driver = drivers.find(d => d.id === driverId) || activeDriver;
-    acceptRideRequest(rideId, driver).catch(e => console.warn('Notice accepting in ride_requests:', e));
-    return submitDriverOffer(rideId, driverId, ride.passengerOfferedPrice || ride.estimatedPrice);
+    if (!driver) return { success: false, error: 'السائق غير مسجل' };
+    if (driver.status !== 'approved') return { success: false, error: 'حساب السائق غير معتمد' };
+    if (!driver.isOnline) return { success: false, error: 'يجب أن تكون في وضع Online لقبول الرحلات' };
+
+    const passengerPrice = ride.passengerOfferedPrice || ride.estimatedPrice;
+    const directOfferId = `direct-${driver.id}-${Date.now()}`;
+
+    const txResult = await acceptDriverOfferTransaction(
+      rideId,
+      directOfferId,
+      driver,
+      passengerPrice,
+      pricing.platformCommissionPercent
+    );
+
+    if (txResult.success) {
+      const distToPickup = calculateDistanceKm(driver.location, ride.pickup);
+      const etaMins = Math.max(1, Math.round(distToPickup * 1.8));
+      const acceptedOffer: RideOffer = {
+        id: directOfferId,
+        rideId,
+        driverId: driver.id,
+        driverName: driver.name,
+        driverPhone: driver.phone,
+        driverPhoto: driver.photoUrl,
+        driverRating: driver.rating ?? 5.0,
+        driverTripsCount: driver.totalTrips ?? 0,
+        driverMotorcycle: driver.motorcycle,
+        driverLocation: driver.location,
+        distanceToPickupKm: distToPickup,
+        etaMinutes: etaMins,
+        offeredPrice: passengerPrice,
+        isCounterOffer: false,
+        passengerOfferedPrice: passengerPrice,
+        priceDifference: 0,
+        status: 'accepted',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60000).toISOString(),
+      };
+
+      setRides(prev =>
+        prev.map(r => {
+          if (r.id !== rideId) return r;
+          return {
+            ...r,
+            status: 'accepted',
+            selectedDriverId: driver.id,
+            driverId: driver.id,
+            driverName: driver.name,
+            driverPhone: driver.phone,
+            driverPhoto: driver.photoUrl,
+            driverRating: driver.rating ?? 5.0,
+            driverMotorcycle: driver.motorcycle,
+            driverLocation: driver.location,
+            finalPrice: passengerPrice,
+            acceptedAt: new Date().toISOString(),
+            offers: [...(r.offers || []), acceptedOffer],
+          };
+        })
+      );
+
+      acceptRideRequest(rideId, driver).catch(e => console.warn('Notice accepting in ride_requests:', e));
+
+      addNotification(
+        ride.passengerId,
+        'passenger',
+        '🎉 السائق قبل طلبك بالسعر المقترح!',
+        `السائق ${driver.name} قبل رحلتك بسعر ${passengerPrice} د.ج وهو في الطريق إليك الآن.`
+      );
+
+      return { success: true };
+    }
+
+    // Fallback to offer submission if transaction falls back
+    return submitDriverOffer(rideId, driverId, passengerPrice);
   };
 
   const toggleDriverOnline = async (driverId: string, isOnline: boolean): Promise<{ success: boolean; error?: string }> => {
@@ -1273,7 +1421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isOnline && driver.status !== 'approved') {
       return {
         success: false,
-        error: 'لا يمكنك تفعيل وضع Online حتى تتم مراجعة وثائقك واعتماد حسابك من الإدارة.',
+        error: 'لا يمكنك تفعيل وضع Online حتى تتم مراجعة وثائقك واعتماد حسابك من المسؤول.',
       };
     }
 
@@ -1289,8 +1437,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const rejectRide = (rideId: string, driverId: string) => {
-    addNotification(driverId, 'driver', 'تم التخطي', 'تم تخطي هذا الطلب');
+  const rejectRide = (_rideId: string, _driverId: string) => {
+    // Silent skip without noisy notification
   };
 
   const advanceRideStatus = async (rideId: string) => {
@@ -1307,7 +1455,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else if (targetRide.status === 'driver_arrived') {
       nextStatus = 'trip_started';
       extraData.startedAt = new Date().toISOString();
-      addNotification(targetRide.passengerId, 'passenger', '🏍️ انطلقت الرحلة', 'نتمنى لك رحلة آمنة ومريحة مع MotoDrive.');
     } else if (targetRide.status === 'trip_started') {
       nextStatus = 'completed';
       extraData.completedAt = new Date().toISOString();
@@ -1315,12 +1462,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       extraData.finalPrice = targetRide.finalPrice || targetRide.estimatedPrice;
       // Delete from ride_requests queue and archive to completed rides in Firestore
       completeRideRequest(rideId).catch(e => console.warn('Notice completing ride_requests doc:', e));
-      addNotification(
-        targetRide.passengerId,
-        'passenger',
-        '🎉 تم الوصول بنجاح',
-        `المبلغ المستحق نقدًا: ${targetRide.finalPrice || targetRide.estimatedPrice} د.ج. يرجى تقييم السائق.`
-      );
     }
 
     setRides(prev =>
@@ -1471,12 +1612,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (drv) {
       await syncDriverProfile({ ...drv, status: 'approved' });
     }
-    addNotification(
-      driverId,
-      'driver',
-      '🎉 تم قبول حسابك!',
-      'تهانينا! تمت مراجعة وثائقك واعتمادها بنجاح مع مسح وثائق التوثيق من التخزين السحابي للأمان. يمكنك الآن تفعيل وضع Online والبدء في استقبال الرحلات.'
-    );
   };
 
   const rejectDriver = async (driverId: string, reason: string) => {
@@ -1492,7 +1627,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (drv) {
       await syncDriverProfile({ ...drv, status: 'rejected', rejectionReason: reason });
     }
-    addNotification(driverId, 'driver', '❌ لم يتم قبول الحساب', `سبب الرفض: ${reason}`);
   };
 
   const suspendDriver = async (driverId: string) => {
@@ -1525,7 +1659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(passengerId, 'passenger', '⚠️ تحديث حالة حسابك', `تم تعليق حسابك. السبب: ${reason}`);
   };
 
-  const deletePassenger = async (passengerId: string, reason: string = 'قرار إداري من المالك') => {
+  const deletePassenger = async (passengerId: string, reason: string = 'قرار من المسؤول') => {
     setPassengers(prev => prev.filter(p => p.id !== passengerId));
     try {
       await setDoc(doc(db, 'users', passengerId), { status: 'deleted', deletionReason: reason, deletedAt: serverTimestamp() }, { merge: true });
@@ -1574,7 +1708,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     delete (cleanedPricing as any).peakHourMultiplier;
     setPricing(cleanedPricing);
     await saveSystemPricing(cleanedPricing);
-    addNotification('admin', 'admin', '⚙️ تم تحديث الأسعار', 'تم حفظ إعدادات التسعير والعمولة في Firebase.');
   };
 
   const toggleServiceArea = (id: string) => {
@@ -1623,6 +1756,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
   };
 
+  // Google Play Account Deletion Policy Mandatory Handler
+  const deleteMyAccount = async () => {
+    const uid = activePassenger?.id;
+    const phone = activePassenger?.phone || activeDriver?.phone;
+    const drvId = activeDriver?.id;
+
+    try {
+      if (uid && uid !== 'passenger-guest') {
+        await addToOfflineQueue('users', 'delete', { deletedAt: new Date().toISOString() }, uid);
+      }
+      if (drvId && drvId !== 'driver-pending-1') {
+        await addToOfflineQueue('drivers', 'delete', { deletedAt: new Date().toISOString() }, drvId);
+      }
+      await syncOfflineQueueToFirestore();
+    } catch (e) {
+      console.warn('Notice queuing account deletion:', e);
+    }
+
+    // Purge user entry from phone directory & local storage
+    try {
+      if (phone) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        ['motodrive_phone_directory', 'motodrive_phone_directory_backup_v1'].forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            delete parsed[cleanPhone];
+            delete parsed[phone];
+            localStorage.setItem(k, JSON.stringify(parsed));
+          }
+        });
+      }
+      localStorage.removeItem('motodrive_user_session');
+      localStorage.removeItem('motodrive_user_session_backup_v1');
+      localStorage.removeItem('motodrive_active_driver');
+      localStorage.removeItem('motodrive_active_driver_backup_v1');
+      localStorage.removeItem('motodrive_registered_phone');
+      localStorage.removeItem('motodrive_active_driver_phone');
+    } catch {}
+
+    await logout();
+  };
+
   const purgeAllTestData = async (): Promise<{ deletedCount: number }> => {
     const result = await clearAllTestDataFromFirestore();
     setRides([]);
@@ -1654,6 +1830,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         setCurrentUser,
         logout,
+        deleteMyAccount,
 
         currentPassengerRide,
         requestRide,

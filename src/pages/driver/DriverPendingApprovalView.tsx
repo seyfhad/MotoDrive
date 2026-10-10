@@ -452,19 +452,19 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
             </div>
           </div>
 
-          {/* Support / Help - Owner Real Phone Number 0662688714 */}
+          {/* Support / Help - Owner Real Phone Number 0542524728 */}
           <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-slate-300">
               <PhoneCall className="w-4 h-4 text-emerald-400" />
               <span>هل لديك استفسار حول ملفك؟</span>
             </div>
             <a
-              href="tel:0662688714"
+              href="tel:0542524728"
               className="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-amber-500/30 text-amber-400 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-sm"
-              title="اتصال مباشر بالإدارة"
+              title="اتصال مباشر بالمسؤول"
             >
               <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
-              <span>اتصل بالإدارة</span>
+              <span>اتصل بالمسؤول (0542524728)</span>
             </a>
           </div>
 

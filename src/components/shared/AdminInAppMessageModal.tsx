@@ -188,7 +188,7 @@ export const AdminInAppMessageModal: React.FC<AdminInAppMessageModalProps> = ({ 
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="مثال: تنبيه إداري بشأن وثائق الحساب"
+                placeholder="مثال: تنبيه من المسؤول بشأن وثائق الحساب"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
               />
             </div>
