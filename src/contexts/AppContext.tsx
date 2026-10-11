@@ -738,8 +738,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR CURRENT DRIVER PROFILE
   // Ensures instant update of 'approved' status when approved by Admin without app restart
   // --------------------------------------------------------------------------
-  const prevDriverStatusRef = useRef<DriverApprovalStatus | undefined>(activeDriver.status);
-
   useEffect(() => {
     const uid = currentUser?.uid || activePassenger?.id;
     const currentEmail = currentUser?.email || activePassenger?.email || activeDriver?.email;
@@ -754,30 +752,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubs: (() => void)[] = [];
 
     const handleDriverSnapshotData = (driverData: DriverProfile) => {
-      const prevStatus = prevDriverStatusRef.current;
-      prevDriverStatusRef.current = driverData.status;
-
-      // Realtime notification when approved or rejected by admin
-      if (prevStatus !== 'approved' && driverData.status === 'approved') {
-        addNotification(
-          driverData.id,
-          'driver',
-          '🎉 تهانينا! تمت الموافقة على حسابك',
-          'تم قبول ملفك واعتماد وثائقك رسمياً من قبل المسؤول! يمكنك الآن تفعيل وضع (متصل) والبدء في استقبال طلبات الركاب.',
-          'admin_update'
-        );
-      } else if (prevStatus !== 'rejected' && driverData.status === 'rejected') {
-        addNotification(
-          driverData.id,
-          'driver',
-          '❌ تم رفض ملف التسجيل',
-          driverData.rejectionReason
-            ? `سبب الرفض: ${driverData.rejectionReason}`
-            : 'يرجى مراجعة وثائقك وإعادة رفعها للمراجعة.',
-          'admin_update'
-        );
-      }
-
       setActiveDriver((prev) => {
         const merged: DriverProfile = {
           ...prev,
@@ -943,7 +917,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     activeDriver?.id,
     activeDriver?.userId,
     activeDriver?.email,
-    addNotification,
   ]);
 
   // Sync active driver/passenger references from the broad drivers collection
@@ -1039,20 +1012,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         for (const expRide of expired) {
           deleteExpiredRideFromFirestore(expRide.id).catch(() => {});
           removeRideFromSecureVault(expRide.id).catch(() => {});
-          if (
-            expRide.passengerId === activePassenger.id ||
-            (activePassenger.phone &&
-              expRide.passengerPhone &&
-              expRide.passengerPhone.trim().replace(/\s+/g, '') ===
-                activePassenger.phone.trim().replace(/\s+/g, ''))
-          ) {
-            addNotification(
-              activePassenger.id,
-              'passenger',
-              '⏱️ انتهت مهلة الطلب (08 دقائق)',
-              'لم يتم قبول الطلب من أي سائق خلال 8 دقائق، لذلك تم حذفه تلقائياً. يمكنك طلب رحلة جديدة الآن.'
-            );
-          }
         }
 
         return prevRides.filter((r) => !isPendingRideExpired(r));
@@ -1062,7 +1021,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     cleanupExpiredRides();
     const interval = setInterval(cleanupExpiredRides, 5000);
     return () => clearInterval(interval);
-  }, [activePassenger.id, activePassenger.phone, addNotification]);
+  }, []);
 
   // Driver incoming requests with Geofencing / Radius Matching (Yassir / inDrive style: prioritizes requests within 5 km road distance, sorted closest first)
   const pendingDriverRideRequests = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
@@ -1189,13 +1148,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Notice writing to ride_requests:', reqErr);
       }
 
-      addNotification(
-        'all_drivers',
-        'driver',
-        '🏍️ طلب رحلة جديد بالتفاوض!',
-        `من ${pickup.name || 'الموقع المحدد'} إلى ${destination.name || 'الوجهة'} • عرض الراكب: ${offeredPrice} د.ج`
-      );
-
       return { success: true, rideId: rideDocId };
     } catch (err: any) {
       console.warn('Ride creation notice in AppContext:', err);
@@ -1251,13 +1203,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Update status to accepted in ride_requests collection
       acceptRideRequest(rideId, driver).catch(e => console.warn('Notice updating ride_requests accepted status:', e));
-
-      addNotification(
-        driver.id,
-        'driver',
-        '🎉 تم قبول عرضك!',
-        `الراكب ${ride.passengerName} قبل عرضك بقيمة ${offer.offeredPrice} د.ج. توجه لموقع الانطلاق.`
-      );
     }
 
     return result;
@@ -1308,6 +1253,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cancelRide = async (rideId: string, reason: string, cancelledBy: 'passenger' | 'driver') => {
     const target = rides.find(r => r.id === rideId);
     const isStillPending = target && (target.status === 'searching' || target.status === 'offers_available');
+
+    if (target) {
+      if (cancelledBy === 'passenger') {
+        addNotification(
+          target.driverId || 'all_drivers',
+          'driver',
+          '❌ تم إلغاء الرحلة من طرف الراكب',
+          `قام الراكب ${target.passengerName || ''} بإلغاء الرحلة. السبب: ${reason}`
+        );
+      } else {
+        addNotification(
+          target.passengerId,
+          'passenger',
+          '❌ تم إلغاء الرحلة من طرف السائق',
+          `قام السائق ${target.driverName || ''} بإلغاء الرحلة. السبب: ${reason}`
+        );
+      }
+    }
 
     if (isStillPending) {
       setRides(prev => prev.filter(r => r.id !== rideId));
@@ -1395,13 +1358,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         })
       );
 
-      addNotification(
-        targetRide.passengerId,
-        'passenger',
-        '🏍️ عرض جديد من سائق دراجة!',
-        `${driver.name} يقترح ${offeredPrice} د.ج على دراجة ${driver.motorcycle.brand}`
-      );
-
       return { success: true };
     } catch (err: any) {
       console.warn('Error submitting driver offer in Firestore:', err);
@@ -1476,13 +1432,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       acceptRideRequest(rideId, driver).catch(e => console.warn('Notice accepting in ride_requests:', e));
 
-      addNotification(
-        ride.passengerId,
-        'passenger',
-        '🎉 السائق قبل طلبك بالسعر المقترح!',
-        `السائق ${driver.name} قبل رحلتك بسعر ${passengerPrice} د.ج وهو في الطريق إليك الآن.`
-      );
-
       return { success: true };
     }
 
@@ -1527,7 +1476,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (targetRide.status === 'accepted' || targetRide.status === 'driver_arriving') {
       nextStatus = 'driver_arrived';
       extraData.arrivedAt = new Date().toISOString();
-      addNotification(targetRide.passengerId, 'passenger', '✨ السائق وصل!', 'السائق بانتظارك في موقع الانطلاق.');
     } else if (targetRide.status === 'driver_arrived') {
       nextStatus = 'trip_started';
       extraData.startedAt = new Date().toISOString();
@@ -1536,6 +1484,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       extraData.completedAt = new Date().toISOString();
       extraData.paymentStatus = 'paid';
       extraData.finalPrice = targetRide.finalPrice || targetRide.estimatedPrice;
+      const finalAmount = extraData.finalPrice;
+      addNotification(
+        targetRide.passengerId,
+        'passenger',
+        '🏁 الحمد لله على السلامة! وصلتم إلى الوجهة',
+        `تم الوصول إلى الوجهة (${targetRide.destination.name || targetRide.destination.address || 'الوجهة'}) وإتمام الرحلة بنجاح (${finalAmount} د.ج).`
+      );
+      if (targetRide.driverId) {
+        addNotification(
+          targetRide.driverId,
+          'driver',
+          '🏁 تم الوصول إلى الوجهة وإتمام الرحلة',
+          `تم الوصول إلى الوجهة وإتمام الرحلة مع الراكب ${targetRide.passengerName} بنجاح (${finalAmount} د.ج).`
+        );
+      }
       // Delete from ride_requests queue and archive to completed rides in Firestore
       completeRideRequest(rideId).catch(e => console.warn('Notice completing ride_requests doc:', e));
     }
@@ -1597,7 +1560,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     await syncDriverProfile(newDriver);
     setActiveDriver(newDriver);
-    addNotification('admin', 'admin', '📋 تسجيل سائق جديد', `السائق ${newDriver.name} ينتظر مراجعة الوثائق.`);
     return { success: true, driverId: newDriverId };
   };
 
@@ -1669,7 +1631,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       description,
       status: 'pending',
     });
-    addNotification('admin', 'admin', '⚠️ شكوى جديدة واردة', `${reason}: ${description}`);
   };
 
   // --------------------------------------------------------------------------
@@ -1790,7 +1751,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Error suspending passenger in Firestore:', e);
     }
-    addNotification(passengerId, 'passenger', '⚠️ تحديث حالة حسابك', `تم تعليق حسابك. السبب: ${reason}`);
   };
 
   const deletePassenger = async (passengerId: string, reason: string = 'قرار من المسؤول') => {
@@ -1812,7 +1772,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Error deleting passenger:', e);
     }
-    addNotification(passengerId, 'passenger', '❌ حذف الحساب', `تم حذف حسابك نهائياً من منصة MotoDrive. السبب: ${reason}`);
   };
 
   const deleteDriver = async (driverId: string) => {

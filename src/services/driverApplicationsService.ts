@@ -42,45 +42,52 @@ export const submitDriverApplication = async (
   };
 
   try {
-    await setDoc(
-      appRef,
-      {
-        ...applicationPayload,
-        serverCreatedAt: serverTimestamp(),
-        serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const writeOps = async () => {
+      await setDoc(
+        appRef,
+        {
+          ...applicationPayload,
+          serverCreatedAt: serverTimestamp(),
+          serverUpdatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-    const driverRef = doc(db, DRIVERS_COL, applicationData.driverId);
-    await setDoc(
-      driverRef,
-      {
-        id: applicationData.driverId,
-        userId: applicationData.userId,
-        name: applicationData.fullName,
-        phone: applicationData.phone,
-        email: applicationData.email || '',
-        wilaya: applicationData.wilaya,
-        municipality: applicationData.municipality,
-        motorcycle: applicationData.motorcycle,
-        status: 'pending',
-        rejectionReason: '',
-        rejectionCount: preservedRejectionCount,
-        isPermanentlyRejected: false,
-        photoUrl: applicationData.documents.selfieUrl || '',
-        documents: {
-          ...applicationData.documents,
+      const driverRef = doc(db, DRIVERS_COL, applicationData.driverId);
+      await setDoc(
+        driverRef,
+        {
+          id: applicationData.driverId,
+          userId: applicationData.userId,
+          name: applicationData.fullName,
+          phone: applicationData.phone,
+          email: applicationData.email || '',
+          wilaya: applicationData.wilaya,
+          municipality: applicationData.municipality,
+          motorcycle: applicationData.motorcycle,
           status: 'pending',
           rejectionReason: '',
-          submittedAt: now,
+          rejectionCount: preservedRejectionCount,
+          isPermanentlyRejected: false,
+          photoUrl: applicationData.documents.selfieUrl || '',
+          documents: {
+            ...applicationData.documents,
+            status: 'pending',
+            rejectionReason: '',
+            submittedAt: now,
+          },
+          updatedAt: now,
         },
-        updatedAt: now,
-      },
-      { merge: true }
-    );
+        { merge: true }
+      );
+    };
+
+    await Promise.race([
+      writeOps(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+    ]);
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, `${APPLICATIONS_COL}/${appId}`);
+    console.warn('Notice submitting driver application to Firestore:', err);
   }
   return appId;
 };

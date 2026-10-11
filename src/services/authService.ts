@@ -31,11 +31,11 @@ import {
 const setDoc = async (reference: any, data: any, options?: any): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   try {
-    if (options !== undefined) {
-      await fbSetDoc(reference, data, options);
-    } else {
-      await fbSetDoc(reference, data);
-    }
+    const writePromise = options !== undefined ? fbSetDoc(reference, data, options) : fbSetDoc(reference, data);
+    await Promise.race([
+      writePromise,
+      new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+    ]);
   } catch (err: any) {
     const msg = String(err?.message || err).toLowerCase();
     if (msg.includes('resource-exhausted') || msg.includes('quota')) {
@@ -46,6 +46,35 @@ const setDoc = async (reference: any, data: any, options?: any): Promise<void> =
   }
 };
 
+const withFastTimeout = <T>(promise: Promise<T>, fallback: T, ms = 2200): Promise<T> => {
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+};
+
+export const isPlaceholderOrSystemName = (n?: string | null): boolean => {
+  if (!n || !n.trim()) return true;
+  const trimmed = n.trim();
+  const placeholders = [
+    'راكب MotoDrive',
+    'سائق MotoDrive',
+    'مستخدم MotoDrive',
+    'ضيف MotoDrive',
+    'زائر',
+    'مالك التطبيق (Seyf)',
+    'مالك التطبيق (Admin)',
+    'سيف الدين (المالك)',
+    'المسؤول',
+    'سائق جديد',
+  ];
+  return (
+    placeholders.includes(trimmed) ||
+    trimmed.includes('مالك التطبيق') ||
+    trimmed.includes('المسؤول') ||
+    trimmed.toLowerCase().includes('seyf')
+  );
+};
 
 // Normalize Algerian phone number so 0661234567, +213661234567, 06 61 23 45 67 map to the exact same account
 export const normalizeAlgerianPhone = (rawPhone: string): string => {
@@ -73,95 +102,110 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
   try {
     const dir = loadPhoneDirectoryFromStorage();
     const entry = dir[cleanPhone] || dir[rawTrimmed];
-    if (entry?.profile) profile = entry.profile;
-    if (entry?.driver) driver = entry.driver;
+    if (entry?.profile && !isPlaceholderOrSystemName(entry.profile.name)) profile = entry.profile;
+    if (entry?.driver && !isPlaceholderOrSystemName(entry.driver.name)) driver = entry.driver;
   } catch (e) {}
 
   // 1b. Check IndexedDB Vault if not yet in localStorage
   if (!profile) {
     try {
-      const idbEntry = await getUserFromIndexedDBVault(cleanPhone);
-      if (idbEntry.profile) profile = idbEntry.profile;
-      if (idbEntry.driver) driver = idbEntry.driver;
+      const idbEntry = await withFastTimeout(getUserFromIndexedDBVault(cleanPhone), { profile: null, driver: null }, 1000);
+      if (idbEntry.profile && !isPlaceholderOrSystemName(idbEntry.profile.name)) profile = idbEntry.profile;
+      if (idbEntry.driver && !isPlaceholderOrSystemName(idbEntry.driver.name)) driver = idbEntry.driver;
     } catch (e) {}
   }
 
   try {
-    // 2. Check deterministic user document ID (`user-${cleanPhone}`)
-    const detUserRef = doc(db, 'users', `user-${cleanPhone}`);
-    const detSnap = await getDoc(detUserRef);
-    if (detSnap.exists()) {
-      profile = { id: detSnap.id, ...detSnap.data() } as UserProfile;
-    }
+    const cloudLookup = async () => {
+      if (isFirestoreQuotaExceeded()) return;
 
-    // 3. Query users collection by phone if not found by deterministic ID
-    if (!profile) {
-      const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const docData = snap.docs[0].data();
-        profile = { id: snap.docs[0].id, ...docData } as UserProfile;
-      } else if (rawTrimmed !== cleanPhone) {
-        const q2 = query(collection(db, 'users'), where('phone', '==', rawTrimmed));
-        const snap2 = await getDocs(q2);
-        if (!snap2.empty) {
-          profile = { id: snap2.docs[0].id, ...snap2.docs[0].data() } as UserProfile;
+      // 2. Check deterministic user document ID (`user-${cleanPhone}`)
+      const detUserRef = doc(db, 'users', `user-${cleanPhone}`);
+      const detSnap = await getDoc(detUserRef).catch(() => null);
+      if (detSnap && detSnap.exists()) {
+        const dData = detSnap.data() as UserProfile;
+        if (!isPlaceholderOrSystemName(dData.name)) {
+          profile = { id: detSnap.id, ...dData };
         }
       }
-    }
 
-    // 4. Check drivers collection
-    const dq = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
-    const dSnap = await getDocs(dq);
-    if (!dSnap.empty) {
-      driver = { id: dSnap.docs[0].id, ...dSnap.docs[0].data() } as DriverProfile;
-    } else if (profile) {
-      const dqById = query(collection(db, 'drivers'), where('userId', '==', profile.id));
-      const dSnapById = await getDocs(dqById);
-      if (!dSnapById.empty) {
-        driver = { id: dSnapById.docs[0].id, ...dSnapById.docs[0].data() } as DriverProfile;
+      // 3. Query users collection by phone if not found by deterministic ID
+      if (!profile) {
+        const q = query(collection(db, 'users'), where('phone', '==', cleanPhone));
+        const snap = await getDocs(q).catch(() => null);
+        if (snap && !snap.empty) {
+          const validDoc = snap.docs.find((d) => !isPlaceholderOrSystemName(d.data().name));
+          if (validDoc) {
+            profile = { id: validDoc.id, ...validDoc.data() } as UserProfile;
+          }
+        } else if (rawTrimmed !== cleanPhone) {
+          const q2 = query(collection(db, 'users'), where('phone', '==', rawTrimmed));
+          const snap2 = await getDocs(q2).catch(() => null);
+          if (snap2 && !snap2.empty) {
+            const validDoc2 = snap2.docs.find((d) => !isPlaceholderOrSystemName(d.data().name));
+            if (validDoc2) {
+              profile = { id: validDoc2.id, ...validDoc2.data() } as UserProfile;
+            }
+          }
+        }
       }
-    }
 
-    // 5. Fallback: Check driver_applications collection by phone or userId
-    if (!driver) {
-      const appQ = query(collection(db, 'driver_applications'), where('phone', '==', cleanPhone));
-      const appSnap = await getDocs(appQ);
-      if (!appSnap.empty) {
-        const appData = appSnap.docs[0].data();
-        driver = {
-          id: appData.driverId || `driver-${cleanPhone}`,
-          userId: appData.userId || `user-${cleanPhone}`,
-          name: appData.fullName || cleanPhone,
-          phone: appData.phone || cleanPhone,
-          email: appData.email,
-          wilaya: appData.wilaya || 'الجزائر العاصمة',
-          municipality: appData.municipality || 'وسط المدينة',
-          photoUrl: appData.documents?.selfieUrl || '',
-          rating: 5.0,
-          ratingCount: 1,
-          totalTrips: 0,
-          cancellationCount: 0,
-          isOnline: false,
-          isAvailable: false,
-          status: appData.status || 'pending',
-          rejectionReason: appData.rejectionReason,
-          rejectionCount: appData.rejectionCount || 0,
-          isPermanentlyRejected: Boolean(appData.isPermanentlyRejected || (appData.rejectionCount && appData.rejectionCount >= 2)),
-          location: { lat: 36.7538, lng: 3.0588 },
-          motorcycle: appData.motorcycle || {
-            brand: 'SYM',
-            model: 'Symphony',
-            year: 2023,
-            plateNumber: '',
-            color: 'أسود',
-          },
-          documents: appData.documents || { status: appData.status || 'pending' },
-          createdAt: appData.submittedAt || new Date().toISOString(),
-          updatedAt: appData.reviewedAt || new Date().toISOString(),
-        } as DriverProfile;
+      // 4. Check drivers collection
+      const dq = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
+      const dSnap = await getDocs(dq).catch(() => null);
+      if (dSnap && !dSnap.empty) {
+        driver = { id: dSnap.docs[0].id, ...dSnap.docs[0].data() } as DriverProfile;
+      } else if (profile) {
+        const dqById = query(collection(db, 'drivers'), where('userId', '==', profile.id));
+        const dSnapById = await getDocs(dqById).catch(() => null);
+        if (dSnapById && !dSnapById.empty) {
+          driver = { id: dSnapById.docs[0].id, ...dSnapById.docs[0].data() } as DriverProfile;
+        }
       }
-    }
+
+      // 5. Fallback: Check driver_applications collection by phone or userId
+      if (!driver) {
+        const appQ = query(collection(db, 'driver_applications'), where('phone', '==', cleanPhone));
+        const appSnap = await getDocs(appQ).catch(() => null);
+        if (appSnap && !appSnap.empty) {
+          const appData = appSnap.docs[0].data();
+          driver = {
+            id: appData.driverId || `driver-user-${cleanPhone}`,
+            userId: appData.userId || `user-${cleanPhone}`,
+            name: appData.fullName || cleanPhone,
+            phone: appData.phone || cleanPhone,
+            email: appData.email,
+            wilaya: appData.wilaya || 'الجزائر العاصمة',
+            municipality: appData.municipality || 'وسط المدينة',
+            photoUrl: appData.documents?.selfieUrl || '',
+            rating: 5.0,
+            ratingCount: 1,
+            totalTrips: 0,
+            cancellationCount: 0,
+            isOnline: false,
+            isAvailable: false,
+            status: appData.status || 'pending',
+            rejectionReason: appData.rejectionReason,
+            rejectionCount: appData.rejectionCount || 0,
+            isPermanentlyRejected: Boolean(appData.isPermanentlyRejected || (appData.rejectionCount && appData.rejectionCount >= 2)),
+            location: { lat: 36.7538, lng: 3.0588 },
+            motorcycle: appData.motorcycle || {
+              brand: 'SYM',
+              model: 'Symphony',
+              year: 2023,
+              plateNumber: '',
+              color: 'أسود',
+            },
+            documents: appData.documents || { status: appData.status || 'pending' },
+            createdAt: appData.submittedAt || new Date().toISOString(),
+            updatedAt: appData.reviewedAt || new Date().toISOString(),
+          } as DriverProfile;
+        }
+      }
+    };
+
+    // Never let network/Firestore block registration for more than 2.2 seconds
+    await withFastTimeout(cloudLookup(), undefined, 2200);
 
     // Ignore any soft-deleted profile or driver record or admin-deleted keys
     let deletedSet = new Set<string>();
@@ -174,7 +218,8 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       profile &&
       ((profile as any).status === 'deleted' ||
         deletedSet.has(profile.id) ||
-        (profile.phone && deletedSet.has(profile.phone)))
+        (profile.phone && deletedSet.has(profile.phone)) ||
+        isPlaceholderOrSystemName(profile.name))
     ) {
       profile = null;
     }
@@ -183,29 +228,15 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       ((driver as any).status === 'deleted' ||
         deletedSet.has(driver.id) ||
         (driver.userId && deletedSet.has(driver.userId)) ||
-        (driver.phone && deletedSet.has(driver.phone)))
+        (driver.phone && deletedSet.has(driver.phone)) ||
+        isPlaceholderOrSystemName(driver.name))
     ) {
       driver = null;
     }
 
-    // Never expose admin/owner label or legacy owner name on phone-based lookup (including 0542524728 and 0662688714)
-    if (
-      profile &&
-      (profile.role === 'admin' ||
-        profile.name?.includes('مالك التطبيق') ||
-        profile.name?.includes('المسؤول') ||
-        profile.name?.toLowerCase().includes('seyf'))
-    ) {
-      profile = {
-        ...profile,
-        role: driver ? 'driver' : 'passenger',
-        name: '',
-      };
-    }
-
-    // Persist discovered record into redundant vault
-    if (profile && profile.name) {
-      await saveUserToSecureVault(cleanPhone, profile, driver);
+    // Persist discovered record into redundant vault only if it has a real registered name
+    if (profile && !isPlaceholderOrSystemName(profile.name)) {
+      saveUserToSecureVault(cleanPhone, profile, driver).catch(() => {});
     }
 
     return { profile, driver };
@@ -226,20 +257,11 @@ export const getCachedUserByPhone = (phone: string): { profile: UserProfile | nu
     if (entry) {
       let profile = entry.profile || null;
       let driver = entry.driver || null;
-      if (profile && (profile as any).status === 'deleted') profile = null;
-      if (driver && (driver as any).status === 'deleted') driver = null;
-      if (
-        profile &&
-        (profile.role === 'admin' ||
-          profile.name?.includes('مالك التطبيق') ||
-          profile.name?.includes('المسؤول') ||
-          profile.name?.toLowerCase().includes('seyf'))
-      ) {
-        profile = {
-          ...profile,
-          role: driver ? 'driver' : 'passenger',
-          name: '',
-        };
+      if (profile && ((profile as any).status === 'deleted' || isPlaceholderOrSystemName(profile.name))) {
+        profile = null;
+      }
+      if (driver && ((driver as any).status === 'deleted' || isPlaceholderOrSystemName(driver.name))) {
+        driver = null;
       }
       return { profile, driver };
     }

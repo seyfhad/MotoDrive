@@ -215,12 +215,23 @@ export function loadPhoneDirectoryFromStorage(): Record<
       (prof.role === 'admin' ||
         prof.name?.includes('مالك التطبيق') ||
         prof.name?.includes('المسؤول') ||
-        prof.name?.toLowerCase().includes('seyf'))
+        prof.name?.toLowerCase().includes('seyf') ||
+        !prof.name?.trim())
     ) {
+      if (
+        !drv &&
+        (!prof.name?.trim() ||
+          prof.name?.includes('مالك') ||
+          prof.name?.includes('المسؤول') ||
+          prof.name?.toLowerCase().includes('seyf'))
+      ) {
+        delete merged[key];
+        continue;
+      }
       entry.profile = {
         ...prof,
         role: drv ? 'driver' : 'passenger',
-        name: prof.name?.includes('مالك') || prof.name?.includes('المسؤول') || prof.name?.toLowerCase().includes('seyf') ? '' : prof.name,
+        name: drv?.name || prof.name || '',
       };
     }
   }

@@ -9,12 +9,7 @@ export const PushNotificationToast: React.FC = () => {
   const [permissionStatus, setPermissionStatus] = useState<PushPermissionStatus>(() =>
     pushNotificationService.getPermissionStatus()
   );
-  const [showPermissionBanner, setShowPermissionBanner] = useState<boolean>(() => {
-    return (
-      pushNotificationService.getPermissionStatus() === 'default' &&
-      localStorage.getItem('motodrive_dismissed_push_banner') !== 'true'
-    );
-  });
+  const [showPermissionBanner, setShowPermissionBanner] = useState<boolean>(false);
 
   const [activeToast, setActiveToast] = useState<{
     id: string;

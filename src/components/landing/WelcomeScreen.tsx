@@ -175,6 +175,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
       const res = await registerOrRestoreUserByPhone(rawName, cleanPhone, 'passenger');
 
+      // Send welcome notification ONLY when creating and opening the account for the very first time
+      const welcomeSentKey = `motodrive_first_account_welcome_${cleanPhone}`;
+      if (!res.isExisting && !localStorage.getItem(welcomeSentKey)) {
+        try {
+          localStorage.setItem(welcomeSentKey, 'true');
+        } catch (e) {}
+        broadcastNotification(
+          '🎉 مرحباً بك في MotoDrive',
+          `تم إنشاء حسابك وفتحه بنجاح يا ${rawName}! يمكنك الآن طلب رحلتك بكل سهولة.`
+        );
+      }
+
       setCurrentUser(res.user);
       setActivePassenger(res.profile);
       setCurrentRole('passenger');
@@ -270,16 +282,6 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       if (profile) setActivePassenger({ ...profile, role: 'driver' });
       setActiveDriver(driver);
       setCurrentRole('driver');
-
-      if (driver.status === 'rejected') {
-        const isPermanent = Boolean(driver.isPermanentlyRejected || (driver.rejectionCount && driver.rejectionCount >= 2));
-        broadcastNotification(
-          isPermanent ? 'تم رفض طلبك مرتين وحذفه نهائياً 🚫' : 'تم رفض طلبك (المرة الأولى) ❌',
-          isPermanent
-            ? `سبب الرفض النهائي: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}. يتعين عليك إنشاء حساب سائق من جديد.`
-            : `سبب الرفض من المسؤول: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}. يمكنك تعديل بياناتك وإرسال الطلب مجدداً.`
-        );
-      }
     } catch (err) {
       console.error('Driver login error:', err);
       setFormError('حدث خطأ أثناء التحقق من الرقم. يرجى المحاولة مرة أخرى.');
@@ -451,6 +453,18 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         localStorage.setItem('motodrive_active_driver_phone', cleanPhone);
         localStorage.setItem('motodrive_remembered_phone', cleanPhone);
       } catch (e) {}
+
+      // Send notification ONLY when creating and opening the driver account for the very first time
+      const welcomeDriverKey = `motodrive_first_driver_welcome_${cleanPhone}`;
+      if (!res.isExisting && !localStorage.getItem(welcomeDriverKey)) {
+        try {
+          localStorage.setItem(welcomeDriverKey, 'true');
+        } catch (e) {}
+        broadcastNotification(
+          '🎉 تم إنشاء حساب السائق بنجاح',
+          `مرحباً بك يا ${cleanName}! تم إرسال بياناتك وصورك الـ 4 إلى المسؤول للمراجعة والتفعيل.`
+        );
+      }
 
       if (res.driver) {
         setActiveDriver({

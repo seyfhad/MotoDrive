@@ -427,7 +427,10 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
         localStorage.setItem('motodrive_active_driver_phone', phone.trim());
       } catch (e) {}
 
-      await syncDriverProfile(newDriver);
+      await Promise.race([
+        syncDriverProfile(newDriver).catch(() => {}),
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ]);
       setActiveDriver(newDriver);
       setCurrentRole('driver');
 

@@ -175,13 +175,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setActiveDriver(driver);
         setCurrentRole('driver');
 
-        if (driver.status === 'rejected') {
-          broadcastNotification(
-            'تم رفض طلبك',
-            `سبب الرفض: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
-          );
-        }
-
         if (onSuccess) onSuccess();
         onClose();
       } else {
@@ -209,6 +202,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         // Direct Passenger Login by Phone & Name
         const res = await registerOrRestoreUserByPhone(rawName, cleanPhone, 'passenger');
+        const welcomeSentKey = `motodrive_first_account_welcome_${cleanPhone}`;
+        if (!res.isExisting && !localStorage.getItem(welcomeSentKey)) {
+          try {
+            localStorage.setItem(welcomeSentKey, 'true');
+          } catch (e) {}
+          broadcastNotification(
+            '🎉 مرحباً بك في MotoDrive',
+            `تم إنشاء حسابك وفتحه بنجاح يا ${rawName}! يمكنك الآن طلب رحلتك بكل سهولة.`
+          );
+        }
+
         setCurrentUser(res.user);
         setActivePassenger(res.profile);
         setCurrentRole('passenger');
