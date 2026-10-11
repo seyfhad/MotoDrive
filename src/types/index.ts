@@ -57,6 +57,7 @@ export interface UserProfile {
   rating?: number;
   totalTrips?: number;
   status: 'active' | 'suspended';
+  suspensionReason?: string;
   cancellationCount: number;
   createdAt: string;
   emergencyContact?: {
@@ -81,6 +82,7 @@ export interface DriverDocuments {
   vehicleRegistrationUrl?: string;
   insuranceUrl?: string;
   personalPhotoUrl?: string;
+  motorcyclePhotoUrl?: string;
   motorcyclePhotosUrls?: string[];
   // Specific required uploads requested by user
   selfieUrl?: string;
