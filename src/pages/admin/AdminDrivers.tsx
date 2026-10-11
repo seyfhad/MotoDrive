@@ -17,10 +17,11 @@ import {
   FileText,
   X,
   FileCheck,
+  Trash2,
 } from 'lucide-react';
 
 export const AdminDrivers: React.FC = () => {
-  const { drivers, updateDriverStatus } = useApp();
+  const { drivers, updateDriverStatus, deleteDriver } = useApp();
   const [filter, setFilter] = useState<DriverApprovalStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
@@ -57,6 +58,13 @@ export const AdminDrivers: React.FC = () => {
     updateDriverStatus(driverId, 'suspended');
     if (selectedDriver && selectedDriver.id === driverId) {
       setSelectedDriver(prev => (prev ? { ...prev, status: 'suspended' } : null));
+    }
+  };
+
+  const handleDeleteDriver = async (driverId: string) => {
+    await deleteDriver(driverId);
+    if (selectedDriver && selectedDriver.id === driverId) {
+      setSelectedDriver(null);
     }
   };
 
@@ -188,7 +196,7 @@ export const AdminDrivers: React.FC = () => {
               <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={() => setSelectedDriver(driver)}
-                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition-colors"
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                 >
                   عرض الوثائق والتفاصيل
                 </button>
@@ -196,11 +204,19 @@ export const AdminDrivers: React.FC = () => {
                 {driver.status === 'pending' && (
                   <button
                     onClick={() => handleApprove(driver.id)}
-                    className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-colors"
+                    className="px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     قبول وتفعيل
                   </button>
                 )}
+
+                <button
+                  onClick={() => handleDeleteDriver(driver.id)}
+                  className="p-2 bg-red-500/15 hover:bg-red-500/30 border border-red-500/30 text-red-400 rounded-xl text-xs transition-colors cursor-pointer"
+                  title="حذف السائق نهائياً"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             </div>
           ))}

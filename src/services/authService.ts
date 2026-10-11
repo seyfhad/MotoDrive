@@ -146,6 +146,8 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
           isAvailable: false,
           status: appData.status || 'pending',
           rejectionReason: appData.rejectionReason,
+          rejectionCount: appData.rejectionCount || 0,
+          isPermanentlyRejected: Boolean(appData.isPermanentlyRejected || (appData.rejectionCount && appData.rejectionCount >= 2)),
           location: { lat: 36.7538, lng: 3.0588 },
           motorcycle: appData.motorcycle || {
             brand: 'SYM',
@@ -161,8 +163,48 @@ export const findUserAndDriverByPhone = async (phone: string): Promise<{ profile
       }
     }
 
+    // Ignore any soft-deleted profile or driver record or admin-deleted keys
+    let deletedSet = new Set<string>();
+    try {
+      const rawDel = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+      if (rawDel) deletedSet = new Set(JSON.parse(rawDel));
+    } catch (e) {}
+
+    if (
+      profile &&
+      ((profile as any).status === 'deleted' ||
+        deletedSet.has(profile.id) ||
+        (profile.phone && deletedSet.has(profile.phone)))
+    ) {
+      profile = null;
+    }
+    if (
+      driver &&
+      ((driver as any).status === 'deleted' ||
+        deletedSet.has(driver.id) ||
+        (driver.userId && deletedSet.has(driver.userId)) ||
+        (driver.phone && deletedSet.has(driver.phone)))
+    ) {
+      driver = null;
+    }
+
+    // Never expose admin/owner label or legacy owner name on phone-based lookup (including 0542524728 and 0662688714)
+    if (
+      profile &&
+      (profile.role === 'admin' ||
+        profile.name?.includes('مالك التطبيق') ||
+        profile.name?.includes('المسؤول') ||
+        profile.name?.toLowerCase().includes('seyf'))
+    ) {
+      profile = {
+        ...profile,
+        role: driver ? 'driver' : 'passenger',
+        name: '',
+      };
+    }
+
     // Persist discovered record into redundant vault
-    if (profile) {
+    if (profile && profile.name) {
       await saveUserToSecureVault(cleanPhone, profile, driver);
     }
 
@@ -182,10 +224,24 @@ export const getCachedUserByPhone = (phone: string): { profile: UserProfile | nu
     const dir = loadPhoneDirectoryFromStorage();
     const entry = dir[cleanPhone] || dir[rawTrimmed];
     if (entry) {
-      return {
-        profile: entry.profile || null,
-        driver: entry.driver || null,
-      };
+      let profile = entry.profile || null;
+      let driver = entry.driver || null;
+      if (profile && (profile as any).status === 'deleted') profile = null;
+      if (driver && (driver as any).status === 'deleted') driver = null;
+      if (
+        profile &&
+        (profile.role === 'admin' ||
+          profile.name?.includes('مالك التطبيق') ||
+          profile.name?.includes('المسؤول') ||
+          profile.name?.toLowerCase().includes('seyf'))
+      ) {
+        profile = {
+          ...profile,
+          role: driver ? 'driver' : 'passenger',
+          name: '',
+        };
+      }
+      return { profile, driver };
     }
   } catch (e) {}
   return { profile: null, driver: null };
@@ -231,6 +287,16 @@ export const registerOrRestoreUserByPhone = async (
     rawInputName === 'مستخدم MotoDrive';
   const cleanName = rawInputName || (role === 'driver' ? 'سائق MotoDrive' : 'راكب MotoDrive');
 
+  // Clear any deleted key block if user explicitly registers again with this phone
+  try {
+    const rawDeleted = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+    if (rawDeleted) {
+      const arr: string[] = JSON.parse(rawDeleted);
+      const filtered = arr.filter((k) => !k.includes(cleanPhone));
+      localStorage.setItem('motodrive_admin_deleted_driver_keys', JSON.stringify(filtered));
+    }
+  } catch (e) {}
+
   // 1. Look up in redundant local directory
   const directory = loadPhoneDirectoryFromStorage();
 
@@ -252,46 +318,96 @@ export const registerOrRestoreUserByPhone = async (
     foundDriver = directory[cleanPhone].driver || null;
   }
 
+  // Ignore deleted profiles or drivers
+  if (foundProfile && (foundProfile as any).status === 'deleted') {
+    foundProfile = null;
+  }
+  if (foundDriver && (foundDriver as any).status === 'deleted') {
+    foundDriver = null;
+  }
+
   let finalProfile: UserProfile;
   let finalDriver: DriverProfile | null = foundDriver;
-  const isExisting = Boolean(foundProfile);
+  const isExisting = Boolean(foundProfile || foundDriver);
+
+  const isRealName = (n?: string | null) =>
+    Boolean(n && n.trim()) &&
+    ![
+      'راكب MotoDrive',
+      'سائق MotoDrive',
+      'مستخدم MotoDrive',
+      'ضيف MotoDrive',
+      'زائر',
+      'مالك التطبيق (Seyf)',
+      'مالك التطبيق (Admin)',
+      'سيف الدين (المالك)',
+      'المسؤول',
+      'سائق جديد',
+    ].includes(n!.trim()) &&
+    !n!.includes('مالك التطبيق') &&
+    !n!.includes('المسؤول') &&
+    !n!.toLowerCase().includes('seyf');
+
+  // Clean up any legacy owner/admin label if registering/logging in by phone (including 0542524728 and 0662688714)
+  if (
+    foundProfile &&
+    (foundProfile.role === 'admin' ||
+      foundProfile.name?.includes('مالك التطبيق') ||
+      foundProfile.name?.includes('المسؤول') ||
+      foundProfile.name?.toLowerCase().includes('seyf'))
+  ) {
+    foundProfile = {
+      ...foundProfile,
+      role: foundDriver ? 'driver' : 'passenger',
+      name: !isGenericName ? rawInputName : 'راكب MotoDrive',
+    };
+  }
+
+  // STRICT ROLE EXCLUSIVITY CHECK:
+  // 1. If trying to register/login as Passenger, block if this phone is registered as a Driver
+  const isRegisteredAsDriver = Boolean(foundDriver) || (foundProfile && foundProfile.role === 'driver');
+  if (role === 'passenger' && isRegisteredAsDriver) {
+    throw new Error(
+      `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كسائق بهذا الرقم. لا يمكنك التسجيل به كراكب إلا بعد حذف حسابك كسائق.`
+    );
+  }
+
+  // 2. If trying to register/login as Driver, block if this phone is registered as a Passenger (without a driver profile)
+  const isRegisteredAsPassenger = Boolean(foundProfile) && foundProfile.role === 'passenger' && !foundDriver;
+  if (role === 'driver' && isRegisteredAsPassenger) {
+    throw new Error(
+      `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
+    );
+  }
+
+  // STRICT NAME MATCH CHECK (skip if previous driver application was permanently deleted after 2 rejections and user is creating a brand new driver account):
+  const isRecreatingAfterPermanentRejection =
+    role === 'driver' &&
+    Boolean(foundDriver && (foundDriver.isPermanentlyRejected || (foundDriver.rejectionCount || 0) >= 2)) &&
+    Boolean(motorcycleData);
+
+  const registeredName = isRecreatingAfterPermanentRejection
+    ? null
+    : (isRealName(foundDriver?.name) ? foundDriver!.name : null) ||
+      (isRealName(foundProfile?.name) ? foundProfile!.name : null);
+
+  if (registeredName && !isGenericName) {
+    const normalizedExistingName = registeredName.trim().replace(/\s+/g, ' ').toLowerCase();
+    const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
+    if (normalizedExistingName !== normalizedInputName) {
+      throw new Error(
+        `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredName}"). يرجى كتابة الاسم الصحيح المسجل سابقاً ليتم فتح حسابك.`
+      );
+    }
+  }
 
   if (foundProfile) {
-    // Check if existing profile has a real registered name
-    const existingHasRealName =
-      Boolean(foundProfile.name) &&
-      foundProfile.name !== 'راكب MotoDrive' &&
-      foundProfile.name !== 'سائق MotoDrive' &&
-      foundProfile.name !== 'مستخدم MotoDrive' &&
-      foundProfile.name !== 'ضيف MotoDrive';
-
-    // STRICT CHECK: Prevent registering or opening an account with the same phone number under a different name
-    if (existingHasRealName && !isGenericName) {
-      const normalizedExistingName = foundProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
-      const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
-      if (normalizedExistingName !== normalizedInputName) {
-        throw new Error(
-          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${foundProfile.name}". يمنع تسجيل أكثر من حساب بنفس الرقم أو استخدام اسم مختلف. يرجى كتابة الاسم المسجل "${foundProfile.name}" للدخول إلى حسابك.`
-        );
-      }
-    }
-
-    // Also block creating a second driver account if a driver already exists with a different name
-    if (role === 'driver' && foundDriver && foundDriver.name) {
-      const normalizedDriverName = foundDriver.name.trim().replace(/\s+/g, ' ').toLowerCase();
-      const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
-      if (!isGenericName && normalizedDriverName !== normalizedInputName) {
-        throw new Error(
-          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً لحساب السائق "${foundDriver.name}". لا يمكن تسجيل حسابين بنفس الرقم.`
-        );
-      }
-    }
-
+    const existingHasRealName = isRealName(foundProfile.name) && !isRecreatingAfterPermanentRejection;
     finalProfile = {
       ...foundProfile,
       phone: cleanPhone,
       name: existingHasRealName ? foundProfile.name : (!isGenericName ? rawInputName : foundProfile.name),
-      role: role === 'driver' ? 'driver' : (foundProfile.role || role),
+      role: role === 'driver' ? 'driver' : 'passenger',
       homeLocation: foundProfile.homeLocation ?? directory[cleanPhone]?.profile?.homeLocation ?? undefined,
       workLocation: foundProfile.workLocation ?? directory[cleanPhone]?.profile?.workLocation ?? undefined,
     };
@@ -302,7 +418,7 @@ export const registerOrRestoreUserByPhone = async (
       id: uid,
       name: cleanName,
       phone: cleanPhone,
-      role: role,
+      role: role === 'driver' ? 'driver' : 'passenger',
       status: 'active',
       cancellationCount: 0,
       createdAt: new Date().toISOString(),
@@ -311,7 +427,7 @@ export const registerOrRestoreUserByPhone = async (
 
   // Handle Driver specific creation if role is driver and no driver doc exists yet
   if (role === 'driver') {
-    if (!finalDriver) {
+    if (!finalDriver || isRecreatingAfterPermanentRejection) {
       const driverId = 'driver-' + finalProfile.id;
       finalDriver = {
         id: driverId,
@@ -321,6 +437,9 @@ export const registerOrRestoreUserByPhone = async (
         wilaya: motorcycleData?.wilaya || '16 - الجزائر العاصمة',
         municipality: 'وسط المدينة',
         status: 'pending', // Pending owner approval
+        rejectionReason: '',
+        rejectionCount: 0,
+        isPermanentlyRejected: false,
         isOnline: false,
         isAvailable: true,
         location: { lat: 36.7538, lng: 3.0588 },
@@ -345,10 +464,15 @@ export const registerOrRestoreUserByPhone = async (
         createdAt: new Date().toISOString(),
       };
     } else if (motorcycleData) {
-      // If driver already exists but updated motorcycle or document info
+      // If driver already exists (e.g., 1st rejection resubmitting fixed data) preserve rejectionCount = 1 and set status back to pending
       finalDriver = {
         ...finalDriver,
-        name: finalProfile.name,
+        name: !isGenericName ? rawInputName : finalProfile.name,
+        wilaya: motorcycleData.wilaya || finalDriver.wilaya,
+        status: 'pending',
+        rejectionReason: '',
+        rejectionCount: finalDriver.rejectionCount || 1,
+        isPermanentlyRejected: false,
         photoUrl: motorcycleData.documents?.selfieUrl || motorcycleData.documents?.personalPhotoUrl || finalDriver.photoUrl,
         motorcycle: {
           ...finalDriver.motorcycle,
@@ -360,9 +484,12 @@ export const registerOrRestoreUserByPhone = async (
           ...finalDriver.documents,
           ...(motorcycleData.documents || {}),
           status: 'pending',
+          rejectionReason: '',
           submittedAt: new Date().toISOString(),
         },
+        updatedAt: new Date().toISOString(),
       };
+      finalProfile.name = finalDriver.name;
     }
   }
 
@@ -464,7 +591,7 @@ export const subscribeToAuth = (
         const snapData = userSnap.data() as UserProfile;
         if (
           firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' &&
-          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456' || snapData.phone === '0662688714')
+          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456')
         ) {
           snapData.phone = '0542524728';
         }
@@ -1119,7 +1246,7 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     if (user.email && !profile.email) updates.email = user.email;
     if (user.email === 'seyfhad@gmail.com') {
       updates.role = 'admin';
-      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456' || profile.phone === '0662688714') {
+      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456') {
         updates.phone = '0542524728';
       }
     }

@@ -5,6 +5,8 @@ import {
   approveDriverApplication,
   rejectDriverApplication,
 } from '../../services/driverApplicationsService';
+import { deleteUserAccountFromFirestore } from '../../services/firestoreService';
+import { removeAccountFromLocalVault } from '../../services/dataVaultService';
 import {
   X,
   CheckCircle2,
@@ -35,6 +37,7 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
   const [loading, setLoading] = useState<boolean>(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [selectedApp, setSelectedApp] = useState<DriverApplication | null>(null);
+  const [statusBanner, setStatusBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Zoom / Image Preview
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string } | null>(null);
@@ -50,15 +53,29 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
 
     setLoading(true);
     const unsubscribe = subscribePendingDriverApplications((pendingApps) => {
-      setApplications(pendingApps);
+      let delSet = new Set<string>();
+      try {
+        const raw = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+        if (raw) delSet = new Set(JSON.parse(raw));
+      } catch (e) {}
+
+      const filteredApps = pendingApps.filter(
+        (a) =>
+          !delSet.has(a.id) &&
+          (!a.driverId || !delSet.has(a.driverId)) &&
+          (!a.userId || !delSet.has(a.userId)) &&
+          (!a.phone || !delSet.has(a.phone))
+      );
+
+      setApplications(filteredApps);
       setLoading(false);
 
       // Keep selected application up to date or select the first one
-      if (pendingApps.length > 0) {
+      if (filteredApps.length > 0) {
         setSelectedApp((prev) => {
-          if (!prev) return pendingApps[0];
-          const found = pendingApps.find((a) => a.id === prev.id);
-          return found || pendingApps[0];
+          if (!prev) return filteredApps[0];
+          const found = filteredApps.find((a) => a.id === prev.id);
+          return found || filteredApps[0];
         });
       } else {
         setSelectedApp(null);
@@ -73,17 +90,21 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
   if (!isOpen) return null;
 
   const handleApprove = async (app: DriverApplication) => {
-    if (!window.confirm(`هل أنت متأكد من اعتماد السائق "${app.fullName}"؟\nسيتم تفعيل حسابه كـ سائق مؤهل فوراً في Firestore.`)) {
-      return;
-    }
-
     setProcessingId(app.id);
+    setStatusBanner(null);
     try {
-      await approveDriverApplication(app.id, app.driverId, 'admin');
-      alert(`تم اعتماد السائق "${app.fullName}" بنجاح في Firestore ✅`);
+      await approveDriverApplication(app.id, app.driverId, 'admin', app.phone);
+      setApplications((prev) => prev.filter((a) => a.id !== app.id));
+      setStatusBanner({
+        type: 'success',
+        text: `تم اعتماد وتفعيل السائق "${app.fullName}" بنجاح ✅`,
+      });
     } catch (err: any) {
       console.error('Error approving application:', err);
-      alert(`حدث خطأ أثناء الاعتماد: ${err?.message || err}`);
+      setStatusBanner({
+        type: 'error',
+        text: `حدث خطأ أثناء الاعتماد: ${err?.message || err}`,
+      });
     } finally {
       setProcessingId(null);
     }
@@ -93,18 +114,63 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
     if (!rejectingApp) return;
 
     setProcessingId(rejectingApp.id);
+    setStatusBanner(null);
+    const nextRejectionCount = (rejectingApp.rejectionCount || 0) + 1;
     try {
       await rejectDriverApplication(
         rejectingApp.id,
         rejectingApp.driverId,
         rejectReason.trim() || 'الوثائق غير مطابقة للشروط',
-        'admin'
+        'admin',
+        rejectingApp.phone,
+        nextRejectionCount
       );
-      alert(`تم رفض الطلب وتحديث حالة السائق في Firestore بنجاح ❌`);
+      setApplications((prev) => prev.filter((a) => a.id !== rejectingApp.id));
+      setStatusBanner({
+        type: 'success',
+        text:
+          nextRejectionCount >= 2
+            ? `تم رفض الطلب للمرة الثانية وحذف طلب السائق "${rejectingApp.fullName}" نهائياً 🚫`
+            : `تم رفض الطلب للمرة الأولى وإرسال السبب للسائق "${rejectingApp.fullName}" لتعديل بياناته ❌`,
+      });
       setRejectingApp(null);
     } catch (err: any) {
       console.error('Error rejecting application:', err);
-      alert(`حدث خطأ أثناء الرفض: ${err?.message || err}`);
+      setStatusBanner({
+        type: 'error',
+        text: `حدث خطأ أثناء الرفض: ${err?.message || err}`,
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeleteApplication = async (app: DriverApplication) => {
+    setProcessingId(app.id);
+    setStatusBanner(null);
+    try {
+      const raw = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+      const set = new Set<string>(raw ? JSON.parse(raw) : []);
+      set.add(app.id);
+      if (app.driverId) set.add(app.driverId);
+      if (app.userId) set.add(app.userId);
+      if (app.phone) set.add(app.phone);
+      localStorage.setItem('motodrive_admin_deleted_driver_keys', JSON.stringify(Array.from(set)));
+    } catch (e) {}
+
+    setApplications((prev) => prev.filter((a) => a.id !== app.id));
+    try {
+      await deleteUserAccountFromFirestore('driver', app.userId, app.driverId, app.phone, app.id);
+      await removeAccountFromLocalVault(app.phone, app.userId, app.driverId);
+      setStatusBanner({
+        type: 'success',
+        text: `🗑️ تم حذف طلب وحساب السائق "${app.fullName}" نهائياً.`,
+      });
+    } catch (err: any) {
+      setStatusBanner({
+        type: 'error',
+        text: `تعذر حذف الطلب: ${err?.message || err}`,
+      });
     } finally {
       setProcessingId(null);
     }
@@ -155,6 +221,21 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {statusBanner && (
+            <div
+              className={`p-3 rounded-2xl border text-xs font-bold flex items-center justify-between ${
+                statusBanner.type === 'success'
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-red-500/15 border-red-500/40 text-red-300'
+              }`}
+            >
+              <span>{statusBanner.text}</span>
+              <button onClick={() => setStatusBanner(null)} className="text-slate-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-20 text-center space-y-3">
               <Loader2 className="w-8 h-8 animate-spin text-amber-400 mx-auto" />
@@ -176,7 +257,6 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
               <div className="lg:col-span-4 space-y-2.5 max-h-[70vh] overflow-y-auto pl-1">
                 {applications.map((app) => {
                   const isSelected = selectedApp?.id === app.id;
-                  const isThisProcessing = processingId === app.id;
 
                   return (
                     <div
@@ -248,6 +328,15 @@ export const AdminApplicationsReviewModal: React.FC<AdminApplicationsReviewModal
                       >
                         <XCircle className="w-4 h-4 text-red-400" />
                         <span>رفض الطلب</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteApplication(selectedApp)}
+                        disabled={processingId === selectedApp.id}
+                        className="p-2 rounded-xl bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+                        title="حذف الطلب نهائياً"
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

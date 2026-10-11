@@ -57,9 +57,14 @@ export const DriverHome: React.FC = () => {
     supabaseService.getDriverEarnings(activeDriver.id).catch(() => {});
   }, [activeDriver.id]);
 
-  // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق
+  // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق مع نافذة تعديل وإعادة إرسال البيانات
   if (activeDriver.status !== 'approved') {
-    return <DriverPendingApprovalView onReapply={() => setShowRegisterModal(true)} />;
+    return (
+      <>
+        <DriverPendingApprovalView onReapply={() => setShowRegisterModal(true)} />
+        <RegisterDriverModal isOpen={showRegisterModal} onClose={() => setShowRegisterModal(false)} />
+      </>
+    );
   }
 
   // جلب موقع GPS الحقيقي للسائق وتحديثه فوراً في السحابة

@@ -109,6 +109,8 @@ export interface DriverProfile {
   birthDate?: string;
   status: DriverStatus;
   rejectionReason?: string;
+  rejectionCount?: number;
+  isPermanentlyRejected?: boolean;
   isOnline: boolean;
   isAvailable: boolean;
   motorcycle: MotorcycleInfo;
@@ -296,6 +298,8 @@ export interface DriverApplication {
   storagePaths?: string[];
   status: 'pending' | 'approved' | 'rejected';
   rejectionReason?: string;
+  rejectionCount?: number;
+  isPermanentlyRejected?: boolean;
   submittedAt: string;
   reviewedAt?: string;
   reviewedBy?: string;

@@ -160,27 +160,62 @@ const REQUIRED_DOCUMENTS: RequiredDocumentConfig[] = [
 ];
 
 export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen, onClose }) => {
-  const { setCurrentRole, setActiveDriver, broadcastNotification, currentUser } = useApp();
+  const { setCurrentRole, activeDriver, setActiveDriver, broadcastNotification, currentUser } = useApp();
 
-  // Basic Information
-  const [name, setName] = useState(currentUser?.displayName || '');
-  const [phone, setPhone] = useState('');
-  const [brand, setBrand] = useState('SYM');
-  const [model, setModel] = useState('Symphony ST');
-  const [year, setYear] = useState('2023');
-  const [plateNumber, setPlateNumber] = useState('');
-  const [wilaya, setWilaya] = useState('الجزائر العاصمة');
-  const [municipality, setMunicipality] = useState('الجزائر الوسطى');
+  // Basic Information (pre-populated from activeDriver if editing a rejected application)
+  const [name, setName] = useState(activeDriver?.name || currentUser?.displayName || '');
+  const [phone, setPhone] = useState(activeDriver?.phone || '');
+  const [brand, setBrand] = useState(activeDriver?.motorcycle?.brand || 'SYM');
+  const [model, setModel] = useState(activeDriver?.motorcycle?.model || 'Symphony ST');
+  const [year, setYear] = useState(String(activeDriver?.motorcycle?.year || 2023));
+  const [plateNumber, setPlateNumber] = useState(activeDriver?.motorcycle?.plateNumber || '');
+  const [wilaya, setWilaya] = useState(activeDriver?.wilaya || 'الجزائر العاصمة');
+  const [municipality, setMunicipality] = useState(activeDriver?.municipality || 'الجزائر الوسطى');
   const [hasHelmet, setHasHelmet] = useState(true);
 
   // Exactly 4 verification documents: mapping keys to raw Files and preview URLs
   const [filesMap, setFilesMap] = useState<Partial<Record<RequiredDocumentConfig['key'], File>>>({});
-  const [previewUrls, setPreviewUrls] = useState<Partial<Record<RequiredDocumentConfig['key'], string>>>({});
+  const [previewUrls, setPreviewUrls] = useState<Partial<Record<RequiredDocumentConfig['key'], string>>>(() => ({
+    selfie: activeDriver?.documents?.selfieUrl || activeDriver?.documents?.personalPhotoUrl || undefined,
+    motorcyclePhoto:
+      activeDriver?.documents?.motorcyclePhotoUrl || activeDriver?.documents?.motorcycleFrontUrl || undefined,
+    license: activeDriver?.documents?.licenseUrl || activeDriver?.documents?.licenseFrontUrl || undefined,
+    vehicleRegistration:
+      activeDriver?.documents?.vehicleRegistrationUrl || activeDriver?.documents?.vehicleDocFrontUrl || undefined,
+  }));
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen && activeDriver && activeDriver.id !== 'driver-default') {
+      if (activeDriver.name && activeDriver.name !== 'سائق جديد') setName(activeDriver.name);
+      if (activeDriver.phone) setPhone(activeDriver.phone);
+      if (activeDriver.motorcycle?.brand) setBrand(activeDriver.motorcycle.brand);
+      if (activeDriver.motorcycle?.model) setModel(activeDriver.motorcycle.model);
+      if (activeDriver.motorcycle?.year) setYear(String(activeDriver.motorcycle.year));
+      if (activeDriver.motorcycle?.plateNumber) setPlateNumber(activeDriver.motorcycle.plateNumber);
+      if (activeDriver.wilaya) setWilaya(activeDriver.wilaya);
+      if (activeDriver.municipality) setMunicipality(activeDriver.municipality);
+      setPreviewUrls((prev) => ({
+        selfie: prev.selfie || activeDriver.documents?.selfieUrl || activeDriver.documents?.personalPhotoUrl || undefined,
+        motorcyclePhoto:
+          prev.motorcyclePhoto ||
+          activeDriver.documents?.motorcyclePhotoUrl ||
+          activeDriver.documents?.motorcycleFrontUrl ||
+          undefined,
+        license: prev.license || activeDriver.documents?.licenseUrl || activeDriver.documents?.licenseFrontUrl || undefined,
+        vehicleRegistration:
+          prev.vehicleRegistration ||
+          activeDriver.documents?.vehicleRegistrationUrl ||
+          activeDriver.documents?.vehicleDocFrontUrl ||
+          undefined,
+      }));
+      setIsSubmittedSuccess(false);
+    }
+  }, [isOpen, activeDriver]);
 
   if (!isOpen) return null;
 
@@ -217,8 +252,10 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       return;
     }
 
-    // Verify all 4 documents are provided
-    const missingDocs = REQUIRED_DOCUMENTS.filter((doc) => !filesMap[doc.key]);
+    // Verify all 4 documents are provided (either newly selected file OR existing valid preview URL)
+    const missingDocs = REQUIRED_DOCUMENTS.filter(
+      (doc) => !filesMap[doc.key] && !(previewUrls[doc.key] && previewUrls[doc.key]!.length > 20)
+    );
     if (missingDocs.length > 0) {
       setErrorMsg(`يرجى إرفاق الوثائق الـ 4 المطلوبة كاملة. ينقصك: ${missingDocs.map((d) => d.label).join('، ')}`);
       return;
@@ -227,27 +264,37 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
     setIsSubmitting(true);
     setErrorMsg(null);
 
-    // Strictly block registering a second account with the same phone number or with a different name
+    let existingRejectionCount = activeDriver?.rejectionCount || 0;
+
+    // Strictly block registering a driver account if phone is registered as passenger, or with a different name
     try {
       const existing = await findUserAndDriverByPhone(phone.trim());
-      if (existing.driver && existing.driver.status !== 'rejected') {
+      if (!existing.driver && existing.profile && existing.profile.role === 'passenger') {
         setIsSubmitting(false);
         setErrorMsg(
-          `⚠️ رقم الهاتف (${phone.trim()}) مسجل بالفعل بحساب السائق "${existing.driver.name}". يمنع تسجيل حسابين برقم واحد.`
+          `⚠️ رقم الهاتف (${phone.trim()}) مسجل كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
         );
         return;
       }
-      if (
-        existing.profile &&
-        existing.profile.name &&
-        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existing.profile.name)
-      ) {
-        const normExisting = existing.profile.name.trim().replace(/\s+/g, ' ').toLowerCase();
-        const normTyped = name.trim().replace(/\s+/g, ' ').toLowerCase();
-        if (normExisting !== normTyped) {
+      if (existing.driver) {
+        existingRejectionCount = Math.max(existingRejectionCount, existing.driver.rejectionCount || 0);
+        if (existing.driver.isPermanentlyRejected || existingRejectionCount >= 2) {
+          // Permanently rejected after 2 rejections: reset count to 0 when creating brand new application
+          existingRejectionCount = 0;
+        } else if (existing.driver.status !== 'rejected') {
+          const regName = existing.driver.name || existing.profile?.name || '';
+          const normExisting = regName.trim().replace(/\s+/g, ' ').toLowerCase();
+          const normTyped = name.trim().replace(/\s+/g, ' ').toLowerCase();
+          if (regName && normExisting !== normTyped) {
+            setIsSubmitting(false);
+            setErrorMsg(
+              `⚠️ رقم الهاتف (${phone.trim()}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً.`
+            );
+            return;
+          }
           setIsSubmitting(false);
           setErrorMsg(
-            `⚠️ رقم الهاتف (${phone.trim()}) مسجل مسبقاً باسم "${existing.profile.name}". لا يمكن التسجيل بنفس الرقم واسم مختلف.`
+            `⚠️ رقم الهاتف (${phone.trim()}) مسجل بالفعل بحساب السائق "${existing.driver.name}". يمنع تسجيل حسابين برقم واحد.`
           );
           return;
         }
@@ -256,8 +303,15 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
 
     setUploadStatusText('بدء ضغط ومعالجة الوثائق الـ 4 بواسطة Canvas...');
 
-    const cleanUid = currentUser?.uid || phone.trim().replace(/\D/g, '') || `user_${Date.now()}`;
-    const driverId = `driver-${cleanUid}`;
+    const cleanUid =
+      (activeDriver?.userId && activeDriver.userId !== 'guest' ? activeDriver.userId : null) ||
+      currentUser?.uid ||
+      phone.trim().replace(/\D/g, '') ||
+      `user_${Date.now()}`;
+    const driverId =
+      activeDriver?.id && activeDriver.id !== 'driver-default' && activeDriver.id !== 'driver-pending-1'
+        ? activeDriver.id
+        : `driver-${cleanUid}`;
 
     try {
       const uploadedDocUrls: Record<string, string> = {};
@@ -274,10 +328,12 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           setUploadStatusText(`جاري ضغط (${count} من 4): ${label} (~40KB)...`);
           const base64String = await compressImageToBase64(file, 40, 640);
           uploadedDocUrls[key] = base64String;
+        } else if (previewUrls[key]) {
+          uploadedDocUrls[key] = previewUrls[key]!;
         }
       }
 
-      setUploadStatusText('حفظ بيانات السائق وصور الوثائق في Firestore (driver_applications)...');
+      setUploadStatusText('حفظ بيانات السائق المعدلة وصور الوثائق في Firestore (driver_applications)...');
 
       const selfieUrl = uploadedDocUrls.selfie || '';
       const motorcyclePhotoUrl = uploadedDocUrls.motorcyclePhoto || '';
@@ -296,13 +352,14 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       await submitDriverApplication({
         id: `app_${driverId}`,
         driverId,
-        userId: currentUser?.uid || cleanUid,
+        userId: cleanUid,
         fullName: name.trim(),
         phone: phone.trim(),
         email: currentUser?.email || undefined,
         wilaya,
         municipality: municipality || 'وسط المدينة',
         motorcycle: motorcycleData,
+        rejectionCount: existingRejectionCount,
         documents: {
           selfieUrl,
           motorcyclePhotoUrl,
@@ -321,22 +378,24 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
       // 3. Keep local app state updated and switch to driver role
       const newDriver: DriverProfile = {
         id: driverId,
-        userId: currentUser?.uid || cleanUid,
+        userId: cleanUid,
         name: name.trim(),
         phone: phone.trim(),
         email: currentUser?.email || undefined,
         wilaya,
         municipality: municipality || 'وسط المدينة',
         photoUrl: selfieUrl,
-        rating: 5.0,
-        ratingCount: 1,
-        totalTrips: 0,
-        cancellationCount: 0,
+        rating: activeDriver?.rating || 5.0,
+        ratingCount: activeDriver?.ratingCount || 1,
+        totalTrips: activeDriver?.totalTrips || 0,
+        cancellationCount: activeDriver?.cancellationCount || 0,
         isOnline: false,
         isAvailable: false,
         status: 'pending',
         rejectionReason: undefined,
-        location: {
+        rejectionCount: existingRejectionCount,
+        isPermanentlyRejected: false,
+        location: activeDriver?.location || {
           lat: 36.7538 + (Math.random() - 0.5) * 0.04,
           lng: 3.0588 + (Math.random() - 0.5) * 0.04,
           name: `${wilaya}، الجزائر`,
@@ -347,6 +406,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           submittedAt: new Date().toISOString(),
           selfieUrl,
           personalPhotoUrl: selfieUrl,
+          motorcyclePhotoUrl,
           motorcycleFrontUrl: motorcyclePhotoUrl,
           motorcycleBackUrl: motorcyclePhotoUrl,
           licenseFrontUrl: licenseUrl,
@@ -358,7 +418,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           vehicleRegistrationUrl,
           motorcyclePhotosUrls: [motorcyclePhotoUrl],
         },
-        createdAt: new Date().toISOString(),
+        createdAt: activeDriver?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 

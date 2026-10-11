@@ -264,70 +264,238 @@ export const syncDriverProfile = async (driver: DriverProfile): Promise<void> =>
 export const updateDriverStatusInFirestore = async (
   driverId: string,
   status: DriverApprovalStatus,
-  rejectionReason?: string
+  rejectionReason?: string,
+  driverPhone?: string,
+  rejectionCount?: number
 ): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   try {
     const updateData: any = {
       status,
       updatedAt: serverTimestamp(),
+      'documents.status': status,
+      'documents.selfieUrl': null,
+      'documents.personalPhotoUrl': null,
+      'documents.motorcyclePhotoUrl': null,
+      'documents.motorcycleFrontUrl': null,
+      'documents.motorcycleBackUrl': null,
+      'documents.licenseUrl': null,
+      'documents.licenseFrontUrl': null,
+      'documents.licenseBackUrl': null,
+      'documents.vehicleRegistrationUrl': null,
+      'documents.vehicleDocFrontUrl': null,
+      'documents.vehicleDocBackUrl': null,
+      'documents.motorcyclePhotosUrls': [],
     };
     if (rejectionReason !== undefined) {
       updateData.rejectionReason = rejectionReason;
+    } else if (status === 'approved') {
+      updateData.rejectionReason = null;
+      updateData.rejectionCount = 0;
+      updateData.isPermanentlyRejected = false;
+    }
+    if (typeof rejectionCount === 'number') {
+      updateData.rejectionCount = rejectionCount;
+      updateData.isPermanentlyRejected = rejectionCount >= 2;
     }
 
     const cleanUserId = driverId.replace(/^driver-/, '');
+    const cleanPhone = driverPhone
+      ? driverPhone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0')
+      : cleanUserId.replace(/^user-/, '');
+
+    let updatedAny = false;
 
     // 1. Direct doc by driverId
     const docRef1 = doc(db, 'drivers', driverId);
     const snap1 = await getDoc(docRef1);
     if (snap1.exists()) {
       await setDoc(docRef1, updateData, { merge: true });
-      return;
+      updatedAny = true;
     }
 
     // 2. Doc with 'driver-' prefix
     const prefixedId = driverId.startsWith('driver-') ? driverId : `driver-${driverId}`;
-    const docRef2 = doc(db, 'drivers', prefixedId);
-    const snap2 = await getDoc(docRef2);
-    if (snap2.exists()) {
-      await setDoc(docRef2, updateData, { merge: true });
-      return;
+    if (prefixedId !== driverId) {
+      const docRef2 = doc(db, 'drivers', prefixedId);
+      const snap2 = await getDoc(docRef2);
+      if (snap2.exists()) {
+        await setDoc(docRef2, updateData, { merge: true });
+        updatedAny = true;
+      }
     }
 
     // 3. Query by 'userId'
     const qUserId = query(collection(db, 'drivers'), where('userId', '==', cleanUserId));
     const snapUserId = await getDocs(qUserId);
-    if (!snapUserId.empty) {
-      await setDoc(snapUserId.docs[0].ref, updateData, { merge: true });
-      return;
+    for (const d of snapUserId.docs) {
+      await setDoc(d.ref, updateData, { merge: true });
+      updatedAny = true;
     }
 
-    // 4. Query by 'user_id'
-    const qUserIdSnake = query(collection(db, 'drivers'), where('user_id', '==', cleanUserId));
-    const snapUserIdSnake = await getDocs(qUserIdSnake);
-    if (!snapUserIdSnake.empty) {
-      await setDoc(snapUserIdSnake.docs[0].ref, updateData, { merge: true });
-      return;
+    // 4. Query by 'phone'
+    if (cleanPhone && cleanPhone.length >= 8) {
+      const qPhone = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
+      const snapPhone = await getDocs(qPhone);
+      for (const d of snapPhone.docs) {
+        await setDoc(d.ref, updateData, { merge: true });
+        updatedAny = true;
+      }
     }
 
     // 5. Query by 'id'
     const qId = query(collection(db, 'drivers'), where('id', '==', driverId));
     const snapId = await getDocs(qId);
-    if (!snapId.empty) {
-      await setDoc(snapId.docs[0].ref, updateData, { merge: true });
-      return;
+    for (const d of snapId.docs) {
+      await setDoc(d.ref, updateData, { merge: true });
+      updatedAny = true;
     }
 
-    // 6. Fallback merge docRef1
-    await setDoc(docRef1, {
-      id: driverId,
-      userId: cleanUserId,
-      user_id: cleanUserId,
-      ...updateData,
-    }, { merge: true });
+    // 6. Fallback merge docRef1 if none existed yet
+    if (!updatedAny) {
+      await setDoc(docRef1, {
+        id: driverId,
+        userId: cleanUserId,
+        ...updateData,
+      }, { merge: true });
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
+  }
+};
+
+export const deleteUserAccountFromFirestore = async (
+  role: 'passenger' | 'driver',
+  userId?: string,
+  driverId?: string,
+  phone?: string,
+  applicationId?: string
+): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  const rawPhone = phone ? phone.trim().replace(/\s+/g, '') : '';
+  const cleanPhone = phone
+    ? phone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0')
+    : '';
+  const cleanUserId = (userId || driverId || '').replace(/^driver-/, '');
+
+  try {
+    // 1. Delete matching user docs
+    if (userId && userId !== 'guest' && userId !== 'passenger-guest') {
+      await deleteDoc(doc(db, 'users', userId)).catch(() => {});
+    }
+    if (cleanUserId && cleanUserId !== 'guest' && cleanUserId !== 'passenger-guest') {
+      await deleteDoc(doc(db, 'users', cleanUserId)).catch(() => {});
+    }
+    if (cleanPhone) {
+      await deleteDoc(doc(db, 'users', `user-${cleanPhone}`)).catch(() => {});
+      const uq = query(collection(db, 'users'), where('phone', '==', cleanPhone));
+      const uSnap = await getDocs(uq).catch(() => null);
+      if (uSnap) {
+        for (const d of uSnap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+      if (rawPhone && rawPhone !== cleanPhone) {
+        const uq2 = query(collection(db, 'users'), where('phone', '==', rawPhone));
+        const uSnap2 = await getDocs(uq2).catch(() => null);
+        if (uSnap2) {
+          for (const d of uSnap2.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        }
+      }
+    }
+
+    // 2. Always delete any matching driver or driver_application records for this account
+    if (applicationId) {
+      await deleteDoc(doc(db, 'driver_applications', applicationId)).catch(() => {});
+    }
+    if (driverId && driverId !== 'driver-default') {
+      await deleteDoc(doc(db, 'drivers', driverId)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_${driverId}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', driverId)).catch(() => {});
+
+      const dqById = query(collection(db, 'drivers'), where('id', '==', driverId));
+      const dSnapById = await getDocs(dqById).catch(() => null);
+      if (dSnapById) {
+        for (const d of dSnapById.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+
+      const aqByDrv = query(collection(db, 'driver_applications'), where('driverId', '==', driverId));
+      const aSnapByDrv = await getDocs(aqByDrv).catch(() => null);
+      if (aSnapByDrv) {
+        for (const d of aSnapByDrv.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+    }
+
+    if (cleanUserId && cleanUserId !== 'guest' && cleanUserId !== 'passenger-guest') {
+      await deleteDoc(doc(db, 'drivers', `driver-${cleanUserId}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_driver-${cleanUserId}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_${cleanUserId}`)).catch(() => {});
+
+      const dqByUser = query(collection(db, 'drivers'), where('userId', '==', cleanUserId));
+      const dSnapByUser = await getDocs(dqByUser).catch(() => null);
+      if (dSnapByUser) {
+        for (const d of dSnapByUser.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+
+      const aqByUser = query(collection(db, 'driver_applications'), where('userId', '==', cleanUserId));
+      const aSnapByUser = await getDocs(aqByUser).catch(() => null);
+      if (aSnapByUser) {
+        for (const d of aSnapByUser.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+    }
+
+    if (cleanPhone) {
+      await deleteDoc(doc(db, 'drivers', `driver-user-${cleanPhone}`)).catch(() => {});
+      await deleteDoc(doc(db, 'drivers', `driver-${cleanPhone}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_driver-user-${cleanPhone}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_driver-${cleanPhone}`)).catch(() => {});
+      await deleteDoc(doc(db, 'driver_applications', `app_${cleanPhone}`)).catch(() => {});
+
+      const dq = query(collection(db, 'drivers'), where('phone', '==', cleanPhone));
+      const dSnap = await getDocs(dq).catch(() => null);
+      if (dSnap) {
+        for (const d of dSnap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+
+      const aq = query(collection(db, 'driver_applications'), where('phone', '==', cleanPhone));
+      const aSnap = await getDocs(aq).catch(() => null);
+      if (aSnap) {
+        for (const d of aSnap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+        }
+      }
+
+      if (rawPhone && rawPhone !== cleanPhone) {
+        const dqRaw = query(collection(db, 'drivers'), where('phone', '==', rawPhone));
+        const dSnapRaw = await getDocs(dqRaw).catch(() => null);
+        if (dSnapRaw) {
+          for (const d of dSnapRaw.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        }
+        const aqRaw = query(collection(db, 'driver_applications'), where('phone', '==', rawPhone));
+        const aSnapRaw = await getDocs(aqRaw).catch(() => null);
+        if (aSnapRaw) {
+          for (const d of aSnapRaw.docs) {
+            await deleteDoc(d.ref).catch(() => {});
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Error deleting account from Firestore:', err);
   }
 };
 
@@ -876,13 +1044,19 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
     handleFirestoreError(e, OperationType.DELETE, 'rides');
   }
 
-  // 2. Delete all drivers
+  // 2. Delete all drivers and driver_applications
   try {
     if (!isFirestoreQuotaExceeded()) {
       const driversSnap = await getDocs(collection(db, 'drivers'));
       for (const driverDoc of driversSnap.docs) {
         if (isFirestoreQuotaExceeded()) break;
         await deleteDoc(driverDoc.ref);
+        deletedCount++;
+      }
+      const appsSnap = await getDocs(collection(db, 'driver_applications'));
+      for (const appDoc of appsSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(appDoc.ref);
         deletedCount++;
       }
     }

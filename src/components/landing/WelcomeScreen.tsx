@@ -90,7 +90,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     }
   };
 
-  // Auto-restore remembered phone number on mount
+  const isGenericOrOwnerName = (n?: string | null) =>
+    !n ||
+    !n.trim() ||
+    ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive', 'زائر', 'مالك التطبيق (Seyf)', 'مالك التطبيق (Admin)', 'سائق جديد'].includes(
+      n.trim()
+    ) ||
+    n.includes('مالك التطبيق');
+
+  // Auto-restore remembered phone number on mount for passenger without auto-filling driver login
   useEffect(() => {
     try {
       const remembered =
@@ -98,63 +106,34 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         localStorage.getItem('motodrive_remembered_phone') ||
         localStorage.getItem('motodrive_last_phone');
       if (remembered && remembered !== '0550000000') {
-        setPassengerPhone(remembered);
-        setDriverPhone(remembered);
-
         const cached = getCachedUserByPhone(remembered);
-        if (cached?.profile) {
+        if (cached?.profile && !cached.driver && cached.profile.role !== 'driver' && !isGenericOrOwnerName(cached.profile.name)) {
+          setPassengerPhone(remembered);
           setPassengerName(cached.profile.name);
-          setSavedUserHint(`مرحباً بعودتك: ${cached.profile.name}`);
-        }
-        if (cached?.driver) {
-          setDriverName(cached.driver.name);
-          if (cached.driver.motorcycle) {
-            setMotorcycleModel(`${cached.driver.motorcycle.brand} ${cached.driver.motorcycle.model}`);
-            setPlateNumber(cached.driver.motorcycle.plateNumber);
-          }
         }
       }
     } catch (e) {}
   }, []);
 
-  // Check phone as user types to restore existing name
+  // Do NOT auto-overwrite typed name or show recognition banners on phone input so name mismatch validation works cleanly
   const handlePassengerPhoneChange = (val: string) => {
     setPassengerPhone(val);
     setFormError(null);
-    const cached = getCachedUserByPhone(val);
-    if (cached?.profile) {
-      setPassengerName(cached.profile.name);
-      setSavedUserHint(`تم التعرف على حسابك المسجل: ${cached.profile.name}`);
-    } else {
-      setSavedUserHint(null);
-    }
+    setSavedUserHint(null);
   };
 
   const handleDriverPhoneChange = (val: string) => {
     setDriverPhone(val);
     setFormError(null);
-    const cached = getCachedUserByPhone(val);
-    if (cached?.driver) {
-      setDriverName(cached.driver.name);
-      if (cached.driver.motorcycle) {
-        setMotorcycleModel(`${cached.driver.motorcycle.brand} ${cached.driver.motorcycle.model}`);
-        setPlateNumber(cached.driver.motorcycle.plateNumber);
-      }
-      setSavedUserHint(`رقم مسجل كسائق: ${cached.driver.name}`);
-    } else if (cached?.profile) {
-      setDriverName(cached.profile.name);
-      setSavedUserHint(`تم العثور على حسابك: ${cached.profile.name}`);
-    } else {
-      setSavedUserHint(null);
-    }
+    setSavedUserHint(null);
   };
 
-  // Handle Passenger Submission with Strict Single-Account-Per-Phone Check
+  // Handle Passenger Submission with Strict Role Exclusivity & Name Verification
   const handlePassengerSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    const cleanName = passengerName.trim() || 'راكب MotoDrive';
+    const rawName = passengerName.trim();
     const cleanPhone = passengerPhone.trim().replace(/\s+/g, '');
 
     if (!cleanPhone || cleanPhone.length < 8) {
@@ -162,29 +141,39 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       return;
     }
 
+    if (!rawName || rawName.length < 2) {
+      setFormError('يرجى إدخال الاسم الكامل للتسجيل أو الدخول.');
+      return;
+    }
+
     try {
       setIsPassengerSubmitting(true);
 
-      // Check if phone is already registered with a different name
-      const { profile: existingProfile } = await findUserAndDriverByPhone(cleanPhone);
-      if (
-        existingProfile &&
-        existingProfile.name &&
-        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existingProfile.name)
-      ) {
+      const { profile: existingProfile, driver: existingDriver } = await findUserAndDriverByPhone(cleanPhone);
+
+      // 1. Strict Role Exclusivity: Cannot register/login as Passenger if phone is registered as a Driver
+      if (existingDriver || (existingProfile && existingProfile.role === 'driver')) {
+        setFormError(
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل كسائق بهذا الرقم. لا يمكنك التسجيل به كراكب إلا بعد حذف حسابك كسائق.`
+        );
+        setIsPassengerSubmitting(false);
+        return;
+      }
+
+      // 2. Strict Name Verification: If phone is already registered with a previous name, block if typed name differs
+      if (existingProfile && !isGenericOrOwnerName(existingProfile.name)) {
         const normExisting = existingProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
-        const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
-        if (normTyped && normTyped !== 'راكب motodrive' && normExisting !== normTyped) {
+        const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
+        if (normExisting !== normTyped) {
           setFormError(
-            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existingProfile.name}". يمنع تسجيل أكثر من حساب بنفس الرقم أو باسم مختلف.`
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${existingProfile.name}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
           );
-          setPassengerName(existingProfile.name);
           setIsPassengerSubmitting(false);
           return;
         }
       }
 
-      const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
+      const res = await registerOrRestoreUserByPhone(rawName, cleanPhone, 'passenger');
 
       setCurrentUser(res.user);
       setActivePassenger(res.profile);
@@ -203,8 +192,15 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     setFormError(null);
 
     const cleanPhone = driverPhone.trim().replace(/\s+/g, '');
+    const rawName = driverName.trim();
+
     if (!cleanPhone || cleanPhone.length < 8) {
       setFormError('يرجى إدخال رقم الهاتف الذي قمت بالتسجيل به.');
+      return;
+    }
+
+    if (!rawName || rawName.length < 2) {
+      setFormError('يرجى إدخال الاسم المسجل مع رقم الهاتف للدخول إلى حسابك.');
       return;
     }
 
@@ -212,11 +208,37 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       setIsDriverSubmitting(true);
       const { profile, driver } = await findUserAndDriverByPhone(cleanPhone);
 
-      if (!driver) {
+      // 1. Role Exclusivity Check: If registered as Passenger only
+      if (!driver && profile && profile.role === 'passenger') {
         setFormError(
-          '⚠️ هذا الرقم غير مسجل كسائق بعد. يرجى التبديل إلى "إنشاء حساب سائق جديد" وإرفاق الصور الـ 4 الإجبارية.'
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل كراكب بهذا الرقم. لا يمكنك التسجيل أو الدخول به كسائق إلا بعد حذف حسابك كراكب.`
         );
         return;
+      }
+
+      if (!driver) {
+        setFormError(
+          '⚠️ هذا الرقم غير مسجل كسائق بعد. يرجى التبديل إلى "حساب سائق جديد" وإرفاق الصور الـ 4 الإجبارية.'
+        );
+        return;
+      }
+
+      // 2. Strict Name Verification for Driver Login
+      const registeredDriverName = !isGenericOrOwnerName(driver.name)
+        ? driver.name
+        : !isGenericOrOwnerName(profile?.name)
+        ? profile!.name
+        : '';
+
+      if (registeredDriverName) {
+        const normExisting = registeredDriverName.trim().replace(/\s+/g, ' ').toLowerCase();
+        const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
+        if (normExisting !== normTyped) {
+          setFormError(
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredDriverName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+          );
+          return;
+        }
       }
 
       try {
@@ -245,14 +267,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         displayName: driver.name,
         phoneNumber: cleanPhone,
       } as any);
-      if (profile) setActivePassenger(profile);
+      if (profile) setActivePassenger({ ...profile, role: 'driver' });
       setActiveDriver(driver);
       setCurrentRole('driver');
 
       if (driver.status === 'rejected') {
+        const isPermanent = Boolean(driver.isPermanentlyRejected || (driver.rejectionCount && driver.rejectionCount >= 2));
         broadcastNotification(
-          'تم رفض طلبك ❌',
-          `سبب الرفض من المسؤول: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
+          isPermanent ? 'تم رفض طلبك مرتين وحذفه نهائياً 🚫' : 'تم رفض طلبك (المرة الأولى) ❌',
+          isPermanent
+            ? `سبب الرفض النهائي: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}. يتعين عليك إنشاء حساب سائق من جديد.`
+            : `سبب الرفض من المسؤول: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}. يمكنك تعديل بياناتك وإرسال الطلب مجدداً.`
         );
       }
     } catch (err) {
@@ -263,7 +288,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     }
   };
 
-  // Handle Driver Registration Submission (STRICT 4 PHOTOS VALIDATION & NO DUPLICATE PHONE)
+  // Handle Driver Registration Submission (STRICT 4 PHOTOS VALIDATION, ROLE EXCLUSIVITY & NAME CHECK)
   const handleDriverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -286,34 +311,62 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       return;
     }
 
+    let preservedRejectionCount = 0;
+
     // Check if phone number is already registered in Firestore or local vault
     try {
       setIsDriverSubmitting(true);
       const existing = await findUserAndDriverByPhone(cleanPhone);
 
-      // Block if a driver account already exists for this phone number
-      if (existing.driver && existing.driver.status !== 'rejected') {
+      // 1. Block if phone belongs to a Passenger account (must delete passenger account first)
+      if (!existing.driver && existing.profile && existing.profile.role === 'passenger') {
         setIsDriverSubmitting(false);
         setFormError(
-          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كسائق باسم "${existing.driver.name}". يمنع تسجيل حسابين برقم واحد. يرجى اختيار "لدي حساب سائق مسجل" للدخول.`
+          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
         );
         return;
       }
 
-      // Block if phone belongs to an existing user with a different name
-      if (
-        existing.profile &&
-        existing.profile.name &&
-        !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existing.profile.name)
-      ) {
-        const normExisting = existing.profile.name.trim().replace(/\s+/g, ' ').toLowerCase();
-        const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
-        if (normExisting !== normTyped) {
-          setIsDriverSubmitting(false);
-          setFormError(
-            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existing.profile.name}". لا يمكن التسجيل بنفس الرقم واسم مختلف.`
-          );
-          return;
+      // 2. If a driver account already exists for this phone number:
+      if (existing.driver) {
+        const currentRejCount = existing.driver.rejectionCount || (existing.driver.status === 'rejected' ? 1 : 0);
+        const isPermRejected = Boolean(existing.driver.isPermanentlyRejected || currentRejCount >= 2);
+
+        if (isPermRejected) {
+          // 2nd rejection already happened: allow creating a brand new driver account from scratch (reset rejectionCount to 0)
+          preservedRejectionCount = 0;
+        } else {
+          preservedRejectionCount = currentRejCount;
+          const regName = existing.driver.name || existing.profile?.name || '';
+          const normExisting = regName.trim().replace(/\s+/g, ' ').toLowerCase();
+          const normTyped = cleanName.replace(/\s+/g, ' ').toLowerCase();
+
+          if (!isGenericOrOwnerName(regName) && normExisting !== normTyped) {
+            setIsDriverSubmitting(false);
+            setFormError(
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+            );
+            return;
+          }
+
+          // If the name matches and driver is already approved or pending, open their existing driver account directly!
+          if (existing.driver.status !== 'rejected') {
+            try {
+              localStorage.setItem('motodrive_registered_phone', cleanPhone);
+              localStorage.setItem('motodrive_active_driver_phone', cleanPhone);
+              localStorage.setItem('motodrive_remembered_phone', cleanPhone);
+            } catch (e) {}
+            setCurrentUser({
+              uid: existing.driver.userId || existing.driver.id,
+              displayName: existing.driver.name,
+              phoneNumber: cleanPhone,
+            } as any);
+            if (existing.profile) setActivePassenger({ ...existing.profile, role: 'driver' });
+            setActiveDriver(existing.driver);
+            setCurrentRole('driver');
+            setIsDriverSubmitting(false);
+            return;
+          }
         }
       }
     } catch (e) {}
@@ -377,6 +430,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         phone: cleanPhone,
         wilaya: wilaya,
         municipality: 'وسط المدينة',
+        rejectionCount: preservedRejectionCount,
         motorcycle: {
           brand: brandPart,
           model: modelPart,
@@ -402,6 +456,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         setActiveDriver({
           ...res.driver,
           status: 'pending',
+          rejectionReason: undefined,
+          rejectionCount: preservedRejectionCount,
+          isPermanentlyRejected: false,
           documents: {
             status: 'pending',
             submittedAt: new Date().toISOString(),
@@ -639,7 +696,21 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
               <div className="space-y-3 text-right pt-1">
                 <div className="text-xs font-black text-amber-400 flex items-center gap-1.5">
                   <LogIn className="w-4 h-4 text-amber-400" />
-                  <span>تسجيل دخول سائق مسجل سابقاً برقم الهاتف</span>
+                  <span>تسجيل دخول سائق مسجل سابقاً (بالاسم ورقم الهاتف)</span>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-300 block mb-1">اسم السائق المسجل:</label>
+                  <input
+                    type="text"
+                    value={driverName}
+                    onChange={(e) => {
+                      setDriverName(e.target.value);
+                      setFormError(null);
+                    }}
+                    placeholder="مثال: أسامة بن عبد الله"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                  />
                 </div>
 
                 <div>

@@ -70,6 +70,7 @@ import {
   sanitizeFirestoreData,
   deleteExpiredRideFromFirestore,
   updatePassengerSavedLocation,
+  deleteUserAccountFromFirestore,
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
@@ -97,6 +98,7 @@ import {
   saveComplaintsToSecureVault,
   isPendingRideExpired,
   removeRideFromSecureVault,
+  removeAccountFromLocalVault,
 } from '../services/dataVaultService';
 import {
   syncOfflineQueueToFirestore,
@@ -173,6 +175,8 @@ interface AppContextType {
   suspendPassenger: (passengerId: string, reason?: string) => Promise<void>;
   deletePassenger: (passengerId: string, reason?: string) => Promise<void>;
   deleteDriver: (driverId: string) => Promise<void>;
+  deleteRide: (rideId: string) => Promise<void>;
+  deleteComplaint: (complaintId: string) => Promise<void>;
   updateDriverStatus: (driverId: string, status: DriverApprovalStatus, reason?: string) => Promise<void>;
   updatePricing: (newPricing: PricingSettings) => Promise<void>;
   toggleServiceArea: (id: string) => void;
@@ -252,7 +256,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     try {
-      if (activePassenger && activePassenger.phone && activePassenger.id !== 'passenger-guest') {
+      if (
+        activePassenger &&
+        activePassenger.phone &&
+        activePassenger.id !== 'passenger-guest' &&
+        activePassenger.id !== 'guest' &&
+        activePassenger.role !== 'admin'
+      ) {
         saveUserToSecureVault(
           activePassenger.phone,
           activePassenger,
@@ -323,11 +333,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const { user: rawCachedUser, driver: cachedDriver } = loadActiveSessionSecurely();
         if (rawCachedUser) {
           const cachedUser = { ...rawCachedUser };
-          if (
-            (cachedUser.role === 'admin' || cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com') &&
-            (!cachedUser.phone || cachedUser.phone === '0550000000' || cachedUser.phone === '0550123456' || cachedUser.phone === '0662688714')
-          ) {
-            cachedUser.phone = '0542524728';
+          const isExplicitAdminSession =
+            cachedUser.id === 'admin-owner-seyfhad' ||
+            cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com';
+
+          if (!isExplicitAdminSession && cachedUser.role === 'admin') {
+            cachedUser.role = cachedDriver ? 'driver' : 'passenger';
           }
           setActivePassenger(cachedUser);
           setCurrentUser({
@@ -341,7 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setActiveDriver(cachedDriver);
           }
 
-          if (cachedUser.role === 'admin' || cachedUser.email === 'seyfhad@gmail.com') {
+          if (isExplicitAdminSession) {
             setCurrentRole('admin');
           } else if (cachedUser.role === 'driver') {
             setCurrentRole('driver');
@@ -359,13 +370,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
       if (firebaseUser && userProfile) {
-        if (
-          (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-            userProfile.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-            userProfile.role === 'admin') &&
-          (!userProfile.phone || userProfile.phone === '0550000000' || userProfile.phone === '0550123456' || userProfile.phone === '0662688714')
-        ) {
-          userProfile.phone = '0542524728';
+        const isExplicitOwnerEmail =
+          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+          userProfile.email?.toLowerCase() === 'seyfhad@gmail.com';
+
+        if (!isExplicitOwnerEmail && userProfile.role === 'admin') {
+          userProfile.role = 'passenger';
         }
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
@@ -386,12 +396,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Driver profile auto restore notice:', err);
           });
 
-        // Direct admin redirect if user is seyfhad@gmail.com
-        if (
-          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-          userProfile.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-          userProfile.role === 'admin'
-        ) {
+        // Direct admin redirect ONLY if user is seyfhad@gmail.com
+        if (isExplicitOwnerEmail) {
           setCurrentRole('admin');
           localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
         } else if (userProfile.role === 'driver') {
@@ -561,14 +567,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       );
 
+      const getDeletedKeysSet = (): Set<string> => {
+        try {
+          const raw = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+          if (raw) return new Set(JSON.parse(raw));
+        } catch (e) {}
+        return new Set();
+      };
+
       const driversPath = 'drivers';
       const driversQuery = query(collection(db, 'drivers'));
       unsubDrivers = onSnapshot(
         driversQuery,
         (querySnap) => {
-          const fetchedDrivers: DriverProfile[] = querySnap.docs.map(
-            (d) => ({ id: d.id, ...d.data() } as DriverProfile)
-          );
+          const delSet = getDeletedKeysSet();
+          const fetchedDrivers: DriverProfile[] = querySnap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as DriverProfile))
+            .filter(
+              (d) =>
+                (d as any).status !== 'deleted' &&
+                !delSet.has(d.id) &&
+                (!d.userId || !delSet.has(d.userId)) &&
+                (!d.phone || !delSet.has(d.phone))
+            );
           setDrivers(fetchedDrivers);
         },
         (err) => {
@@ -586,26 +607,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubUsers = onSnapshot(
         usersQuery,
         (querySnap) => {
-          if (!querySnap.empty) {
-            const fetchedUsers: UserProfile[] = querySnap.docs.map(
-              (u) => ({ id: u.id, ...u.data() } as UserProfile)
+          const delSet = getDeletedKeysSet();
+          const fetchedUsers: UserProfile[] = querySnap.docs
+            .map((u) => ({ id: u.id, ...u.data() } as UserProfile))
+            .filter(
+              (u) =>
+                (u as any).status !== 'deleted' &&
+                !delSet.has(u.id) &&
+                (!u.phone || !delSet.has(u.phone))
             );
-            setPassengers(fetchedUsers);
-            setActivePassenger((prev) => {
-              if (!prev || prev.id === 'passenger-guest') return prev;
-              const matched = fetchedUsers.find(
-                (u) => u.id === prev.id || (prev.phone && u.phone === prev.phone)
-              );
-              if (matched) {
-                return {
-                  ...prev,
-                  homeLocation: matched.homeLocation !== undefined ? matched.homeLocation : prev.homeLocation,
-                  workLocation: matched.workLocation !== undefined ? matched.workLocation : prev.workLocation,
-                };
-              }
-              return prev;
-            });
-          }
+          setPassengers(fetchedUsers);
+          setActivePassenger((prev) => {
+            if (!prev || prev.id === 'passenger-guest' || prev.id === 'guest') return prev;
+            const matched = fetchedUsers.find(
+              (u) => u.id === prev.id || (prev.phone && u.phone === prev.phone)
+            );
+            if (matched) {
+              return {
+                ...prev,
+                homeLocation: matched.homeLocation !== undefined ? matched.homeLocation : prev.homeLocation,
+                workLocation: matched.workLocation !== undefined ? matched.workLocation : prev.workLocation,
+              };
+            }
+            return prev;
+          });
         },
         () => {}
       );
@@ -615,52 +640,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubApps = onSnapshot(
         appsQuery,
         (querySnap) => {
-          if (!querySnap.empty) {
-            const appsData = querySnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            setDrivers((prevDrivers) => {
-              const updated = [...prevDrivers];
-              appsData.forEach((app: any) => {
-                const appDriverId = app.driverId || `driver-${app.phone}`;
-                const idx = updated.findIndex((d) => d.id === appDriverId || d.phone === app.phone);
-                const mappedDriver: DriverProfile = {
-                  id: appDriverId,
-                  userId: app.userId || appDriverId,
-                  name: app.fullName || app.phone,
-                  phone: app.phone,
-                  email: app.email,
-                  wilaya: app.wilaya || 'الجزائر العاصمة',
-                  municipality: app.municipality || 'وسط المدينة',
-                  photoUrl: app.documents?.selfieUrl || '',
-                  rating: 5.0,
-                  ratingCount: 1,
-                  totalTrips: 0,
-                  cancellationCount: 0,
-                  isOnline: false,
-                  isAvailable: false,
-                  status: app.status || 'pending',
-                  rejectionReason: app.rejectionReason,
-                  location: { lat: 36.7538, lng: 3.0588 },
-                  motorcycle: app.motorcycle || {
-                    brand: 'SYM',
-                    model: 'Symphony',
-                    year: 2023,
-                    plateNumber: '',
-                    color: 'أسود',
-                  },
-                  documents: app.documents || { status: app.status || 'pending' },
-                  createdAt: app.submittedAt || new Date().toISOString(),
-                  updatedAt: app.reviewedAt || new Date().toISOString(),
-                };
+          const delSet = getDeletedKeysSet();
+          const appsData = querySnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter(
+              (app: any) =>
+                app.status !== 'deleted' &&
+                !delSet.has(app.id) &&
+                (!app.driverId || !delSet.has(app.driverId)) &&
+                (!app.userId || !delSet.has(app.userId)) &&
+                (!app.phone || !delSet.has(app.phone))
+            );
+          setDrivers((prevDrivers) => {
+            const updated = prevDrivers.filter(
+              (d) =>
+                !delSet.has(d.id) &&
+                (!d.userId || !delSet.has(d.userId)) &&
+                (!d.phone || !delSet.has(d.phone))
+            );
+            appsData.forEach((app: any) => {
+              const appDriverId = app.driverId || `driver-${app.phone}`;
+              const idx = updated.findIndex((d) => d.id === appDriverId || (app.phone && d.phone === app.phone));
+              const existing = idx >= 0 ? updated[idx] : undefined;
 
-                if (idx >= 0) {
-                  updated[idx] = { ...updated[idx], ...mappedDriver };
-                } else {
-                  updated.push(mappedDriver);
-                }
-              });
-              return updated;
+              let resolvedStatus: DriverApprovalStatus = 'pending';
+              if (existing?.status === 'approved' || app.status === 'approved') {
+                resolvedStatus = 'approved';
+              } else if (app.status === 'pending' && existing?.status === 'pending') {
+                resolvedStatus = 'pending';
+              } else if (existing?.status === 'rejected' || app.status === 'rejected') {
+                resolvedStatus = 'rejected';
+              } else if (existing?.status === 'suspended' || app.status === 'suspended') {
+                resolvedStatus = 'suspended';
+              } else {
+                resolvedStatus = (app.status || existing?.status || 'pending') as DriverApprovalStatus;
+              }
+
+              const mappedDriver: DriverProfile = {
+                id: existing?.id || appDriverId,
+                userId: app.userId || existing?.userId || appDriverId,
+                name: app.fullName || existing?.name || app.phone,
+                phone: app.phone || existing?.phone,
+                email: app.email || existing?.email,
+                wilaya: app.wilaya || existing?.wilaya || 'الجزائر العاصمة',
+                municipality: app.municipality || existing?.municipality || 'وسط المدينة',
+                photoUrl: app.documents?.selfieUrl || existing?.photoUrl || '',
+                rating: existing?.rating ?? 5.0,
+                ratingCount: existing?.ratingCount ?? 1,
+                totalTrips: existing?.totalTrips ?? 0,
+                cancellationCount: existing?.cancellationCount ?? 0,
+                isOnline: existing?.isOnline ?? false,
+                isAvailable: existing?.isAvailable ?? false,
+                status: resolvedStatus,
+                rejectionReason: app.rejectionReason || existing?.rejectionReason,
+                rejectionCount: Math.max(Number(app.rejectionCount || 0), Number(existing?.rejectionCount || 0)),
+                isPermanentlyRejected: Boolean(app.isPermanentlyRejected || existing?.isPermanentlyRejected),
+                location: existing?.location || { lat: 36.7538, lng: 3.0588 },
+                motorcycle: app.motorcycle || existing?.motorcycle || {
+                  brand: 'SYM',
+                  model: 'Symphony',
+                  year: 2023,
+                  plateNumber: '',
+                  color: 'أسود',
+                },
+                documents: {
+                  ...(existing?.documents || {}),
+                  ...(app.documents || {}),
+                  status: resolvedStatus,
+                },
+                createdAt: app.submittedAt || existing?.createdAt || new Date().toISOString(),
+                updatedAt: app.reviewedAt || existing?.updatedAt || new Date().toISOString(),
+              };
+
+              if (idx >= 0) {
+                updated[idx] = { ...updated[idx], ...mappedDriver };
+              } else {
+                updated.push(mappedDriver);
+              }
             });
-          }
+            return updated;
+          });
         },
         () => {}
       );
@@ -674,25 +733,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (unsubApps) unsubApps();
     };
   }, [currentUser]);
-
-  // Auto-restore registered driver application by phone on app mount
-  useEffect(() => {
-    const savedPhone =
-      localStorage.getItem('motodrive_registered_phone') ||
-      localStorage.getItem('motodrive_active_driver_phone');
-    if (savedPhone) {
-      findUserAndDriverByPhone(savedPhone)
-        .then(({ driver }) => {
-          if (driver) {
-            setActiveDriver((prev) => {
-              if (prev.id === driver.id && prev.status === driver.status) return prev;
-              return driver;
-            });
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
 
   // --------------------------------------------------------------------------
   // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR CURRENT DRIVER PROFILE
@@ -1636,38 +1676,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 7. ADMIN ACTIONS
   // --------------------------------------------------------------------------
   const approveDriver = async (driverId: string) => {
-    // 1. Permanently delete verification files from Firebase Storage & update driver_applications doc
+    const drv = drivers.find(d => d.id === driverId || d.userId === driverId);
     try {
-      await approveDriverApplication(`app_${driverId}`, driverId, currentUser?.uid || 'admin');
+      await approveDriverApplication(`app_${driverId}`, driverId, currentUser?.uid || 'admin', drv?.phone);
     } catch (appErr) {
       console.warn('Notice in approveDriverApplication:', appErr);
     }
 
-    await updateDriverStatusInFirestore(driverId, 'approved');
-    const drv = drivers.find(d => d.id === driverId);
+    await updateDriverStatusInFirestore(driverId, 'approved', undefined, drv?.phone, 0);
     if (drv) {
-      await syncDriverProfile({ ...drv, status: 'approved' });
+      await syncDriverProfile({
+        ...drv,
+        status: 'approved',
+        rejectionReason: undefined,
+        rejectionCount: 0,
+        isPermanentlyRejected: false,
+      });
+    }
+    setDrivers(prev =>
+      prev.map(d =>
+        d.id === driverId || d.userId === driverId || (drv?.phone && d.phone === drv.phone)
+          ? { ...d, status: 'approved', rejectionReason: undefined, rejectionCount: 0, isPermanentlyRejected: false }
+          : d
+      )
+    );
+    if (
+      activeDriver.id === driverId ||
+      activeDriver.userId === driverId ||
+      (drv?.phone && activeDriver.phone === drv.phone)
+    ) {
+      setActiveDriver(prev => ({
+        ...prev,
+        status: 'approved',
+        rejectionReason: undefined,
+        rejectionCount: 0,
+        isPermanentlyRejected: false,
+      }));
     }
   };
 
   const rejectDriver = async (driverId: string, reason: string) => {
-    // 1. Permanently delete verification files from Firebase Storage & update driver_applications doc
+    const drv = drivers.find(d => d.id === driverId || d.userId === driverId);
+    const nextRejectionCount = (drv?.rejectionCount || 0) + 1;
+    const isPermanent = nextRejectionCount >= 2;
     try {
-      await rejectDriverApplication(`app_${driverId}`, driverId, reason, currentUser?.uid || 'admin');
+      await rejectDriverApplication(`app_${driverId}`, driverId, reason, currentUser?.uid || 'admin', drv?.phone, nextRejectionCount);
     } catch (appErr) {
       console.warn('Notice in rejectDriverApplication:', appErr);
     }
 
-    await updateDriverStatusInFirestore(driverId, 'rejected', reason);
-    const drv = drivers.find(d => d.id === driverId);
+    await updateDriverStatusInFirestore(driverId, 'rejected', reason, drv?.phone, nextRejectionCount);
     if (drv) {
-      await syncDriverProfile({ ...drv, status: 'rejected', rejectionReason: reason });
+      await syncDriverProfile({
+        ...drv,
+        status: 'rejected',
+        rejectionReason: reason,
+        rejectionCount: nextRejectionCount,
+        isPermanentlyRejected: isPermanent,
+      });
+    }
+    setDrivers(prev =>
+      prev.map(d =>
+        d.id === driverId || d.userId === driverId || (drv?.phone && d.phone === drv.phone)
+          ? {
+              ...d,
+              status: 'rejected',
+              rejectionReason: reason,
+              rejectionCount: nextRejectionCount,
+              isPermanentlyRejected: isPermanent,
+            }
+          : d
+      )
+    );
+    if (
+      activeDriver.id === driverId ||
+      activeDriver.userId === driverId ||
+      (drv?.phone && activeDriver.phone === drv.phone)
+    ) {
+      setActiveDriver(prev => ({
+        ...prev,
+        status: 'rejected',
+        rejectionReason: reason,
+        rejectionCount: nextRejectionCount,
+        isPermanentlyRejected: isPermanent,
+      }));
     }
   };
 
   const suspendDriver = async (driverId: string) => {
-    await updateDriverStatusInFirestore(driverId, 'suspended');
     const drv = drivers.find(d => d.id === driverId);
+    await updateDriverStatusInFirestore(driverId, 'suspended', undefined, drv?.phone);
     if (drv) {
       await syncDriverProfile({ ...drv, status: 'suspended', isOnline: false, isAvailable: false });
     }
@@ -1696,9 +1794,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deletePassenger = async (passengerId: string, reason: string = 'قرار من المسؤول') => {
-    setPassengers(prev => prev.filter(p => p.id !== passengerId));
+    const target = passengers.find(p => p.id === passengerId);
     try {
-      await setDoc(doc(db, 'users', passengerId), { status: 'deleted', deletionReason: reason, deletedAt: serverTimestamp() }, { merge: true });
+      const raw = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+      const set = new Set<string>(raw ? JSON.parse(raw) : []);
+      set.add(passengerId);
+      if (target?.phone) set.add(target.phone);
+      localStorage.setItem('motodrive_admin_deleted_driver_keys', JSON.stringify(Array.from(set)));
+    } catch (e) {}
+
+    setPassengers(prev => prev.filter(p => p.id !== passengerId && (!target?.phone || p.phone !== target.phone)));
+    try {
+      await deleteUserAccountFromFirestore('passenger', passengerId, undefined, target?.phone);
+      if (target?.phone) {
+        await removeAccountFromLocalVault(target.phone, passengerId);
+      }
     } catch (e) {
       console.warn('Error deleting passenger:', e);
     }
@@ -1706,16 +1816,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteDriver = async (driverId: string) => {
-    setDrivers(prev => prev.filter(d => d.id !== driverId));
+    const target = drivers.find(d => d.id === driverId || d.userId === driverId);
+    const appId = `app_${driverId}`;
     try {
-      await setDoc(doc(db, 'drivers', driverId), { status: 'deleted', deletedAt: serverTimestamp() }, { merge: true });
+      const raw = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+      const set = new Set<string>(raw ? JSON.parse(raw) : []);
+      set.add(driverId);
+      set.add(appId);
+      if (target?.userId) set.add(target.userId);
+      if (target?.phone) set.add(target.phone);
+      localStorage.setItem('motodrive_admin_deleted_driver_keys', JSON.stringify(Array.from(set)));
+    } catch (e) {}
+
+    setDrivers(prev =>
+      prev.filter(
+        d =>
+          d.id !== driverId &&
+          (!target?.userId || d.userId !== target.userId) &&
+          (!target?.phone || d.phone !== target.phone)
+      )
+    );
+    try {
+      await deleteUserAccountFromFirestore('driver', target?.userId, driverId, target?.phone, appId);
+      await removeAccountFromLocalVault(target?.phone, target?.userId, driverId);
     } catch (e) {
       console.warn('Error deleting driver:', e);
     }
   };
 
+  const deleteRide = async (rideId: string) => {
+    setRides(prev => prev.filter(r => r.id !== rideId));
+    try {
+      await deleteExpiredRideFromFirestore(rideId);
+      await removeRideFromSecureVault(rideId);
+    } catch (e) {
+      console.warn('Error deleting ride:', e);
+    }
+  };
+
+  const deleteComplaint = async (complaintId: string) => {
+    setComplaints(prev => prev.filter(c => c.id !== complaintId));
+  };
+
   const updateDriverStatus = async (driverId: string, status: DriverApprovalStatus, reason?: string) => {
-    await updateDriverStatusInFirestore(driverId, status, reason);
+    const drv = drivers.find(d => d.id === driverId || d.userId === driverId);
     if (status === 'approved') {
       await approveDriver(driverId);
     } else if (status === 'rejected') {
@@ -1723,14 +1867,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else if (status === 'suspended') {
       await suspendDriver(driverId);
     } else {
-      const drv = drivers.find(d => d.id === driverId);
+      await updateDriverStatusInFirestore(driverId, status, reason, drv?.phone);
       if (drv) {
         await syncDriverProfile({ ...drv, status });
       }
-    }
-    setDrivers(prev => prev.map(d => d.id === driverId || d.userId === driverId ? { ...d, status, rejectionReason: reason } : d));
-    if (activeDriver.id === driverId || activeDriver.userId === driverId) {
-      setActiveDriver(prev => ({ ...prev, status, rejectionReason: reason }));
     }
   };
 
@@ -1792,17 +1932,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
   };
 
-  // Google Play Account Deletion Policy Mandatory Handler
+  // Google Play Account Deletion Policy Mandatory Handler & Role-Switch Account Deletion
   const deleteMyAccount = async () => {
     const uid = activePassenger?.id;
-    const phone = activePassenger?.phone || activeDriver?.phone;
+    const phone = activeDriver?.phone || activePassenger?.phone;
     const drvId = activeDriver?.id;
+    const roleToDelete = currentRole === 'driver' || (drvId && drvId !== 'driver-default') ? 'driver' : 'passenger';
 
     try {
-      if (uid && uid !== 'passenger-guest') {
+      await deleteUserAccountFromFirestore(
+        roleToDelete,
+        uid && uid !== 'guest' && uid !== 'passenger-guest' ? uid : undefined,
+        drvId && drvId !== 'driver-default' ? drvId : undefined,
+        phone
+      );
+      if (phone) {
+        await removeAccountFromLocalVault(phone);
+      }
+      if (uid && uid !== 'passenger-guest' && uid !== 'guest') {
         await addToOfflineQueue('users', 'delete', { deletedAt: new Date().toISOString() }, uid);
       }
-      if (drvId && drvId !== 'driver-pending-1') {
+      if (drvId && drvId !== 'driver-pending-1' && drvId !== 'driver-default') {
         await addToOfflineQueue('drivers', 'delete', { deletedAt: new Date().toISOString() }, drvId);
       }
       await syncOfflineQueueToFirestore();
@@ -1810,27 +1960,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('Notice queuing account deletion:', e);
     }
 
-    // Purge user entry from phone directory & local storage
-    try {
-      if (phone) {
-        const cleanPhone = phone.replace(/\D/g, '');
-        ['motodrive_phone_directory', 'motodrive_phone_directory_backup_v1'].forEach((k) => {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            delete parsed[cleanPhone];
-            delete parsed[phone];
-            localStorage.setItem(k, JSON.stringify(parsed));
-          }
-        });
-      }
-      localStorage.removeItem('motodrive_user_session');
-      localStorage.removeItem('motodrive_user_session_backup_v1');
-      localStorage.removeItem('motodrive_active_driver');
-      localStorage.removeItem('motodrive_active_driver_backup_v1');
-      localStorage.removeItem('motodrive_registered_phone');
-      localStorage.removeItem('motodrive_active_driver_phone');
-    } catch {}
+    if (phone) {
+      setPassengers(prev => prev.filter(p => p.phone !== phone && p.id !== uid));
+      setDrivers(prev => prev.filter(d => d.phone !== phone && d.id !== drvId));
+    }
 
     await logout();
   };
@@ -1919,6 +2052,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         suspendPassenger,
         deletePassenger,
         deleteDriver,
+        deleteRide,
+        deleteComplaint,
         updateDriverStatus,
         updatePricing,
         toggleServiceArea,

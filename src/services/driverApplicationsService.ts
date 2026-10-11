@@ -20,7 +20,7 @@ const DRIVERS_COL = 'drivers';
  * Submit a complete driver registration application to 'driver_applications' collection.
  */
 export const submitDriverApplication = async (
-  applicationData: Omit<DriverApplication, 'id' | 'status' | 'submittedAt'> & { id?: string }
+  applicationData: Omit<DriverApplication, 'id' | 'status' | 'submittedAt'> & { id?: string; rejectionCount?: number }
 ): Promise<string> => {
   const appId = applicationData.id || `app_${applicationData.driverId}`;
   if (isFirestoreQuotaExceeded()) {
@@ -29,10 +29,15 @@ export const submitDriverApplication = async (
 
   const appRef = doc(db, APPLICATIONS_COL, appId);
   const now = new Date().toISOString();
+  const preservedRejectionCount = typeof applicationData.rejectionCount === 'number' ? applicationData.rejectionCount : 0;
+
   const applicationPayload: DriverApplication = {
     ...applicationData,
     id: appId,
     status: 'pending',
+    rejectionReason: '',
+    rejectionCount: preservedRejectionCount,
+    isPermanentlyRejected: false,
     submittedAt: now,
   };
 
@@ -60,10 +65,14 @@ export const submitDriverApplication = async (
         municipality: applicationData.municipality,
         motorcycle: applicationData.motorcycle,
         status: 'pending',
+        rejectionReason: '',
+        rejectionCount: preservedRejectionCount,
+        isPermanentlyRejected: false,
         photoUrl: applicationData.documents.selfieUrl || '',
         documents: {
           ...applicationData.documents,
           status: 'pending',
+          rejectionReason: '',
           submittedAt: now,
         },
         updatedAt: now,
@@ -147,74 +156,162 @@ export const subscribePendingDriverApplications = (
 export const approveDriverApplication = async (
   applicationId: string,
   driverId: string,
-  reviewerId: string = 'admin'
+  reviewerId: string = 'admin',
+  driverPhone?: string
 ): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   try {
-    const appRef = doc(db, APPLICATIONS_COL, applicationId);
     const now = new Date().toISOString();
-
-    await updateDoc(appRef, {
+    const cleanUserId = driverId.replace(/^driver-/, '');
+    const appApprovalPayload = {
       status: 'approved',
+      rejectionReason: '',
+      rejectionCount: 0,
+      isPermanentlyRejected: false,
       reviewedAt: now,
       reviewedBy: reviewerId,
       serverUpdatedAt: serverTimestamp(),
-    });
+    };
+
+    const appRef = doc(db, APPLICATIONS_COL, applicationId);
+    await setDoc(appRef, appApprovalPayload, { merge: true }).catch(() => {});
+
+    const altAppId = `app_${driverId.startsWith('driver-') ? driverId : `driver-${driverId}`}`;
+    if (altAppId !== applicationId) {
+      await setDoc(doc(db, APPLICATIONS_COL, altAppId), appApprovalPayload, { merge: true }).catch(() => {});
+    }
+
+    const qAppsByDriver = query(collection(db, APPLICATIONS_COL), where('driverId', '==', driverId));
+    const snapAppsByDriver = await getDocs(qAppsByDriver).catch(() => null);
+    if (snapAppsByDriver && !snapAppsByDriver.empty) {
+      for (const d of snapAppsByDriver.docs) {
+        await setDoc(d.ref, appApprovalPayload, { merge: true }).catch(() => {});
+      }
+    }
+
+    if (driverPhone) {
+      const qAppsByPhone = query(collection(db, APPLICATIONS_COL), where('phone', '==', driverPhone.trim()));
+      const snapAppsByPhone = await getDocs(qAppsByPhone).catch(() => null);
+      if (snapAppsByPhone && !snapAppsByPhone.empty) {
+        for (const d of snapAppsByPhone.docs) {
+          await setDoc(d.ref, appApprovalPayload, { merge: true }).catch(() => {});
+        }
+      }
+    }
+
+    const driverApprovalPayload = {
+      status: 'approved',
+      rejectionReason: '',
+      rejectionCount: 0,
+      isPermanentlyRejected: false,
+      isAvailable: true,
+      updatedAt: now,
+      serverUpdatedAt: serverTimestamp(),
+    };
 
     const driverRef = doc(db, DRIVERS_COL, driverId);
-    await setDoc(
-      driverRef,
-      {
-        status: 'approved',
-        rejectionReason: '',
-        'documents.status': 'approved',
-        'documents.reviewedAt': now,
-        updatedAt: now,
-        serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await setDoc(driverRef, driverApprovalPayload, { merge: true });
+
+    const prefixedDriverId = driverId.startsWith('driver-') ? driverId : `driver-${cleanUserId}`;
+    if (prefixedDriverId !== driverId) {
+      await setDoc(doc(db, DRIVERS_COL, prefixedDriverId), driverApprovalPayload, { merge: true }).catch(() => {});
+    }
+
+    if (driverPhone) {
+      const qDrvPhone = query(collection(db, DRIVERS_COL), where('phone', '==', driverPhone.trim()));
+      const snapDrvPhone = await getDocs(qDrvPhone).catch(() => null);
+      if (snapDrvPhone && !snapDrvPhone.empty) {
+        for (const d of snapDrvPhone.docs) {
+          await setDoc(d.ref, driverApprovalPayload, { merge: true }).catch(() => {});
+        }
+      }
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${APPLICATIONS_COL}/${applicationId}`);
   }
 };
 
 /**
- * Admin REJECTS a driver application
+ * Admin REJECTS a driver application (with 2-strike rule: on 2nd rejection, permanently deletes request)
  */
 export const rejectDriverApplication = async (
   applicationId: string,
   driverId: string,
   reason: string,
-  reviewerId: string = 'admin'
+  reviewerId: string = 'admin',
+  driverPhone?: string,
+  newRejectionCount: number = 1
 ): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   try {
-    const appRef = doc(db, APPLICATIONS_COL, applicationId);
     const now = new Date().toISOString();
+    const cleanUserId = driverId.replace(/^driver-/, '');
+    const isPermanent = newRejectionCount >= 2;
 
-    await updateDoc(appRef, {
+    const appRejectPayload = {
       status: 'rejected',
       rejectionReason: reason,
+      rejectionCount: newRejectionCount,
+      isPermanentlyRejected: isPermanent,
       reviewedAt: now,
       reviewedBy: reviewerId,
       serverUpdatedAt: serverTimestamp(),
-    });
+    };
+
+    const appRef = doc(db, APPLICATIONS_COL, applicationId);
+    await setDoc(appRef, appRejectPayload, { merge: true }).catch(() => {});
+
+    const altAppId = `app_${driverId.startsWith('driver-') ? driverId : `driver-${driverId}`}`;
+    if (altAppId !== applicationId) {
+      await setDoc(doc(db, APPLICATIONS_COL, altAppId), appRejectPayload, { merge: true }).catch(() => {});
+    }
+
+    const qAppsByDriver = query(collection(db, APPLICATIONS_COL), where('driverId', '==', driverId));
+    const snapAppsByDriver = await getDocs(qAppsByDriver).catch(() => null);
+    if (snapAppsByDriver && !snapAppsByDriver.empty) {
+      for (const d of snapAppsByDriver.docs) {
+        await setDoc(d.ref, appRejectPayload, { merge: true }).catch(() => {});
+      }
+    }
+
+    if (driverPhone) {
+      const qAppsByPhone = query(collection(db, APPLICATIONS_COL), where('phone', '==', driverPhone.trim()));
+      const snapAppsByPhone = await getDocs(qAppsByPhone).catch(() => null);
+      if (snapAppsByPhone && !snapAppsByPhone.empty) {
+        for (const d of snapAppsByPhone.docs) {
+          await setDoc(d.ref, appRejectPayload, { merge: true }).catch(() => {});
+        }
+      }
+    }
+
+    const driverRejectPayload = {
+      status: 'rejected',
+      rejectionReason: reason,
+      rejectionCount: newRejectionCount,
+      isPermanentlyRejected: isPermanent,
+      isOnline: false,
+      isAvailable: false,
+      updatedAt: now,
+      serverUpdatedAt: serverTimestamp(),
+    };
 
     const driverRef = doc(db, DRIVERS_COL, driverId);
-    await setDoc(
-      driverRef,
-      {
-        status: 'rejected',
-        rejectionReason: reason,
-        'documents.status': 'rejected',
-        'documents.rejectionReason': reason,
-        'documents.reviewedAt': now,
-        updatedAt: now,
-        serverUpdatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await setDoc(driverRef, driverRejectPayload, { merge: true });
+
+    const prefixedDriverId = driverId.startsWith('driver-') ? driverId : `driver-${cleanUserId}`;
+    if (prefixedDriverId !== driverId) {
+      await setDoc(doc(db, DRIVERS_COL, prefixedDriverId), driverRejectPayload, { merge: true }).catch(() => {});
+    }
+
+    if (driverPhone) {
+      const qDrvPhone = query(collection(db, DRIVERS_COL), where('phone', '==', driverPhone.trim()));
+      const snapDrvPhone = await getDocs(qDrvPhone).catch(() => null);
+      if (snapDrvPhone && !snapDrvPhone.empty) {
+        for (const d of snapDrvPhone.docs) {
+          await setDoc(d.ref, driverRejectPayload, { merge: true }).catch(() => {});
+        }
+      }
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${APPLICATIONS_COL}/${applicationId}`);
   }

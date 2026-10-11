@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Ride, RideStatus } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { Activity, Search, MapPin, Calendar, Check, X, Shield, Phone, ArrowLeft } from 'lucide-react';
+import { Activity, Search, MapPin, Calendar, Check, X, Shield, Phone, ArrowLeft, Trash2 } from 'lucide-react';
 
 export const AdminRides: React.FC = () => {
-  const { rides } = useApp();
+  const { rides, deleteRide } = useApp();
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
@@ -27,7 +27,7 @@ export const AdminRides: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div>
           <h2 className="text-xl font-black text-white">سجل ومتابعة مسؤول الرحلات (Rides Monitor)</h2>
-          <p className="text-xs text-slate-400">متابعة كافة رحلات الدراجات النارية في الجزائر مباشرة</p>
+          <p className="text-xs text-slate-400">متابعة كافة رحلات الدراجات النارية في الجزائر مباشرة مع إمكانية حذف أي رحلة</p>
         </div>
       </div>
 
@@ -138,12 +138,21 @@ export const AdminRides: React.FC = () => {
                     </span>
                   </td>
                   <td className="p-3.5">
-                    <button
-                      onClick={() => setSelectedRide(ride)}
-                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition-colors"
-                    >
-                      تفاصيل
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setSelectedRide(ride)}
+                        className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                      >
+                        تفاصيل
+                      </button>
+                      <button
+                        onClick={() => deleteRide(ride.id)}
+                        className="p-1.5 bg-red-500/15 hover:bg-red-500/30 border border-red-500/30 text-red-400 rounded-lg transition-colors cursor-pointer"
+                        title="حذف الرحلة نهائياً"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

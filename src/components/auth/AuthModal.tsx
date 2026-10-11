@@ -92,13 +92,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  const isGenericOrOwnerName = (n?: string | null) =>
+    !n ||
+    !n.trim() ||
+    ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive', 'زائر', 'مالك التطبيق (Seyf)', 'مالك التطبيق (Admin)', 'سائق جديد'].includes(
+      n.trim()
+    ) ||
+    n.includes('مالك التطبيق');
+
   // Submit Login handler
   const handleLoginSubmit = async () => {
     const cleanPhone = normalPhone.trim().replace(/\s+/g, '');
-    const cleanName = normalName.trim() || 'راكب MotoDrive';
+    const rawName = normalName.trim();
 
     if (!cleanPhone || cleanPhone.length < 8) {
       setErrorMsg('يرجى كتابة رقم هاتف صحيح متكون من 10 أرقام.');
+      return;
+    }
+
+    if (!rawName || rawName.length < 2 || rawName === 'مستخدم MotoDrive') {
+      setErrorMsg('يرجى كتابة الاسم الكامل المسجل مع رقم الهاتف.');
       return;
     }
 
@@ -107,15 +120,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       const { profile: existingProfile, driver } = await findUserAndDriverByPhone(cleanPhone);
-      const isOwnerPhone = cleanPhone === '0542524728' || cleanPhone === '+213542524728' || cleanPhone === '213542524728';
 
       if (selectedRole === 'driver') {
-        if (!driver && !isOwnerPhone) {
+        // 1. Role Exclusivity: Cannot login/register as Driver if registered as Passenger
+        if (!driver && existingProfile && existingProfile.role === 'passenger') {
+          setErrorMsg(
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!driver) {
           setErrorMsg(
             '⚠️ لم يتم العثور على حساب أو طلب سائق بهذا الرقم. يرجى التبديل لـ "تسجيل سائق جديد" لتقديم الطلب ورفع الوثائق.'
           );
           setIsSubmitting(false);
           return;
+        }
+
+        // 2. Strict Name Verification for Driver
+        const registeredDriverName = !isGenericOrOwnerName(driver.name)
+          ? driver.name
+          : !isGenericOrOwnerName(existingProfile?.name)
+          ? existingProfile!.name
+          : '';
+
+        if (registeredDriverName) {
+          const normExisting = registeredDriverName.trim().replace(/\s+/g, ' ').toLowerCase();
+          const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
+          if (normExisting !== normTyped) {
+            setErrorMsg(
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredDriverName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+            );
+            setIsSubmitting(false);
+            return;
+          }
         }
 
         // Store remembered phone
@@ -124,12 +164,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           localStorage.setItem('motodrive_active_driver_phone', cleanPhone);
         } catch (e) {}
 
-        if (driver) {
-          setActiveDriver(driver);
+        setCurrentUser({
+          uid: driver.userId || driver.id,
+          displayName: driver.name,
+          phoneNumber: cleanPhone,
+        } as any);
+        if (existingProfile) {
+          setActivePassenger({ ...existingProfile, role: 'driver' });
         }
+        setActiveDriver(driver);
         setCurrentRole('driver');
 
-        if (driver && driver.status === 'rejected') {
+        if (driver.status === 'rejected') {
           broadcastNotification(
             'تم رفض طلبك',
             `سبب الرفض: ${driver.rejectionReason || 'الوثائق غير مطابقة للشروط'}`
@@ -139,26 +185,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (onSuccess) onSuccess();
         onClose();
       } else {
-        // Prevent registering or logging in with the same phone number under a different name
-        if (
-          existingProfile &&
-          existingProfile.name &&
-          !['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive'].includes(existingProfile.name)
-        ) {
+        // 1. Role Exclusivity: Cannot login/register as Passenger if registered as Driver
+        if (driver || (existingProfile && existingProfile.role === 'driver')) {
+          setErrorMsg(
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل كسائق بهذا الرقم. لا يمكنك التسجيل به كراكب إلا بعد حذف حسابك كسائق.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 2. Strict Name Verification for Passenger
+        if (existingProfile && !isGenericOrOwnerName(existingProfile.name)) {
           const normExisting = existingProfile.name.trim().replace(/\s+/g, ' ').toLowerCase();
-          const normTyped = cleanName.trim().replace(/\s+/g, ' ').toLowerCase();
-          if (normTyped && normTyped !== 'راكب motodrive' && normTyped !== 'مستخدم motodrive' && normExisting !== normTyped) {
+          const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
+          if (normExisting !== normTyped) {
             setErrorMsg(
-              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم "${existingProfile.name}". يمنع تسجيل حسابين برقم واحد أو تغيير الاسم المسجل.`
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${existingProfile.name}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
             );
-            setNormalName(existingProfile.name);
             setIsSubmitting(false);
             return;
           }
         }
 
         // Direct Passenger Login by Phone & Name
-        const res = await registerOrRestoreUserByPhone(cleanName, cleanPhone, 'passenger');
+        const res = await registerOrRestoreUserByPhone(rawName, cleanPhone, 'passenger');
         setCurrentUser(res.user);
         setActivePassenger(res.profile);
         setCurrentRole('passenger');
@@ -181,10 +231,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handlePassengerPhoneInput = (val: string) => {
     setNormalPhone(val);
     setErrorMsg(null);
-    const cached = getCachedUserByPhone(val);
-    if (cached?.profile) {
-      setNormalName(cached.profile.name);
-    }
   };
 
   return (
@@ -424,21 +470,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     />
                   </div>
 
-                  {selectedRole === 'passenger' && (
-                    <div>
-                      <label className="text-[11px] text-slate-400 block mb-1">
-                        الاسم الكامل:
-                      </label>
-                      <input
-                        type="text"
-                        id="login-name-input"
-                        placeholder="مثال: أحمد بلقاسم"
-                        value={normalName}
-                        onChange={(e) => setNormalName(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                      />
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">
+                      الاسم الكامل المسجل:
+                    </label>
+                    <input
+                      type="text"
+                      id="login-name-input"
+                      placeholder="مثال: أحمد بلقاسم"
+                      value={normalName}
+                      onChange={(e) => {
+                        setNormalName(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
                 </div>
 
                 <button

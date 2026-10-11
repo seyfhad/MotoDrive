@@ -29,9 +29,11 @@ const isValidDocUrl = (url?: string): boolean => {
 };
 
 export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps> = ({ onReapply }) => {
-  const { activeDriver, setActiveDriver, currentUser, logout } = useApp();
+  const { activeDriver, setActiveDriver, currentUser, logout, deleteMyAccount } = useApp();
   const [zoomedImage, setZoomedImage] = useState<{ url: string; title: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Email verification check for email accounts
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(() => {
@@ -53,15 +55,24 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
     const driverRef = doc(db, 'drivers', driverId);
     const appRef = doc(db, 'driver_applications', `app_${driverId}`);
 
-    const unsubDriver = onSnapshot(
+      const unsubDriver = onSnapshot(
       driverRef,
       (docSnap) => {
         if (docSnap.exists()) {
           const updatedData = docSnap.data();
-          if (updatedData.status === 'approved' || updatedData.status !== activeDriver.status || updatedData.rejectionReason !== activeDriver.rejectionReason) {
+          if (
+            updatedData.status === 'approved' ||
+            updatedData.status !== activeDriver.status ||
+            updatedData.rejectionReason !== activeDriver.rejectionReason ||
+            updatedData.rejectionCount !== activeDriver.rejectionCount
+          ) {
             setActiveDriver((prev) => ({
               ...prev,
               ...updatedData,
+              rejectionCount: updatedData.rejectionCount ?? prev.rejectionCount ?? 0,
+              isPermanentlyRejected: Boolean(
+                updatedData.isPermanentlyRejected || (updatedData.rejectionCount && updatedData.rejectionCount >= 2)
+              ),
             }));
           }
         }
@@ -74,11 +85,20 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
       (docSnap) => {
         if (docSnap.exists()) {
           const appData = docSnap.data();
-          if (appData.status && (appData.status !== activeDriver.status || appData.rejectionReason !== activeDriver.rejectionReason)) {
+          if (
+            appData.status &&
+            (appData.status !== activeDriver.status ||
+              appData.rejectionReason !== activeDriver.rejectionReason ||
+              appData.rejectionCount !== activeDriver.rejectionCount)
+          ) {
             setActiveDriver((prev) => ({
               ...prev,
               status: appData.status,
               rejectionReason: appData.rejectionReason || prev.rejectionReason,
+              rejectionCount: appData.rejectionCount ?? prev.rejectionCount ?? 0,
+              isPermanentlyRejected: Boolean(
+                appData.isPermanentlyRejected || (appData.rejectionCount && appData.rejectionCount >= 2)
+              ),
             }));
           }
         }
@@ -90,7 +110,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
       unsubDriver();
       unsubApp();
     };
-  }, [activeDriver?.id, activeDriver?.status, activeDriver?.rejectionReason, setActiveDriver]);
+  }, [activeDriver?.id, activeDriver?.status, activeDriver?.rejectionReason, activeDriver?.rejectionCount, setActiveDriver]);
 
   // Reload emailVerified flag from Firebase Auth on mount
   useEffect(() => {
@@ -172,6 +192,8 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
   };
 
   const isRejected = activeDriver.status === 'rejected';
+  const rejectionCount = activeDriver.rejectionCount || (isRejected ? 1 : 0);
+  const isPermanentlyRejected = Boolean(activeDriver.isPermanentlyRejected || rejectionCount >= 2);
 
   // EXACTLY FOUR (4) VERIFICATION DOCUMENTS (validated against real uploaded URLs)
   const selfieCandidate = activeDriver.documents?.selfieUrl || activeDriver.documents?.personalPhotoUrl;
@@ -281,7 +303,7 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
           >
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-2xl shadow-inner shrink-0">
-                {isRejected ? '❌' : isMissingDocs ? '⚠️' : '⏳'}
+                {isRejected ? (isPermanentlyRejected ? '🚫' : '❌') : isMissingDocs ? '⚠️' : '⏳'}
               </div>
               <div>
                 <div className="text-[11px] font-semibold opacity-80">
@@ -289,34 +311,78 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
                 </div>
                 <div className="text-base font-black text-white">
                   {isRejected
-                    ? 'تم رفض طلب التسجيل من طرف المالك'
+                    ? isPermanentlyRejected
+                      ? 'تم رفض طلبك مرتين وحذف الطلب نهائياً'
+                      : 'تم رفض طلب التسجيل من طرف المسؤول (المرة الأولى)'
                     : isMissingDocs
                     ? 'ملف التسجيل غير مكتمل (ينقصك إرفاق الصور الـ 4)'
-                    : `طلب السائق قيد المراجعة يا ${activeDriver.name || 'السائق'}. تاريخ الطلب يرسل للمالك`}
+                    : `طلب السائق قيد المراجعة يا ${activeDriver.name || 'السائق'}`}
                 </div>
               </div>
             </div>
 
             {isRejected ? (
-              <div className="p-3.5 bg-red-950/80 border border-red-500/40 rounded-2xl space-y-2 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-red-300">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>سبب الرفض من المالك:</span>
+              isPermanentlyRejected ? (
+                <div className="p-3.5 bg-red-950/90 border border-red-500/50 rounded-2xl space-y-3 text-xs">
+                  <div className="flex items-center gap-1.5 font-black text-red-300">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>سبب الرفض النهائي من المسؤول (المرة الثانية):</span>
+                  </div>
+                  <p className="text-white font-bold pr-5 leading-relaxed bg-slate-950/70 p-2.5 rounded-xl border border-red-500/30">
+                    {activeDriver.rejectionReason || 'الوثائق أو البيانات المرفقة غير مطابقة للشروط المطلوبة.'}
+                  </p>
+                  <p className="text-red-200 leading-relaxed font-semibold">
+                    ⚠️ نظراً لرفض طلبك مرتين، تم حذف طلبك نهائياً من النظام. يتعين عليك الآن إنشاء حساب سائق من جديد وإدراج بيانات وصور صحيحة.
+                  </p>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          setIsDeleting(true);
+                          await deleteMyAccount();
+                        } finally {
+                          setIsDeleting(false);
+                        }
+                      }}
+                      disabled={isDeleting}
+                      className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-50"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4" />
+                          <span>إنشاء حساب سائق من جديد الآن</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-white font-medium pr-5 leading-relaxed">
-                  {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
-                </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={handleOpenRegistrationModal}
-                    className="w-full py-2.5 px-4 rounded-xl bg-red-500 hover:bg-red-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
-                  >
-                    <Camera className="w-4 h-4" />
-                    <span>إعادة تقديم الطلب ورفع الوثائق الـ 4 مجدداً</span>
-                  </button>
+              ) : (
+                <div className="p-3.5 bg-red-950/80 border border-red-500/40 rounded-2xl space-y-2.5 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold text-red-300">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>سبب الرفض من المسؤول:</span>
+                  </div>
+                  <p className="text-white font-bold pr-5 leading-relaxed bg-slate-950/60 p-2.5 rounded-xl border border-red-500/30">
+                    {activeDriver.rejectionReason || 'الوثائق المرفقة غير واضحة أو لا تطابق الشروط المطلوبة.'}
+                  </p>
+                  <p className="text-amber-300 text-[11px] font-semibold leading-relaxed">
+                    💡 يمكنك الآن تعديل البيانات والصور التي أدرجتها لمعالجة سبب الرفض وإرسال الطلب مجدداً للمسؤول. (تنبيه: عند الرفض للمرة الثانية يُحذف الطلب نهائياً).
+                  </p>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={handleOpenRegistrationModal}
+                      className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-[0.99] text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>تعديل البيانات والصور وإرسال الطلب مجدداً للمسؤول</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )
             ) : isMissingDocs ? (
               <div className="p-3.5 bg-red-950/80 border border-red-500/40 rounded-2xl space-y-2.5 text-xs">
                 <p className="text-red-200 leading-relaxed font-semibold">
@@ -468,13 +534,57 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
             </a>
           </div>
 
-          <div className="text-center pt-2">
+          <div className="flex flex-col items-center gap-2 pt-2">
             <button
               onClick={logout}
-              className="text-xs text-slate-500 hover:text-red-400 transition-colors font-medium cursor-pointer"
+              className="text-xs text-slate-400 hover:text-white transition-colors font-bold cursor-pointer"
             >
               تسجيل الخروج من الحساب
             </button>
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs text-red-400 hover:text-red-300 transition-colors font-bold cursor-pointer underline"
+            >
+              حذف حساب السائق نهائياً (للتسجيل كراكب بهذا الرقم)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in" dir="rtl">
+          <div className="bg-slate-900 border border-red-500/40 rounded-3xl p-5 max-w-xs w-full text-right space-y-3 shadow-2xl">
+            <h4 className="text-sm font-black text-white text-center">تأكيد حذف حساب السائق نهائياً</h4>
+            <p className="text-xs text-slate-300 text-center leading-relaxed">
+              هل أنت متأكد من رغبتك في حذف حساب وطلب السائق نهائياً؟ بعد الحذف يمكنك التسجيل بهذا الرقم كراكب.
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setIsDeleting(true);
+                    await deleteMyAccount();
+                    setShowDeleteConfirm(false);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                className="py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting ? 'جاري الحذف...' : 'نعم، احذف حسابي'}
+              </button>
+            </div>
           </div>
         </div>
       )}

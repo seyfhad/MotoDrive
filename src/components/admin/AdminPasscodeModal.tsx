@@ -33,16 +33,16 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
   const performLogin = () => {
     const ownerUser: any = {
       uid: 'admin-owner-seyfhad',
-      displayName: 'مالك التطبيق (Admin)',
+      displayName: 'المسؤول',
       email: ADMIN_OWNER_EMAIL,
       photoURL: '/assets/images/admin_logo.jpg',
     };
 
     const ownerProfile: any = {
       id: 'admin-owner-seyfhad',
-      name: 'مالك التطبيق (Seyf)',
+      name: 'المسؤول',
       email: ADMIN_OWNER_EMAIL,
-      phone: '0542524728',
+      phone: '',
       role: 'admin',
       status: 'active',
       createdAt: new Date().toISOString(),

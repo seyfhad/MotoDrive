@@ -11,8 +11,9 @@ const deleteDoc = async (reference: any): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   await fbDeleteDoc(reference);
 };
-import { updateDriverStatusInFirestore } from '../../services/firestoreService';
+import { updateDriverStatusInFirestore, deleteUserAccountFromFirestore } from '../../services/firestoreService';
 import { approveDriverApplication, rejectDriverApplication } from '../../services/driverApplicationsService';
+import { removeAccountFromLocalVault } from '../../services/dataVaultService';
 import {
   Check,
   X,
@@ -44,6 +45,8 @@ export interface FirestoreDriverRecord {
   photoUrl?: string;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   rejectionReason?: string;
+  rejectionCount?: number;
+  isPermanentlyRejected?: boolean;
   createdAt?: any;
   motorcycle?: {
     brand?: string;
@@ -89,6 +92,13 @@ export const AdminDriversPanel: React.FC = () => {
   const [rejectionInput, setRejectionInput] = useState<string>('الوثائق المرفقة غير واضحة أو غير مطابقة للشروط');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [deletedKeys, setDeletedKeys] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+      if (saved) return new Set(JSON.parse(saved));
+    } catch (e) {}
+    return new Set();
+  });
 
   // Real-time Firestore subscriptions to BOTH 'drivers' AND 'driver_applications'
   useEffect(() => {
@@ -140,11 +150,26 @@ export const AdminDriversPanel: React.FC = () => {
     const merged: Record<string, FirestoreDriverRecord> = {};
 
     for (const drv of rawDriversList) {
+      if (
+        deletedKeys.has(drv.id) ||
+        (drv.userId && deletedKeys.has(drv.userId)) ||
+        (drv.phone && deletedKeys.has(drv.phone))
+      ) {
+        continue;
+      }
       merged[drv.id] = { ...drv };
     }
 
     for (const app of appsList) {
       const targetDriverId = app.driverId || `driver-${app.userId || app.phone || app.id}`;
+      if (
+        deletedKeys.has(app.id) ||
+        deletedKeys.has(targetDriverId) ||
+        (app.userId && deletedKeys.has(app.userId)) ||
+        (app.phone && deletedKeys.has(app.phone))
+      ) {
+        continue;
+      }
       // Also check if a driver record with the same phone number already exists in merged
       const existingKey =
         Object.keys(merged).find(
@@ -154,6 +179,26 @@ export const AdminDriversPanel: React.FC = () => {
       const existing = merged[existingKey];
       const appDocs = app.documents || {};
       const existingDocs = existing?.documents || {};
+
+      // Resolve status so an approved/rejected driver NEVER stays pending if either record was updated,
+      // EXCEPT when a rejected driver resubmitted their application (app.status === 'pending' with newer submittedAt)
+      let resolvedStatus: 'pending' | 'approved' | 'rejected' | 'suspended' = 'pending';
+      if (existing?.status === 'approved' || app.status === 'approved') {
+        resolvedStatus = 'approved';
+      } else if (app.status === 'pending' && existing?.status === 'pending') {
+        resolvedStatus = 'pending';
+      } else if (existing?.status === 'rejected' || app.status === 'rejected') {
+        resolvedStatus = 'rejected';
+      } else if (existing?.status === 'suspended' || app.status === 'suspended') {
+        resolvedStatus = 'suspended';
+      } else {
+        resolvedStatus = app.status || existing?.status || 'pending';
+      }
+
+      const resolvedRejectionCount = Math.max(
+        Number(app.rejectionCount || 0),
+        Number(existing?.rejectionCount || 0)
+      );
 
       merged[existingKey] = {
         id: existingKey,
@@ -169,8 +214,10 @@ export const AdminDriversPanel: React.FC = () => {
           existingDocs.selfieUrl ||
           existing?.photoUrl ||
           undefined,
-        status: app.status || existing?.status || 'pending',
+        status: resolvedStatus,
         rejectionReason: app.rejectionReason || existing?.rejectionReason,
+        rejectionCount: resolvedRejectionCount,
+        isPermanentlyRejected: Boolean(app.isPermanentlyRejected || existing?.isPermanentlyRejected || resolvedRejectionCount >= 2),
         createdAt: app.submittedAt || existing?.createdAt,
         motorcycle: {
           brand: app.motorcycle?.brand || existing?.motorcycle?.brand || 'SYM',
@@ -182,6 +229,7 @@ export const AdminDriversPanel: React.FC = () => {
         documents: {
           ...existingDocs,
           ...appDocs,
+          status: resolvedStatus,
           selfieUrl: appDocs.selfieUrl || existingDocs.selfieUrl || existingDocs.personalPhotoUrl,
           motorcyclePhotoUrl:
             appDocs.motorcyclePhotoUrl ||
@@ -197,11 +245,11 @@ export const AdminDriversPanel: React.FC = () => {
     }
 
     setDriversMap(merged);
-  }, [rawDriversList, appsList]);
+  }, [rawDriversList, appsList, deletedKeys]);
 
   const drivers: FirestoreDriverRecord[] = Object.values(driversMap);
 
-  // تحديث حالة السائق (قبول أو رفض) وحذف الصور الـ 4 تلقائياً بعد المراجعة
+  // تحديث حالة السائق (قبول أو رفض مع تطبيق قاعدة الرفض مرتين = حذف نهائي للطلب)
   const handleUpdateStatus = async (
     drv: FirestoreDriverRecord,
     newStatus: 'approved' | 'rejected',
@@ -212,6 +260,36 @@ export const AdminDriversPanel: React.FC = () => {
     setUpdatingId(driverId);
     setStatusNotice(null);
 
+    const nextRejectionCount = newStatus === 'rejected' ? (Number(drv.rejectionCount || 0) + 1) : 0;
+    const isPermanentReject = newStatus === 'rejected' && nextRejectionCount >= 2;
+
+    // Optimistic local state update so UI reflects approval/rejection immediately
+    setDriversMap((prev) => {
+      if (!prev[driverId]) return prev;
+      return {
+        ...prev,
+        [driverId]: {
+          ...prev[driverId],
+          status: newStatus,
+          rejectionReason: newStatus === 'rejected' ? (customRejectionReason || rejectionInput) : undefined,
+          rejectionCount: nextRejectionCount,
+          isPermanentlyRejected: isPermanentReject,
+          documents: {
+            ...prev[driverId].documents,
+            status: newStatus,
+            selfieUrl: undefined,
+            personalPhotoUrl: undefined,
+            motorcyclePhotoUrl: undefined,
+            motorcycleFrontUrl: undefined,
+            licenseUrl: undefined,
+            licenseFrontUrl: undefined,
+            vehicleRegistrationUrl: undefined,
+            vehicleDocFrontUrl: undefined,
+          },
+        },
+      };
+    });
+
     try {
       const finalReason =
         newStatus === 'rejected'
@@ -220,27 +298,29 @@ export const AdminDriversPanel: React.FC = () => {
 
       if (newStatus === 'approved') {
         try {
-          await approveDriverApplication(appId, driverId, 'admin');
+          await approveDriverApplication(appId, driverId, 'admin', drv.phone);
         } catch (appErr) {
           console.warn('Notice approving application doc:', appErr);
         }
+        await updateDriverStatusInFirestore(driverId, 'approved', undefined, drv.phone, 0);
       } else {
         try {
-          await rejectDriverApplication(appId, driverId, finalReason!, 'admin');
+          await rejectDriverApplication(appId, driverId, finalReason!, 'admin', drv.phone, nextRejectionCount);
         } catch (appErr) {
           console.warn('Notice rejecting application doc:', appErr);
         }
+        await updateDriverStatusInFirestore(driverId, 'rejected', finalReason, drv.phone, nextRejectionCount);
       }
-
-      await updateDriverStatusInFirestore(driverId, newStatus, finalReason);
 
       setRejectingDriverId(null);
       setStatusNotice({
         type: 'success',
         text:
           newStatus === 'approved'
-            ? `✅ تم قبول وتفعيل السائق (${drv.name}) بنجاح وحذف الصور الـ 4 المؤقتة بعد معاينتها.`
-            : `❌ تم رفض طلب السائق (${drv.name}) وإرسال سبب الرفض إليه وحذف الصور المؤقتة.`,
+            ? `✅ تم قبول وتفعيل السائق (${drv.name}) بنجاح وأصبح حسابه جاهزاً للعمل فوراً.`
+            : isPermanentReject
+            ? `🚫 تم رفض السائق (${drv.name}) للمرة الثانية وحذف طلبه نهائياً مع إرسال سبب الرفض إليه.`
+            : `❌ تم رفض طلب السائق (${drv.name}) للمرة الأولى وإرسال السبب إليه ليقوم بتعديل بياناته وإعادة الإرسال.`,
       });
     } catch (err: any) {
       console.error('Error updating driver status:', err);
@@ -253,18 +333,65 @@ export const AdminDriversPanel: React.FC = () => {
     }
   };
 
-  // حذف السائق من Firestore
+  // حذف السائق وجميع مستنداته من Firestore والذاكرة المحلية نهائياً دون عودته تلقائياً
   const handleDeleteDriver = async (drv: FirestoreDriverRecord) => {
     setUpdatingId(drv.id);
     setStatusNotice(null);
+    const appId = drv.applicationId || `app_${drv.id}`;
+
+    // 1. Optimistically remove from local UI state immediately and record in deletedKeys
+    setDeletedKeys((prev) => {
+      const next = new Set(prev);
+      next.add(drv.id);
+      if (drv.applicationId) next.add(drv.applicationId);
+      next.add(appId);
+      if (drv.userId) next.add(drv.userId);
+      if (drv.phone) next.add(drv.phone);
+      try {
+        localStorage.setItem('motodrive_admin_deleted_driver_keys', JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+
+    setDriversMap((prev) => {
+      const next = { ...prev };
+      delete next[drv.id];
+      for (const k of Object.keys(next)) {
+        if (
+          (drv.phone && next[k].phone === drv.phone) ||
+          (drv.userId && next[k].userId === drv.userId)
+        ) {
+          delete next[k];
+        }
+      }
+      return next;
+    });
+    setRawDriversList((prev) =>
+      prev.filter(
+        (d) =>
+          d.id !== drv.id &&
+          (!drv.phone || d.phone !== drv.phone) &&
+          (!drv.userId || d.userId !== drv.userId)
+      )
+    );
+    setAppsList((prev) =>
+      prev.filter(
+        (a) =>
+          a.id !== appId &&
+          a.id !== drv.applicationId &&
+          a.driverId !== drv.id &&
+          (!drv.phone || a.phone !== drv.phone) &&
+          (!drv.userId || a.userId !== drv.userId)
+      )
+    );
+    setConfirmDeleteId(null);
+
     try {
-      await deleteDoc(doc(db, 'drivers', drv.id)).catch(() => {});
-      const appId = drv.applicationId || `app_${drv.id}`;
-      await deleteDoc(doc(db, 'driver_applications', appId)).catch(() => {});
-      setConfirmDeleteId(null);
+      await deleteUserAccountFromFirestore('driver', drv.userId, drv.id, drv.phone, appId);
+      await removeAccountFromLocalVault(drv.phone, drv.userId, drv.id);
       setStatusNotice({
         type: 'success',
-        text: `🗑️ تم حذف طلب وحساب السائق (${drv.name}) نهائياً.`,
+        text: `🗑️ تم حذف طلب وحساب السائق (${drv.name}) نهائياً ولن يعود للظهور مجدداً.`,
       });
     } catch (err: any) {
       console.error('Error deleting driver:', err);
@@ -492,13 +619,13 @@ export const AdminDriversPanel: React.FC = () => {
                     {drv.status === 'pending' && (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse">
                         <Clock className="w-3 h-3" />
-                        بانتظار موافقة المالك
+                        {(drv.rejectionCount || 0) >= 1 ? 'أعاد الإرسال بعد الرفض الأول' : 'بانتظار موافقة المالك'}
                       </span>
                     )}
                     {drv.status === 'rejected' && (
                       <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-black bg-red-500/20 text-red-400 border border-red-500/30">
                         <X className="w-3 h-3" />
-                        مرفوض
+                        {(drv.rejectionCount || 0) >= 2 ? 'مرفوض مرتين (حُذف الطلب)' : 'مرفوض (المرة 1)'}
                       </span>
                     )}
                   </div>

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { Complaint } from '../../types';
-import { AlertTriangle, CheckCircle2, Clock, Search, MessageSquare, Shield, Check, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Search, MessageSquare, Shield, Check, X, Trash2 } from 'lucide-react';
 
 export const AdminComplaints: React.FC = () => {
-  const { complaints, resolveComplaint } = useApp();
+  const { complaints, resolveComplaint, deleteComplaint } = useApp();
   const [filter, setFilter] = useState<'all' | 'pending' | 'investigating' | 'resolved'>('all');
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [adminNote, setAdminNote] = useState('');
@@ -97,14 +97,23 @@ export const AdminComplaints: React.FC = () => {
                   <span className="font-bold text-white">{comp.userName}</span> (رحلة: #{comp.rideId})
                 </div>
 
-                {comp.status !== 'resolved' && (
+                <div className="flex items-center gap-2">
+                  {comp.status !== 'resolved' && (
+                    <button
+                      onClick={() => setSelectedComplaint(comp)}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      معالجة الشكوى
+                    </button>
+                  )}
                   <button
-                    onClick={() => setSelectedComplaint(comp)}
-                    className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors"
+                    onClick={() => deleteComplaint(comp.id)}
+                    className="p-1.5 bg-red-500/15 hover:bg-red-500/30 border border-red-500/30 text-red-400 rounded-xl transition-colors cursor-pointer"
+                    title="حذف الشكوى نهائياً"
                   >
-                    معالجة الشكوى
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
-                )}
+                </div>
               </div>
             </div>
           ))

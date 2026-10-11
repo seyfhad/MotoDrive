@@ -187,13 +187,49 @@ export function loadPhoneDirectoryFromStorage(): Record<
     }
   }
 
+  let deletedSet = new Set<string>();
+  try {
+    const rawDel = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+    if (rawDel) deletedSet = new Set(JSON.parse(rawDel));
+  } catch {}
+
+  for (const key of Object.keys(merged)) {
+    const entry = merged[key];
+    if (!entry) continue;
+    const prof = entry.profile;
+    const drv = entry.driver;
+    if (
+      deletedSet.has(key) ||
+      (prof?.id && deletedSet.has(prof.id)) ||
+      (prof?.phone && deletedSet.has(prof.phone)) ||
+      (drv?.id && deletedSet.has(drv.id)) ||
+      (drv?.phone && deletedSet.has(drv.phone)) ||
+      prof?.status === 'deleted' ||
+      drv?.status === 'deleted'
+    ) {
+      delete merged[key];
+      continue;
+    }
+    if (
+      prof &&
+      (prof.role === 'admin' ||
+        prof.name?.includes('مالك التطبيق') ||
+        prof.name?.includes('المسؤول') ||
+        prof.name?.toLowerCase().includes('seyf'))
+    ) {
+      entry.profile = {
+        ...prof,
+        role: drv ? 'driver' : 'passenger',
+        name: prof.name?.includes('مالك') || prof.name?.includes('المسؤول') || prof.name?.toLowerCase().includes('seyf') ? '' : prof.name,
+      };
+    }
+  }
+
   // Self-heal if one was missing entries
   try {
-    if (Object.keys(merged).length > 0) {
-      const serialized = JSON.stringify(merged);
-      localStorage.setItem(PRIMARY_DIR_KEY, serialized);
-      localStorage.setItem(BACKUP_DIR_KEY, serialized);
-    }
+    const serialized = JSON.stringify(merged);
+    localStorage.setItem(PRIMARY_DIR_KEY, serialized);
+    localStorage.setItem(BACKUP_DIR_KEY, serialized);
   } catch {}
 
   return merged;
@@ -207,6 +243,16 @@ export async function getUserFromIndexedDBVault(
   if (!cleanPhone) return { profile: null, driver: null };
 
   try {
+    const rawDel = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+    if (rawDel) {
+      const delSet = new Set(JSON.parse(rawDel));
+      if (delSet.has(cleanPhone) || delSet.has(`user-${cleanPhone}`) || delSet.has(`driver-user-${cleanPhone}`)) {
+        return { profile: null, driver: null };
+      }
+    }
+  } catch {}
+
+  try {
     const db = await openVaultDB();
     if (!db) return { profile: null, driver: null };
 
@@ -215,21 +261,22 @@ export async function getUserFromIndexedDBVault(
       const req = tx.objectStore(STORE_USERS).get(cleanPhone);
       req.onsuccess = () => {
         const res = req.result as VaultDirectoryEntry | undefined;
-        if (res && res.profile) {
-          // Also restore back into localStorage directory
-          try {
-            const dir = loadPhoneDirectoryFromStorage();
-            dir[cleanPhone] = {
-              profile: res.profile,
-              driver: res.driver || null,
-              checksum: res.checksum,
-              updatedAt: res.updatedAt,
+        if (res && res.profile && (res.profile as any).status !== 'deleted') {
+          let prof = res.profile;
+          const drv = res.driver && (res.driver as any).status !== 'deleted' ? res.driver : null;
+          if (
+            prof.role === 'admin' ||
+            prof.name?.includes('مالك التطبيق') ||
+            prof.name?.includes('المسؤول') ||
+            prof.name?.toLowerCase().includes('seyf')
+          ) {
+            prof = {
+              ...prof,
+              role: drv ? 'driver' : 'passenger',
+              name: '',
             };
-            const serialized = JSON.stringify(dir);
-            localStorage.setItem(PRIMARY_DIR_KEY, serialized);
-            localStorage.setItem(BACKUP_DIR_KEY, serialized);
-          } catch {}
-          resolve({ profile: res.profile, driver: res.driver || null });
+          }
+          resolve({ profile: prof, driver: drv });
         } else {
           resolve({ profile: null, driver: null });
         }
@@ -250,11 +297,17 @@ export async function hydrateVaultOnStartup(): Promise<{
   let restoredUsersCount = 0;
   let restoredRidesCount = 0;
 
+  let deletedSet = new Set<string>();
+  try {
+    const rawDel = localStorage.getItem('motodrive_admin_deleted_driver_keys');
+    if (rawDel) deletedSet = new Set(JSON.parse(rawDel));
+  } catch {}
+
   try {
     const db = await openVaultDB();
     if (!db) return { restoredUsersCount: 0, restoredRidesCount: 0 };
 
-    // 1. Sync users from IDB -> LocalStorage
+    // 1. Sync users from IDB -> LocalStorage (skipping deleted entries)
     const idbUsers: VaultDirectoryEntry[] = await new Promise((resolve) => {
       const tx = db.transaction([STORE_USERS], 'readonly');
       const req = tx.objectStore(STORE_USERS).getAll();
@@ -267,6 +320,15 @@ export async function hydrateVaultOnStartup(): Promise<{
 
     for (const item of idbUsers) {
       if (item?.phone && item?.profile) {
+        if (
+          deletedSet.has(item.phone) ||
+          (item.profile.id && deletedSet.has(item.profile.id)) ||
+          (item.driver?.id && deletedSet.has(item.driver.id)) ||
+          (item.profile as any).status === 'deleted' ||
+          (item.driver && (item.driver as any).status === 'deleted')
+        ) {
+          continue;
+        }
         const existing = dir[item.phone];
         if (!existing || (item.updatedAt || 0) > (existing.updatedAt || 0)) {
           dir[item.phone] = {
@@ -278,13 +340,6 @@ export async function hydrateVaultOnStartup(): Promise<{
           dirModified = true;
           restoredUsersCount++;
         }
-      }
-    }
-
-    // Also push any localStorage users back into IDB
-    for (const [phone, entry] of Object.entries(dir)) {
-      if (entry?.profile) {
-        saveUserToSecureVault(phone, entry.profile, entry.driver).catch(() => {});
       }
     }
 
@@ -390,6 +445,56 @@ export function clearActiveSessionOnly(): void {
     localStorage.removeItem('motodrive_user_role');
     localStorage.removeItem('motodrive_current_role');
     localStorage.removeItem('motodrive_current_user');
+  } catch {}
+}
+
+// Completely remove an account (user and/or driver) from localStorage directory and IndexedDB vault by phone and IDs
+export async function removeAccountFromLocalVault(
+  phone?: string,
+  userId?: string,
+  driverId?: string
+): Promise<void> {
+  const cleanPhone = phone ? normalizeVaultPhone(phone) : '';
+  const rawPhone = phone ? phone.trim().replace(/\s+/g, '') : '';
+
+  try {
+    [PRIMARY_DIR_KEY, BACKUP_DIR_KEY].forEach((dirKey) => {
+      const raw = localStorage.getItem(dirKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (cleanPhone) delete parsed[cleanPhone];
+        if (rawPhone) delete parsed[rawPhone];
+        for (const k of Object.keys(parsed)) {
+          const item = parsed[k];
+          if (
+            (userId && item?.profile?.id === userId) ||
+            (driverId && item?.driver?.id === driverId) ||
+            (cleanPhone && item?.profile?.phone === cleanPhone) ||
+            (cleanPhone && item?.driver?.phone === cleanPhone)
+          ) {
+            delete parsed[k];
+          }
+        }
+        localStorage.setItem(dirKey, JSON.stringify(parsed));
+      }
+    });
+
+    if (cleanPhone) {
+      localStorage.removeItem(`motodrive_pending_driver_${cleanPhone}`);
+    }
+    if (rawPhone) {
+      localStorage.removeItem(`motodrive_pending_driver_${rawPhone}`);
+    }
+  } catch {}
+
+  try {
+    const db = await openVaultDB();
+    if (db) {
+      const tx = db.transaction([STORE_USERS, STORE_DRIVERS], 'readwrite');
+      if (cleanPhone) tx.objectStore(STORE_USERS).delete(cleanPhone);
+      if (rawPhone && rawPhone !== cleanPhone) tx.objectStore(STORE_USERS).delete(rawPhone);
+      if (driverId) tx.objectStore(STORE_DRIVERS).delete(driverId);
+    }
   } catch {}
 }
 
