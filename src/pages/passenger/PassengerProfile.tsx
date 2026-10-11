@@ -9,13 +9,8 @@ export const PassengerProfile: React.FC = () => {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isLoadingProfile] = useState(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingProfile(false), 350);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleSignOut = async () => {
     try {

@@ -6,15 +6,10 @@ import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const DriverProfile: React.FC = () => {
   const { activeDriver, deleteMyAccount } = useApp();
-  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
+  const [isLoadingProfile] = useState<boolean>(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingProfile(false), 350);
-    return () => clearTimeout(timer);
-  }, []);
 
   const handleConfirmDeleteAccount = async () => {
     try {

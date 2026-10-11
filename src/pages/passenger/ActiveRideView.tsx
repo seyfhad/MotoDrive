@@ -648,32 +648,39 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
         </div>
       </div>
 
-      {/* Driver Simulation Step Advance Trigger (Quick dev helper to test passenger view advancing without switching role) */}
+      {/* Cancellation & Admin Test Controls */}
       <div className="flex items-center gap-2 pt-1">
-        {ride.status !== 'trip_started' ? (
-          <button
-            onClick={() => advanceRideStatus(ride.id)}
-            className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors"
-          >
-            {ride.status === 'accepted' && 'محاكاة: السائق يقترب'}
-            {ride.status === 'driver_arriving' && 'محاكاة: السائق وصل'}
-            {ride.status === 'driver_arrived' && 'محاكاة: بدء الرحلة'}
-          </button>
-        ) : (
-          <button
-            onClick={() => advanceRideStatus(ride.id)}
-            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors"
-          >
-            محاكاة: الوصول وإنهاء الرحلة
-          </button>
+        {activePassenger.role === 'admin' && (
+          ride.status !== 'trip_started' ? (
+            <button
+              type="button"
+              onClick={() => advanceRideStatus(ride.id)}
+              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+            >
+              {ride.status === 'accepted' && 'محاكاة: السائق يقترب'}
+              {ride.status === 'driver_arriving' && 'محاكاة: السائق وصل'}
+              {ride.status === 'driver_arrived' && 'محاكاة: بدء الرحلة'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => advanceRideStatus(ride.id)}
+              className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            >
+              محاكاة: الوصول وإنهاء الرحلة
+            </button>
+          )
         )}
 
-        <button
-          onClick={() => setShowCancelModal(true)}
-          className="px-3 py-2 bg-slate-900 border border-slate-800 hover:bg-red-500/20 text-red-400 rounded-xl text-xs font-semibold transition-colors"
-        >
-          إلغاء الرحلة
-        </button>
+        {ride.status !== 'trip_started' && (
+          <button
+            type="button"
+            onClick={() => setShowCancelModal(true)}
+            className="w-full py-2.5 bg-slate-950 border border-slate-800 hover:bg-red-500/15 text-red-400 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+          >
+            إلغاء الرحلة
+          </button>
+        )}
       </div>
 
       {/* In-App Chat Modal */}

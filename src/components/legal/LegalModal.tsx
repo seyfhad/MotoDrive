@@ -108,11 +108,23 @@ export const LegalModal: React.FC<LegalModalProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-white mb-1.5 flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-amber-400" />
-                  <span>3. حقوق المستخدم وحذف البيانات</span>
+                  <span>3. حقوق المستخدم وحذف الحساب والبيانات (Google Play Data Safety)</span>
                 </h4>
                 <p>
-                  يحق لكل مستخدم في أي وقت طلب تعديل أو حذف حسابه وبياناته المسجلة عبر التواصل مع الدعم الفني.
+                  يحق لكل مستخدم (راكب أو سائق) في أي وقت حذف حسابه وجميع بياناته وسجل رحلاته نهائياً وفوراً من داخل التطبيق عبر الضغط على زر <strong>"حذف الحساب والبيانات نهائياً"</strong> في صفحة (حسابي)، أو عبر التواصل مع الدعم الفني على الرقم 0542524728.
                 </p>
+              </div>
+
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-1.5">
+                <div className="font-bold text-emerald-400 flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>4. الإفصاح البارز عن الأذونات (Google Play Prominent Disclosure)</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300 pr-1">
+                  <li><strong>إذن الموقع الجغرافي (Location / GPS):</strong> يُستخدم لتحديد نقطة انطلاق الراكب بدقة، إظهار السائقين القريبين، وتتبع مسار الرحلة الحية بين السائق والراكب لضمان الأمان.</li>
+                  <li><strong>إذن الكاميرا والصور (Camera / Photos):</strong> يُستخدم حصرياً عند تسجيل السائقين الجدد لرفع الوثائق الـ 4 الإجبارية (الصورة الشخصية، رخصة السياقة، البطاقة الرمادية، وصورة الدراجة) لمراجعتها من قبل المسؤول، وتُحذف ملفات التحقق المؤقتة فور اعتماد الحساب.</li>
+                  <li><strong>عدم مشاركة البيانات مع أطراف ثالثة:</strong> لا تقوم منصة MotoDrive ببيع أو مشاركة بيانات المستخدمين مع أي جهات إعلانية خارجية.</li>
+                </ul>
               </div>
             </div>
           ) : (

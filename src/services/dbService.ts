@@ -306,39 +306,112 @@ export interface SavedFavoritePlaces {
 
 const FAVORITE_PLACES_KEY = 'passenger_saved_favorite_places_v1';
 
-export const getSavedFavoritePlaces = async (userId: string): Promise<SavedFavoritePlaces> => {
-  const key = `${FAVORITE_PLACES_KEY}_${userId || 'guest'}`;
-  const cached = await getFromLocalCache<SavedFavoritePlaces>(key);
-  if (cached) return cached;
+export const getSavedFavoritePlaces = async (
+  userId: string,
+  phone?: string,
+  profileLocations?: { homeLocation?: Coordinates | null; workLocation?: Coordinates | null }
+): Promise<SavedFavoritePlaces> => {
+  const cleanPhone = phone ? phone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0') : '';
+  const primaryKey = `${FAVORITE_PLACES_KEY}_${userId || 'guest'}`;
+  const phoneKey = cleanPhone ? `${FAVORITE_PLACES_KEY}_phone_${cleanPhone}` : '';
 
+  let result: SavedFavoritePlaces = { home: null, work: null, custom: [] };
+
+  // 1. Check profileLocations from Firestore UserProfile first if provided
+  if (profileLocations?.homeLocation || profileLocations?.workLocation) {
+    result = {
+      home: profileLocations.homeLocation || null,
+      work: profileLocations.workLocation || null,
+      custom: [],
+    };
+  }
+
+  // 2. Check IndexedDB Cache (by userId or phone)
+  const cachedByUser = await getFromLocalCache<SavedFavoritePlaces>(primaryKey);
+  const cachedByPhone = phoneKey ? await getFromLocalCache<SavedFavoritePlaces>(phoneKey) : null;
+
+  if (cachedByUser?.home || cachedByUser?.work) {
+    result = {
+      home: result.home || cachedByUser.home || null,
+      work: result.work || cachedByUser.work || null,
+      custom: cachedByUser.custom || [],
+    };
+  }
+  if (cachedByPhone?.home || cachedByPhone?.work) {
+    result = {
+      home: result.home || cachedByPhone.home || null,
+      work: result.work || cachedByPhone.work || null,
+      custom: result.custom?.length ? result.custom : (cachedByPhone.custom || []),
+    };
+  }
+
+  // 3. Check localStorage fallback (by userId or phone)
   try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw) as SavedFavoritePlaces;
-      await saveToLocalCache(key, parsed, 365 * 24 * 60 * 60 * 1000);
-      return parsed;
+    const rawUser = localStorage.getItem(primaryKey);
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser) as SavedFavoritePlaces;
+      result = {
+        home: result.home || parsed.home || null,
+        work: result.work || parsed.work || null,
+        custom: result.custom?.length ? result.custom : (parsed.custom || []),
+      };
+    }
+    if (phoneKey) {
+      const rawPhone = localStorage.getItem(phoneKey);
+      if (rawPhone) {
+        const parsedPhone = JSON.parse(rawPhone) as SavedFavoritePlaces;
+        result = {
+          home: result.home || parsedPhone.home || null,
+          work: result.work || parsedPhone.work || null,
+          custom: result.custom?.length ? result.custom : (parsedPhone.custom || []),
+        };
+      }
     }
   } catch {}
 
-  return { home: null, work: null, custom: [] };
+  // Save merged state back to local caches so both userId and phone keys stay in sync
+  if (result.home || result.work) {
+    try {
+      localStorage.setItem(primaryKey, JSON.stringify(result));
+      if (phoneKey) localStorage.setItem(phoneKey, JSON.stringify(result));
+    } catch {}
+    await saveToLocalCache(primaryKey, result, 365 * 24 * 60 * 60 * 1000);
+    if (phoneKey) {
+      await saveToLocalCache(phoneKey, result, 365 * 24 * 60 * 60 * 1000);
+    }
+  }
+
+  return result;
 };
 
 export const saveFavoritePlace = async (
   userId: string,
   type: 'home' | 'work',
-  coords: Coordinates | null
+  coords: Coordinates | null,
+  phone?: string
 ): Promise<SavedFavoritePlaces> => {
-  const key = `${FAVORITE_PLACES_KEY}_${userId || 'guest'}`;
-  const current = await getSavedFavoritePlaces(userId);
+  const cleanPhone = phone ? phone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0') : '';
+  const primaryKey = `${FAVORITE_PLACES_KEY}_${userId || 'guest'}`;
+  const phoneKey = cleanPhone ? `${FAVORITE_PLACES_KEY}_phone_${cleanPhone}` : '';
+
+  const current = await getSavedFavoritePlaces(userId, cleanPhone);
   const updated: SavedFavoritePlaces = {
     ...current,
     [type]: coords,
   };
 
   try {
-    localStorage.setItem(key, JSON.stringify(updated));
+    localStorage.setItem(primaryKey, JSON.stringify(updated));
+    if (phoneKey) {
+      localStorage.setItem(phoneKey, JSON.stringify(updated));
+    }
   } catch {}
-  await saveToLocalCache(key, updated, 365 * 24 * 60 * 60 * 1000);
+
+  await saveToLocalCache(primaryKey, updated, 365 * 24 * 60 * 60 * 1000);
+  if (phoneKey) {
+    await saveToLocalCache(phoneKey, updated, 365 * 24 * 60 * 60 * 1000);
+  }
+
   return updated;
 };
 

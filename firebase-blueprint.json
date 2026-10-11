@@ -11,6 +11,8 @@
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["passenger", "driver", "admin"] },
         "status": { "type": "string", "enum": ["active", "suspended", "pending"] },
+        "homeLocation": { "type": "object", "description": "Passenger saved home coordinates and address" },
+        "workLocation": { "type": "object", "description": "Passenger saved work coordinates and address" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "name", "phone", "role"]

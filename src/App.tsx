@@ -11,8 +11,9 @@ import { ContactUsModal } from './components/support/ContactUsModal';
 import { WelcomeScreen } from './components/landing/WelcomeScreen';
 import { AuthModal } from './components/auth/AuthModal';
 import { PushNotificationToast } from './components/shared/PushNotificationToast';
+import { OfflineIndicator } from './components/shared/PWAInstallButton';
 
-import { getRobustUserLocation } from './utils/geo';
+import { RideTracker } from './components/Map/RideTracker';
 
 // Passenger Views
 import { PassengerHome } from './pages/passenger/PassengerHome';
@@ -42,49 +43,38 @@ const AppContent: React.FC = () => {
   const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isGpsModalOpen, setIsGpsModalOpen] = useState(false);
-  const [isGpsLoading, setIsGpsLoading] = useState(false);
-  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
-
-  // Function to retry fetching high accuracy GPS position
-  const handleRetryGps = async () => {
-    setIsGpsLoading(true);
-    setGpsErrorMsg(null);
-    try {
-      const res = await getRobustUserLocation();
-      if (res.isFallback) {
-        setGpsErrorMsg(res.message || 'تعذر الحصول على إشارة GPS دقيقة. يرجى تفعيل "الموقع" من شريط الإشعارات للهاتف.');
-      } else {
-        setIsGpsModalOpen(false);
-      }
-    } catch (e: any) {
-      setGpsErrorMsg('خطأ في الاتصال بنظام GPS. تأكد من إتاحة الإذن وتفعيل زر الموقع.');
-    } finally {
-      setIsGpsLoading(false);
-    }
-  };
+  const [sharedRideId, setSharedRideId] = useState<string | null>(null);
 
   // Legal content (Privacy, Terms) - Directly accessible for Google Cloud verification
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | 'gcp-guide'>('privacy');
 
-  // Check URL parameters on mount (?page=privacy & ?mode=admin support)
+  // Check URL parameters & hash on mount (?page=privacy, ?ride=ID, #ride=ID)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const page = params.get('page');
-    const mode = params.get('mode') || params.get('admin');
+    const checkUrlAndHash = () => {
+      const params = new URLSearchParams(window.location.search);
+      const page = params.get('page');
+      const rideQuery = params.get('ride');
+      const hash = window.location.hash || '';
+      const hashRideMatch = hash.match(/ride=([a-zA-Z0-9_-]+)/);
 
-    if (page === 'privacy' || page === 'terms' || page === 'gcp-guide') {
-      setLegalTab(page as any);
-      setIsLegalOpen(true);
-    }
-
-    if (mode === 'admin' || mode === '1') {
-      const savedRole = localStorage.getItem('motodrive_v3_role');
-      if (savedRole === 'admin') {
-        // Auto-open AdminPanel for Owner
+      if (page === 'privacy' || page === 'terms' || page === 'gcp-guide') {
+        setLegalTab(page as any);
+        setIsLegalOpen(true);
       }
-    }
+
+      if (rideQuery) {
+        setSharedRideId(rideQuery);
+      } else if (hashRideMatch && hashRideMatch[1]) {
+        setSharedRideId(hashRideMatch[1]);
+      } else {
+        setSharedRideId(null);
+      }
+    };
+
+    checkUrlAndHash();
+    window.addEventListener('hashchange', checkUrlAndHash);
+    return () => window.removeEventListener('hashchange', checkUrlAndHash);
   }, []);
 
   useEffect(() => {
@@ -150,19 +140,6 @@ const AppContent: React.FC = () => {
     };
   }, [logout]);
 
-  // Request geolocation permission & check GPS status on app start
-  useEffect(() => {
-    getRobustUserLocation().then(res => {
-      console.log('Location permission & position status acquired on startup:', res.coords);
-      if (res.isFallback) {
-        setIsGpsModalOpen(true);
-      }
-    }).catch(err => {
-      console.warn('Geolocation startup notice:', err);
-      setIsGpsModalOpen(true);
-    });
-  }, []);
-
   // Reset tab when switching roles
   useEffect(() => {
     setActiveTab('home');
@@ -173,6 +150,44 @@ const AppContent: React.FC = () => {
     window.addEventListener('gmp-quota-exceeded', handleQuotaExceeded);
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
+
+  // Live Family Ride Share Viewer (when opening /#ride=ID from WhatsApp)
+  if (sharedRideId) {
+    return (
+      <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center p-4" dir="rtl">
+        <div className="w-full max-w-md space-y-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-4 flex items-center justify-between shadow-xl">
+            <div className="flex items-center gap-2.5">
+              <img src="/icon.jpg" alt="MotoDrive" className="w-10 h-10 rounded-full border border-amber-400 object-cover" />
+              <div>
+                <h1 className="text-sm font-black text-amber-400">متابعة الرحلة المباشرة للعائلة 🛡️</h1>
+                <p className="text-[11px] text-slate-400">تتبع حي لحركة الدراجة ومعلومات السائق على الخريطة</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.hash = '';
+                setSharedRideId(null);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
+            >
+              دخول التطبيق
+            </button>
+          </div>
+
+          <RideTracker
+            rideId={sharedRideId}
+            userRole="passenger"
+            onClose={() => {
+              window.location.hash = '';
+              setSharedRideId(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // Render Passenger Tabs
   const renderPassengerView = () => {
@@ -277,9 +292,10 @@ const AppContent: React.FC = () => {
       <div className={`w-full ${currentRole === 'admin' ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
         {/* Push Notification System Top Toast & Permission Banner */}
         <PushNotificationToast />
+        <OfflineIndicator />
 
         {/* Global Application Header */}
-        <Header onOpenSOS={() => setIsSOSOpen(true)} />
+        <Header />
 
         {/* Main View Area */}
         <main className="flex-1 w-full">

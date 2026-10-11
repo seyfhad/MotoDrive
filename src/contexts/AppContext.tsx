@@ -6,6 +6,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   getDocs,
   setDoc as fbSetDoc,
@@ -68,6 +69,7 @@ import {
   saveSystemPricing,
   sanitizeFirestoreData,
   deleteExpiredRideFromFirestore,
+  updatePassengerSavedLocation,
 } from '../services/firestoreService';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrorHandler';
 import { subscribeToAuth, signInQuickGuest, signOutUser } from '../services/authService';
@@ -99,6 +101,7 @@ import {
 import {
   syncOfflineQueueToFirestore,
   addToOfflineQueue,
+  saveFavoritePlace,
 } from '../services/dbService';
 
 interface AppContextType {
@@ -145,6 +148,7 @@ interface AppContextType {
     description: string,
     targetUserId?: string
   ) => Promise<void>;
+  updateSavedLocation: (type: 'home' | 'work', location: Coordinates | null) => Promise<void>;
 
   // Driver actions
   currentDriverRide: Ride | null;
@@ -466,11 +470,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (currentUser) {
       const ridesPath = 'rides';
-      const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'));
+      const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'), limit(60));
       unsubRides = onSnapshot(
         ridesQuery,
         async (querySnap) => {
-          const fetchedRides: Ride[] = [];
+          const rawRides: Ride[] = [];
           for (const rideDoc of querySnap.docs) {
             const rideData = { id: rideDoc.id, ...rideDoc.data() } as Ride;
             // Automatically delete unaccepted ride requests older than 08 minutes
@@ -478,26 +482,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               deleteExpiredRideFromFirestore(rideData.id).catch(() => {});
               continue;
             }
-            if (
-              ['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(
-                rideData.status
-              )
-            ) {
-              try {
-                const offersQuery = query(
-                  collection(db, 'rides', rideDoc.id, 'offers'),
-                  orderBy('createdAt', 'asc')
-                );
-                const offersSnap = await getDocs(offersQuery);
-                rideData.offers = offersSnap.docs.map(
-                  (d) => ({ id: d.id, ...d.data() } as RideOffer)
-                );
-              } catch (err) {
-                console.warn(`Error reading offers for ride ${rideDoc.id}:`, err);
-              }
-            }
-            fetchedRides.push(rideData);
+            rawRides.push(rideData);
           }
+
+          // Fetch offers in parallel only for currently active/negotiating rides
+          await Promise.all(
+            rawRides
+              .filter((r) =>
+                ['searching', 'offers_available', 'accepted', 'driver_arriving'].includes(r.status)
+              )
+              .map(async (rideData) => {
+                try {
+                  const offersQuery = query(
+                    collection(db, 'rides', rideData.id, 'offers'),
+                    orderBy('createdAt', 'asc')
+                  );
+                  const offersSnap = await getDocs(offersQuery);
+                  rideData.offers = offersSnap.docs.map(
+                    (d) => ({ id: d.id, ...d.data() } as RideOffer)
+                  );
+                } catch (err) {
+                  console.warn(`Error reading offers for ride ${rideData.id}:`, err);
+                }
+              })
+          );
+
+          const fetchedRides = rawRides;
           const uniqueRidesMap = new Map<string, Ride>();
           for (const ride of fetchedRides) {
             if (['searching', 'offers_available'].includes(ride.status)) {
@@ -571,7 +581,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       );
 
-      // Subscribe to users collection for real-time passenger sync in Admin
+      // Subscribe to users collection for real-time passenger sync in Admin & Saved Locations sync
       const usersQuery = query(collection(db, 'users'));
       unsubUsers = onSnapshot(
         usersQuery,
@@ -581,6 +591,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               (u) => ({ id: u.id, ...u.data() } as UserProfile)
             );
             setPassengers(fetchedUsers);
+            setActivePassenger((prev) => {
+              if (!prev || prev.id === 'passenger-guest') return prev;
+              const matched = fetchedUsers.find(
+                (u) => u.id === prev.id || (prev.phone && u.phone === prev.phone)
+              );
+              if (matched) {
+                return {
+                  ...prev,
+                  homeLocation: matched.homeLocation !== undefined ? matched.homeLocation : prev.homeLocation,
+                  workLocation: matched.workLocation !== undefined ? matched.workLocation : prev.workLocation,
+                };
+              }
+              return prev;
+            });
           }
         },
         () => {}
@@ -901,21 +925,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [drivers, activeDriver.id, activeDriver.userId, activeDriver.email, activeDriver.status]);
 
+  // Derive Current Active Rides (matched by passengerId or passengerPhone so restored phone accounts always resume active trips)
+  const currentPassengerRide = rides.find(
+    r =>
+      !isPendingRideExpired(r) &&
+      (r.passengerId === activePassenger.id ||
+        (activePassenger.phone &&
+          r.passengerPhone &&
+          r.passengerPhone.trim().replace(/\s+/g, '') === activePassenger.phone.trim().replace(/\s+/g, ''))) &&
+      !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
+  ) || null;
+
+  const currentDriverRide = rides.find(
+    r =>
+      r.driverId === activeDriver.id &&
+      !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
+  ) || null;
+
   // --------------------------------------------------------------------------
-  // 3. REAL GPS TRACKING FOR ACTIVE DRIVER
+  // 3. REAL GPS TRACKING FOR ACTIVE DRIVER (SYNCS TO BOTH DRIVER & ACTIVE RIDE)
   // --------------------------------------------------------------------------
+  const lastDriverCloudGpsSyncRef = useRef<number>(0);
+
   useEffect(() => {
     if (activeDriver.isOnline && 'geolocation' in navigator) {
       geoWatchIdRef.current = navigator.geolocation.watchPosition(
         (pos) => {
           const { latitude, longitude, heading, speed } = pos.coords;
-          updateFirestoreDriverLocation(
-            activeDriver.id,
-            latitude,
-            longitude,
-            heading || undefined,
-            speed || undefined
-          ).catch(console.error);
+          setActiveDriver((prev) => ({
+            ...prev,
+            location: { ...prev.location, lat: latitude, lng: longitude },
+            heading: heading || prev.heading,
+          }));
+          const now = Date.now();
+          if (now - lastDriverCloudGpsSyncRef.current >= 4000) {
+            lastDriverCloudGpsSyncRef.current = now;
+            updateFirestoreDriverLocation(
+              activeDriver.id,
+              latitude,
+              longitude,
+              heading || undefined,
+              speed || undefined,
+              currentDriverRide?.id
+            ).catch(console.error);
+          }
         },
         (err) => {
           console.warn('Geolocation error or permission denied:', err.message);
@@ -932,7 +985,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         navigator.geolocation.clearWatch(geoWatchIdRef.current);
       }
     };
-  }, [activeDriver.isOnline, activeDriver.id]);
+  }, [activeDriver.isOnline, activeDriver.id, currentDriverRide?.id]);
 
   // --------------------------------------------------------------------------
   // AUTO-DELETE UNACCEPTED PENDING RIDE REQUESTS AFTER 08 MINUTES
@@ -970,23 +1023,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const interval = setInterval(cleanupExpiredRides, 5000);
     return () => clearInterval(interval);
   }, [activePassenger.id, activePassenger.phone, addNotification]);
-
-  // Derive Current Active Rides (matched by passengerId or passengerPhone so restored phone accounts always resume active trips)
-  const currentPassengerRide = rides.find(
-    r =>
-      !isPendingRideExpired(r) &&
-      (r.passengerId === activePassenger.id ||
-        (activePassenger.phone &&
-          r.passengerPhone &&
-          r.passengerPhone.trim().replace(/\s+/g, '') === activePassenger.phone.trim().replace(/\s+/g, ''))) &&
-      !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
-  ) || null;
-
-  const currentDriverRide = rides.find(
-    r =>
-      r.driverId === activeDriver.id &&
-      !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
-  ) || null;
 
   // Driver incoming requests with Geofencing / Radius Matching (Yassir / inDrive style: prioritizes requests within 5 km road distance, sorted closest first)
   const pendingDriverRideRequests = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
@@ -1809,6 +1845,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return result;
   };
 
+  const updateSavedLocation = async (
+    type: 'home' | 'work',
+    location: Coordinates | null
+  ): Promise<void> => {
+    const fieldName = type === 'home' ? 'homeLocation' : 'workLocation';
+    const uid = activePassenger?.id || 'passenger-guest';
+    const phone = activePassenger?.phone;
+
+    const updatedPassenger: UserProfile = {
+      ...activePassenger,
+      [fieldName]: location,
+    };
+
+    setActivePassenger(updatedPassenger);
+    setPassengers((prev) =>
+      prev.map((p) =>
+        p.id === uid || (phone && p.phone === phone) ? { ...p, [fieldName]: location } : p
+      )
+    );
+
+    await saveFavoritePlace(uid, type, location, phone);
+    await updatePassengerSavedLocation(uid, phone, type, location);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1840,6 +1900,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cancelRide,
         submitRating,
         submitComplaint,
+        updateSavedLocation,
 
         currentDriverRide,
         pendingDriverRideRequest,

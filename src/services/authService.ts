@@ -292,6 +292,8 @@ export const registerOrRestoreUserByPhone = async (
       phone: cleanPhone,
       name: existingHasRealName ? foundProfile.name : (!isGenericName ? rawInputName : foundProfile.name),
       role: role === 'driver' ? 'driver' : (foundProfile.role || role),
+      homeLocation: foundProfile.homeLocation ?? directory[cleanPhone]?.profile?.homeLocation ?? undefined,
+      workLocation: foundProfile.workLocation ?? directory[cleanPhone]?.profile?.workLocation ?? undefined,
     };
   } else {
     // New user creation with deterministic phone-based ID so same phone always maps to same account

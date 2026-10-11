@@ -10,10 +10,9 @@ import { TripRatingModal } from '../../components/passenger/TripRatingModal';
 export const PassengerTrips: React.FC = () => {
   const { activePassenger, rides } = useApp();
   const [filter, setFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedRideToRate, setSelectedRideToRate] = useState<Ride | null>(null);
 
-  // جلب وتحديث السجل مع Supabase مع إظهار تأثير التحميل الهيكلي (Loading Skeleton)
   const loadTripsData = async () => {
     setIsLoading(true);
     try {
@@ -21,13 +20,12 @@ export const PassengerTrips: React.FC = () => {
     } catch (e) {
       console.warn('Supabase fetch notice:', e);
     } finally {
-      // إعطاء وقت كافٍ لتأثير الـ Skeleton لتقليل ارتباك المستخدم والانتقال بسلاسة
-      setTimeout(() => setIsLoading(false), 450);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadTripsData();
+    supabaseService.getRides(activePassenger.id, 'passenger').catch(() => {});
   }, [activePassenger.id]);
 
   const passengerRides = rides.filter(

@@ -7,9 +7,8 @@ import { supabaseService } from '../../services/supabaseService';
 
 export const DriverTrips: React.FC = () => {
   const { activeDriver, rides } = useApp();
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // جلب سجل رحلات السائق من Supabase مع تأثير الـ Skeleton
   const loadDriverTrips = async () => {
     setIsLoading(true);
     try {
@@ -17,12 +16,12 @@ export const DriverTrips: React.FC = () => {
     } catch (e) {
       console.warn('Driver trips notice:', e);
     } finally {
-      setTimeout(() => setIsLoading(false), 450);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadDriverTrips();
+    supabaseService.getRides(activeDriver.id, 'driver').catch(() => {});
   }, [activeDriver.id]);
 
   const driverRides = rides.filter(r => r.driverId === activeDriver.id);

@@ -35,7 +35,7 @@ export const DriverHome: React.FC = () => {
   const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
   const [locationSuccessMsg, setLocationSuccessMsg] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(false);
   const [ratingRide, setRatingRide] = useState<Ride | null>(null);
   const [selectedModalRide, setSelectedModalRide] = useState<Ride | null>(null);
 
@@ -54,15 +54,7 @@ export const DriverHome: React.FC = () => {
   }, [rides, activeDriver.id, activeDriver.phone]);
 
   useEffect(() => {
-    let isMounted = true;
-    supabaseService.getDriverEarnings(activeDriver.id).catch(() => {}).finally(() => {
-      if (isMounted) {
-        setTimeout(() => setIsSyncingSupabase(false), 400);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
+    supabaseService.getDriverEarnings(activeDriver.id).catch(() => {});
   }, [activeDriver.id]);
 
   // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق

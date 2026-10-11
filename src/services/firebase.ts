@@ -38,11 +38,6 @@ export const isFirestoreQuotaExceeded = (): boolean => {
   if (quotaExceededMemory) return true;
   try {
     const today = getTodayUtcDate();
-    // We know 2026-10-09 daily free write quota for this project is exhausted
-    if (today === '2026-10-09') {
-      quotaExceededMemory = true;
-      return true;
-    }
     const savedFlag = localStorage.getItem(QUOTA_STORAGE_KEY);
     const savedDate = localStorage.getItem(QUOTA_DATE_KEY);
     if (savedFlag === 'true') {

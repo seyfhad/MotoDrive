@@ -109,6 +109,57 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
   }
 };
 
+export const updatePassengerSavedLocation = async (
+  userId: string,
+  phone: string | undefined,
+  type: 'home' | 'work',
+  location: Coordinates | null
+): Promise<void> => {
+  const fieldName = type === 'home' ? 'homeLocation' : 'workLocation';
+  const cleanPhone = phone
+    ? phone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0')
+    : '';
+
+  if (!isFirestoreQuotaExceeded()) {
+    const payload = sanitizeFirestoreData({
+      [fieldName]: location,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (userId && userId !== 'passenger-guest') {
+      try {
+        const userRef = doc(db, 'users', userId);
+        await setDoc(userRef, payload, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${userId}`);
+      }
+    }
+
+    if (cleanPhone && `user-${cleanPhone}` !== userId) {
+      try {
+        const phoneUserRef = doc(db, 'users', `user-${cleanPhone}`);
+        await setDoc(phoneUserRef, payload, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/user-${cleanPhone}`);
+      }
+    }
+  }
+
+  try {
+    const { user: currentSessUser, driver: currentSessDriver } = loadActiveSessionSecurely();
+    if (currentSessUser) {
+      const mergedUser: UserProfile = {
+        ...currentSessUser,
+        [fieldName]: location,
+      };
+      saveActiveSessionSecurely(mergedUser, currentSessDriver);
+      if (mergedUser.phone) {
+        saveUserToSecureVault(mergedUser.phone, mergedUser, currentSessDriver).catch(() => {});
+      }
+    }
+  } catch (e) {}
+};
+
 export const getDriverByUserIdOrPhone = async (
   userId: string,
   phone?: string,
@@ -285,21 +336,44 @@ export const updateDriverLocation = async (
   lat: number,
   lng: number,
   heading?: number,
-  speed?: number
+  speed?: number,
+  activeRideId?: string
 ): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   try {
     const driverRef = doc(db, 'drivers', driverId);
     const gh = geohashForLocation([lat, lng]);
 
-    await updateDoc(driverRef, {
-      'location.lat': lat,
-      'location.lng': lng,
-      'location.heading': heading || 0,
-      'location.speed': speed || 0,
-      geohash: gh,
-      lastLocationUpdate: serverTimestamp(),
-    });
+    await setDoc(
+      driverRef,
+      {
+        location: {
+          lat,
+          lng,
+          heading: heading || 0,
+          speed: speed || 0,
+        },
+        geohash: gh,
+        lastLocationUpdate: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (activeRideId) {
+      const rideRef = doc(db, 'rides', activeRideId);
+      await setDoc(
+        rideRef,
+        {
+          driverLocation: {
+            lat,
+            lng,
+          },
+          driverHeading: heading || 0,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
   }
@@ -315,11 +389,15 @@ export const updateDriverOnlineStatus = async (
   if (isFirestoreQuotaExceeded()) return;
   try {
     const driverRef = doc(db, 'drivers', driverId);
-    await updateDoc(driverRef, {
-      isOnline,
-      isAvailable,
-      updatedAt: serverTimestamp(),
-    });
+    await setDoc(
+      driverRef,
+      {
+        isOnline,
+        isAvailable,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
   }
@@ -516,6 +594,7 @@ export const acceptDriverOfferTransaction = async (
         driverPhoto: driver.photoUrl || null,
         driverRating: driver.rating ?? 5.0,
         driverMotorcycle: driver.motorcycle,
+        driverLocation: driver.location,
         finalPrice: offeredPrice,
         platformCommission: commission,
         driverEarning: driverEarning,
@@ -523,18 +602,37 @@ export const acceptDriverOfferTransaction = async (
       });
       transaction.update(rideRef, rideUpdatePayload);
 
-      // 2. Mark this specific offer as accepted
-      transaction.update(offerRef, {
-        status: 'accepted',
-        acceptedAt: serverTimestamp(),
-      });
+      // 2. Mark this offer as accepted (safe set with merge so direct acceptance works without pre-existing offer doc)
+      transaction.set(
+        offerRef,
+        sanitizeFirestoreData({
+          id: offerId,
+          rideId,
+          driverId: driver.id,
+          driverName: driver.name,
+          driverPhone: driver.phone,
+          driverPhoto: driver.photoUrl || null,
+          driverRating: driver.rating ?? 5.0,
+          driverTripsCount: driver.totalTrips ?? 0,
+          driverMotorcycle: driver.motorcycle,
+          driverLocation: driver.location,
+          offeredPrice,
+          status: 'accepted',
+          acceptedAt: serverTimestamp(),
+        }),
+        { merge: true }
+      );
 
-      // 3. Mark the driver as busy / not available
-      transaction.update(driverRef, {
-        isAvailable: false,
-        currentRideId: rideId,
-        updatedAt: serverTimestamp(),
-      });
+      // 3. Mark the driver as busy / not available (safe set with merge)
+      transaction.set(
+        driverRef,
+        sanitizeFirestoreData({
+          isAvailable: false,
+          currentRideId: rideId,
+          updatedAt: serverTimestamp(),
+        }),
+        { merge: true }
+      );
     });
 
     return { success: true };

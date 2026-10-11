@@ -13,10 +13,9 @@ import { supabaseService } from '../../services/supabaseService';
 
 export const DriverEarnings: React.FC = () => {
   const { activeDriver, rides, pricing } = useApp();
-  const [isLoadingEarnings, setIsLoadingEarnings] = useState<boolean>(true);
+  const [isLoadingEarnings, setIsLoadingEarnings] = useState<boolean>(false);
   const [timeframe, setTimeframe] = useState<'daily' | 'weekly'>('daily');
 
-  // جلب وتحديث الأرباح مع Supabase وتطبيق الـ Skeleton
   const loadEarnings = async () => {
     setIsLoadingEarnings(true);
     try {
@@ -24,12 +23,12 @@ export const DriverEarnings: React.FC = () => {
     } catch (e) {
       console.warn('Driver earnings fetch error:', e);
     } finally {
-      setTimeout(() => setIsLoadingEarnings(false), 450);
+      setIsLoadingEarnings(false);
     }
   };
 
   useEffect(() => {
-    loadEarnings();
+    supabaseService.getDriverEarnings(activeDriver.id).catch(() => {});
   }, [activeDriver.id]);
 
   // Real completed rides for this active driver

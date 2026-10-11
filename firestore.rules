@@ -120,6 +120,11 @@ service cloud.firestore {
       match /offers/{offerId} {
         allow read, write: if true;
       }
+
+      // In-App Live Chat Messages subcollection between Passenger and Driver
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
     }
 
     // Ratings collection

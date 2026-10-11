@@ -63,6 +63,8 @@ export interface UserProfile {
     name: string;
     phone: string;
   };
+  homeLocation?: Coordinates | null;
+  workLocation?: Coordinates | null;
 }
 
 export interface MotorcycleInfo {

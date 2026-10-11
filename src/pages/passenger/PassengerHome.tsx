@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { LeafletMap } from '../../components/Map/LeafletMap';
 import { BookRideModal } from './BookRideModal';
@@ -6,7 +6,7 @@ import { ActiveRideView } from './ActiveRideView';
 import { ALGERIA_LOCATIONS, reverseGeocodeCoords, getRobustUserLocation } from '../../utils/geo';
 import { Coordinates } from '../../types';
 import { formatCurrencyDZD } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2, Home, Briefcase, Bookmark } from 'lucide-react';
+import { MapPin, Navigation, ArrowLeft, History, Shield, Sparkles, Plus, Clock, RefreshCw, AlertCircle, CheckCircle2, Home, Briefcase, Bookmark, Pencil } from 'lucide-react';
 import {
   PassengerDashboardSkeleton,
   PassengerTripHistorySkeleton,
@@ -15,15 +15,15 @@ import {
 } from '../../components/shared/Skeleton';
 import { supabaseService } from '../../services/supabaseService';
 import { TripRatingModal } from '../../components/passenger/TripRatingModal';
+import { FavoriteLocationModal } from '../../components/passenger/FavoriteLocationModal';
 import { Ride } from '../../types';
 import {
   getSavedFavoritePlaces,
-  saveFavoritePlace,
   SavedFavoritePlaces,
 } from '../../services/dbService';
 
 export const PassengerHome: React.FC = () => {
-  const { activePassenger, currentPassengerRide, rides, drivers, currentUser } = useApp();
+  const { activePassenger, currentPassengerRide, rides, drivers, currentUser, updateSavedLocation } = useApp();
 
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedPickup, setSelectedPickup] = useState<Coordinates | null>(null);
@@ -32,9 +32,12 @@ export const PassengerHome: React.FC = () => {
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
   const [mapSelectionMode, setMapSelectionMode] = useState<'pickup' | 'destination' | null>(null);
   const [mapNotice, setMapNotice] = useState<string | null>(null);
-  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(true);
+  const [isSyncingSupabase, setIsSyncingSupabase] = useState<boolean>(false);
   const [ratingRide, setRatingRide] = useState<Ride | null>(null);
   const [favoritePlaces, setFavoritePlaces] = useState<SavedFavoritePlaces>({ home: null, work: null });
+  const [editingFavoriteType, setEditingFavoriteType] = useState<'home' | 'work' | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isLongPressTriggeredRef = useRef<boolean>(false);
 
   // الكشف التلقائي عن أي رحلة مكتملة حديثاً لم يقم الراكب بتقييمها بعد لإظهار بطاقة التقييم
   useEffect(() => {
@@ -50,17 +53,9 @@ export const PassengerHome: React.FC = () => {
     }
   }, [rides, activePassenger.id]);
 
-  // مزامنة مبدئية سريعة مع Supabase مع تأثير التحميل الهيكلي (Skeleton)
+  // مزامنة خلفية سريعة بدون حجب الواجهة
   useEffect(() => {
-    let isMounted = true;
-    supabaseService.getDrivers().catch(() => {}).finally(() => {
-      if (isMounted) {
-        setTimeout(() => setIsSyncingSupabase(false), 400);
-      }
-    });
-    return () => {
-      isMounted = false;
-    };
+    supabaseService.getDrivers().catch(() => {});
   }, []);
 
   // التحديد التلقائي والمباشر لموقع الراكب الفعلي على الخريطة فور فتح الصفحة (مثل Yassir / Uber)
@@ -68,42 +63,86 @@ export const PassengerHome: React.FC = () => {
     handleGetRealGPSLocation();
   }, []);
 
-  // جلب العناوين المفضلة (المنزل / العمل) من الكاش المحلي IndexedDB
+  // استرجاع موقعي المنزل والعمل المحفوظين للراكب من حسابه في Firebase أو الكاش المحلي المرتبط برقم هاتفه / UID
   useEffect(() => {
-    getSavedFavoritePlaces(activePassenger.id).then((saved) => {
-      setFavoritePlaces(saved);
+    let active = true;
+    getSavedFavoritePlaces(activePassenger.id, activePassenger.phone, {
+      homeLocation: activePassenger.homeLocation,
+      workLocation: activePassenger.workLocation,
+    }).then((saved) => {
+      if (!active) return;
+      setFavoritePlaces({
+        home: activePassenger.homeLocation ?? saved.home ?? null,
+        work: activePassenger.workLocation ?? saved.work ?? null,
+      });
     });
-  }, [activePassenger.id]);
+    return () => {
+      active = false;
+    };
+  }, [
+    activePassenger.id,
+    activePassenger.phone,
+    activePassenger.homeLocation,
+    activePassenger.workLocation,
+  ]);
 
-  const handleSelectOrSaveFavorite = async (type: 'home' | 'work') => {
+  // معالجة النقر السريع على زر المنزل أو العمل: إذا كان محدداً مسبقاً يتم تعيينه فوراً كوجهة للرحلة، وإلا تفتح نافذة التحديد
+  const handleFavoriteButtonClick = (type: 'home' | 'work') => {
+    if (isLongPressTriggeredRef.current) {
+      isLongPressTriggeredRef.current = false;
+      return;
+    }
     const existing = favoritePlaces[type];
     if (existing) {
       setSelectedDestination(existing);
+      setMapNotice(
+        `🏁 تم تحديد "${type === 'home' ? 'المنزل' : 'العمل'}" (${existing.name || existing.address}) كوجهة لرحلتك!`
+      );
+      setTimeout(() => setMapNotice(null), 4000);
       setShowBookingModal(true);
     } else {
-      // Save current destination or current pickup as favorite
-      const targetToSave = selectedDestination || selectedPickup;
-      if (targetToSave) {
-        const label = type === 'home' ? 'المنزل 🏠' : 'العمل 💼';
-        const placeWithLabel: Coordinates = {
-          ...targetToSave,
-          name: targetToSave.name || label,
-        };
-        const updated = await saveFavoritePlace(activePassenger.id, type, placeWithLabel);
-        setFavoritePlaces(updated);
-        setMapNotice(`✅ تم حفظ "${label}" في عناوينك المفضلة بنجاح!`);
-        setTimeout(() => setMapNotice(null), 4000);
-      } else {
-        setMapSelectionMode('destination');
-        setMapNotice('انقر على الخريطة لتحديد الموقع ثم اضغط حفظ في المفضلة');
-      }
+      setEditingFavoriteType(type);
     }
   };
 
-  const handleClearFavorite = async (e: React.MouseEvent, type: 'home' | 'work') => {
-    e.stopPropagation();
-    const updated = await saveFavoritePlace(activePassenger.id, type, null);
-    setFavoritePlaces(updated);
+  // دعم الضغط المطول (Long Press) لفتح نافذة تعديل موقع المنزل أو العمل
+  const handleFavoritePressStart = (type: 'home' | 'work') => {
+    isLongPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      setEditingFavoriteType(type);
+    }, 500);
+  };
+
+  const handleFavoritePressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // حفظ أو تعديل موقع المنزل / العمل وربطه بملف الراكب في Firebase والكاش المحلي
+  const handleSaveFavoriteLocation = async (
+    type: 'home' | 'work',
+    location: Coordinates | null
+  ) => {
+    setFavoritePlaces((prev) => ({
+      ...prev,
+      [type]: location,
+    }));
+    await updateSavedLocation(type, location);
+
+    const label = type === 'home' ? 'المنزل 🏠' : 'العمل 💼';
+    if (location) {
+      setSelectedDestination(location);
+      setMapNotice(`✅ تم حفظ موقع ${label} (${location.name || location.address}) في حسابك بنجاح!`);
+    } else {
+      setMapNotice(`🗑️ تم مسح عنوان ${label} المحفوظ.`);
+    }
+    setTimeout(() => setMapNotice(null), 4000);
   };
 
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
@@ -335,64 +374,132 @@ export const PassengerHome: React.FC = () => {
                 </button>
               </div>
 
-              {/* Saved Favorite Places Bar (Home & Work - like Yassir / inDrive) */}
-              <div className="grid grid-cols-2 gap-2">
+              {/* Saved Favorite Places Bar (Home & Work - Editable & Synced with Firebase) */}
+              <div className="grid grid-cols-2 gap-2" dir="rtl">
+                {/* Home Button */}
                 <div
-                  onClick={() => handleSelectOrSaveFavorite('home')}
+                  id="passenger-favorite-home-btn"
+                  onClick={() => handleFavoriteButtonClick('home')}
+                  onMouseDown={() => handleFavoritePressStart('home')}
+                  onMouseUp={handleFavoritePressEnd}
+                  onMouseLeave={handleFavoritePressEnd}
+                  onTouchStart={() => handleFavoritePressStart('home')}
+                  onTouchEnd={handleFavoritePressEnd}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setEditingFavoriteType('home');
+                  }}
                   role="button"
                   tabIndex={0}
-                  className="p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-2 transition-all cursor-pointer"
+                  title={
+                    favoritePlaces.home
+                      ? 'انقر لاختيار المنزل كوجهة، أو اضغط مطولاً / على القلم لتعديل الموقع'
+                      : 'انقر لتعيين عنوان المنزل'
+                  }
+                  className={`p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+                    selectedDestination &&
+                    favoritePlaces.home &&
+                    selectedDestination.lat === favoritePlaces.home.lat &&
+                    selectedDestination.lng === favoritePlaces.home.lng
+                      ? 'border-amber-500 bg-amber-500/5 shadow-sm shadow-amber-500/10'
+                      : 'border-slate-800 hover:border-amber-500/40'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 truncate">
-                    <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                      <Home className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
+                      <Home className="w-4 h-4" />
                     </div>
-                    <div className="truncate text-right">
-                      <div className="text-[11px] font-bold text-white">المنزل</div>
-                      <div className="text-[9px] text-slate-400 truncate">
-                        {favoritePlaces.home ? favoritePlaces.home.name : '+ حفظ الموقع الحالي'}
+                    <div className="truncate text-right flex-1">
+                      <div className="text-[11px] font-bold text-white flex items-center gap-1">
+                        <span>المنزل</span>
+                      </div>
+                      <div
+                        className={`text-[10px] truncate ${
+                          favoritePlaces.home ? 'text-slate-300 font-medium' : 'text-amber-400/90 font-semibold'
+                        }`}
+                      >
+                        {favoritePlaces.home
+                          ? favoritePlaces.home.name || favoritePlaces.home.address
+                          : 'تعيين المنزل'}
                       </div>
                     </div>
                   </div>
-                  {favoritePlaces.home && (
-                    <button
-                      type="button"
-                      onClick={(e) => handleClearFavorite(e, 'home')}
-                      className="text-[10px] text-slate-500 hover:text-red-400 px-1"
-                      title="تغيير عنوان المنزل"
-                    >
-                      ✕
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    id="edit-favorite-home-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingFavoriteType('home');
+                    }}
+                    className="w-7 h-7 rounded-xl bg-slate-900 hover:bg-amber-500/20 border border-slate-800 hover:border-amber-500/40 text-slate-400 hover:text-amber-400 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                    title="تعديل عنوان المنزل"
+                    aria-label="تعديل عنوان المنزل"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                 </div>
 
+                {/* Work Button */}
                 <div
-                  onClick={() => handleSelectOrSaveFavorite('work')}
+                  id="passenger-favorite-work-btn"
+                  onClick={() => handleFavoriteButtonClick('work')}
+                  onMouseDown={() => handleFavoritePressStart('work')}
+                  onMouseUp={handleFavoritePressEnd}
+                  onMouseLeave={handleFavoritePressEnd}
+                  onTouchStart={() => handleFavoritePressStart('work')}
+                  onTouchEnd={handleFavoritePressEnd}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setEditingFavoriteType('work');
+                  }}
                   role="button"
                   tabIndex={0}
-                  className="p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-2 transition-all cursor-pointer"
+                  title={
+                    favoritePlaces.work
+                      ? 'انقر لاختيار العمل كوجهة، أو اضغط مطولاً / على القلم لتعديل الموقع'
+                      : 'انقر لتعيين عنوان العمل'
+                  }
+                  className={`p-2.5 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border flex items-center justify-between gap-2 transition-all cursor-pointer select-none ${
+                    selectedDestination &&
+                    favoritePlaces.work &&
+                    selectedDestination.lat === favoritePlaces.work.lat &&
+                    selectedDestination.lng === favoritePlaces.work.lng
+                      ? 'border-blue-500 bg-blue-500/5 shadow-sm shadow-blue-500/10'
+                      : 'border-slate-800 hover:border-blue-500/40'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 truncate">
-                    <div className="w-7 h-7 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
-                      <Briefcase className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
+                      <Briefcase className="w-4 h-4" />
                     </div>
-                    <div className="truncate text-right">
-                      <div className="text-[11px] font-bold text-white">العمل</div>
-                      <div className="text-[9px] text-slate-400 truncate">
-                        {favoritePlaces.work ? favoritePlaces.work.name : '+ حفظ الموقع الحالي'}
+                    <div className="truncate text-right flex-1">
+                      <div className="text-[11px] font-bold text-white flex items-center gap-1">
+                        <span>العمل</span>
+                      </div>
+                      <div
+                        className={`text-[10px] truncate ${
+                          favoritePlaces.work ? 'text-slate-300 font-medium' : 'text-blue-400/90 font-semibold'
+                        }`}
+                      >
+                        {favoritePlaces.work
+                          ? favoritePlaces.work.name || favoritePlaces.work.address
+                          : 'تعيين العمل'}
                       </div>
                     </div>
                   </div>
-                  {favoritePlaces.work && (
-                    <button
-                      type="button"
-                      onClick={(e) => handleClearFavorite(e, 'work')}
-                      className="text-[10px] text-slate-500 hover:text-red-400 px-1"
-                      title="تغيير عنوان العمل"
-                    >
-                      ✕
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    id="edit-favorite-work-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingFavoriteType('work');
+                    }}
+                    className="w-7 h-7 rounded-xl bg-slate-900 hover:bg-blue-500/20 border border-slate-800 hover:border-blue-500/40 text-slate-400 hover:text-blue-400 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                    title="تعديل عنوان العمل"
+                    aria-label="تعديل عنوان العمل"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 
@@ -465,6 +572,18 @@ export const PassengerHome: React.FC = () => {
           onRideBooked={() => setShowBookingModal(false)}
           initialPickup={selectedPickup}
           initialDestination={selectedDestination}
+        />
+      )}
+
+      {/* Favorite Location Edit / Set Modal (Home & Work) */}
+      {editingFavoriteType && (
+        <FavoriteLocationModal
+          isOpen={Boolean(editingFavoriteType)}
+          type={editingFavoriteType}
+          initialLocation={favoritePlaces[editingFavoriteType]}
+          defaultCenter={selectedDestination || selectedPickup}
+          onClose={() => setEditingFavoriteType(null)}
+          onSave={handleSaveFavoriteLocation}
         />
       )}
 
