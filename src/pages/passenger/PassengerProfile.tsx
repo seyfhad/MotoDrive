@@ -11,7 +11,14 @@ import {
   Trash2,
   BadgeCheck,
   Star,
+  HelpCircle,
+  ShieldCheck,
+  Upload,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
+import { submitVerificationRequestToFirestore } from '../../services/firestoreService';
+import { compressImageToBase64 } from '../../utils/imageCompressor';
 import { signOutUser } from '../../services/authService';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
@@ -22,6 +29,42 @@ export const PassengerProfile: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isLoadingProfile] = useState(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [idCardBase64, setIdCardBase64] = useState<string>('');
+  const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
+  const [verificationSubmitted, setVerificationSubmitted] = useState(false);
+
+  const handleIdCardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageToBase64(file, 40, 800);
+      setIdCardBase64(compressed);
+    } catch (err) {
+      console.warn('Error compressing ID card:', err);
+    }
+  };
+
+  const handleVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idCardBase64) return;
+    setIsSubmittingVerification(true);
+    try {
+      await submitVerificationRequestToFirestore({
+        userId: activePassenger.id,
+        userName: activePassenger.name,
+        userPhone: activePassenger.phone,
+        userPhoto: activePassenger.photoUrl,
+        role: 'passenger',
+        idCardUrl: idCardBase64,
+      });
+      setVerificationSubmitted(true);
+    } catch (err) {
+      console.warn('Error submitting verification request:', err);
+    } finally {
+      setIsSubmittingVerification(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -140,37 +183,54 @@ export const PassengerProfile: React.FC = () => {
             </span>
           </div>
 
-          {/* Two compact side-by-side rectangular buttons: Report a problem & Contact Admin directly above Sign Out / Delete Account */}
-          <div className="grid grid-cols-2 gap-2 pt-1" id="passenger-support-actions">
+          {/* Help & Support Toggle Button */}
+          <div className="space-y-2 pt-1" id="passenger-support-actions">
             <button
               type="button"
               onClick={() => setShowCallSupervisor(!showCallSupervisor)}
-              className="py-2 px-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              className="w-full py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-              <span className="truncate">إبلاغ عن مشكلة</span>
+              <HelpCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>مساعدة</span>
             </button>
 
-            <a
-              href="https://www.facebook.com/share/1DnSTUk7WL/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="py-2 px-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all"
-            >
-              <MessageCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span className="truncate">التواصل مع مسؤول</span>
-            </a>
-          </div>
+            {showCallSupervisor && (
+              <div className="p-3 bg-slate-950 border border-amber-500/30 rounded-2xl space-y-2 animate-in fade-in">
+                <p className="text-[11px] text-slate-300 text-center font-bold">
+                  تواصل معنا عبر إحدى الوسائل التالية:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href="tel:0542524728"
+                    className="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>اتصال بالمسؤول</span>
+                  </a>
+                  <a
+                    href="https://www.facebook.com/share/1DnSTUk7WL/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>تواصل عبر الفيسبوك</span>
+                  </a>
+                </div>
+              </div>
+            )}
 
-          {/* Direct Support */}
-          <div className="pt-2">
-            <a
-              href="tel:0542524728"
-              className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-            >
-              <PhoneCall className="w-3.5 h-3.5" />
-              <span>0542524728</span>
-            </a>
+            {/* Request Account Verification */}
+            {!activePassenger.isVerified && (
+              <button
+                type="button"
+                onClick={() => setShowVerificationModal(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+              >
+                <ShieldCheck className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>طلب توثيق الحساب (إرسال بطاقة الهوية)</span>
+              </button>
+            )}
           </div>
 
           <button
@@ -277,6 +337,101 @@ export const PassengerProfile: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Verification Request Modal */}
+      {showVerificationModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setShowVerificationModal(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-2xl space-y-4 text-right"
+            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>طلب توثيق الحساب بالهوية</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowVerificationModal(false)}
+                className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {verificationSubmitted ? (
+              <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center animate-in fade-in">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-white">تم إرسال طلب التوثيق بنجاح!</h4>
+                <p className="text-xs text-slate-400">سيقوم المسؤول بمراجعة بطاقة الهوية وتوثيق حسابك قريباً.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowVerificationModal(false)}
+                  className="mt-2 py-2 px-4 bg-amber-500 text-slate-950 font-black rounded-xl text-xs cursor-pointer"
+                >
+                  حسناً
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleVerifySubmit} className="space-y-3">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  يرجى إرفاق صورة واضحة لبطاقة الهوية الوطنية أو رخصة السياقة ليتمكن المسؤول من التحقق وتوثيق حسابك وإظهار شارة التوثيق.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-slate-300 block">صورة بطاقة الهوية:</label>
+                  <label className="border-2 border-dashed border-slate-700 hover:border-amber-500 bg-slate-950/60 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors block">
+                    {idCardBase64 ? (
+                      <div className="relative w-full h-32 rounded-xl overflow-hidden bg-black">
+                        <img src={idCardBase64} alt="ID Preview" className="w-full h-full object-contain" />
+                        <span className="absolute bottom-1 right-1 px-2 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] rounded">تم الرفع ✓</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-6 h-6 text-amber-400" />
+                        <span className="text-xs font-bold text-white">اضغط لاختيار صورة الهوية</span>
+                        <span className="text-[10px] text-slate-500">PNG, JPG بحد أقصى</span>
+                      </>
+                    )}
+                    <input type="file" accept="image/*" onChange={handleIdCardUpload} className="hidden" />
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    disabled={!idCardBase64 || isSubmittingVerification}
+                    className="flex-1 py-2.5 px-4 bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-40"
+                  >
+                    {isSubmittingVerification ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>جاري الإرسال...</span>
+                      </>
+                    ) : (
+                      <span>إرسال طلب التوثيق للمسؤول</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowVerificationModal(false)}
+                    className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

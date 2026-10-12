@@ -1204,3 +1204,49 @@ export const toggleDriverVerification = async (
     console.warn('Error toggling driver verification:', err);
   }
 };
+
+export const toggleUserVerification = async (
+  userId: string,
+  isVerified: boolean
+): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, { isVerified }, { merge: true });
+    
+    // Also check if user is a driver
+    const driverRef = doc(db, 'drivers', userId);
+    await setDoc(driverRef, { isVerified }, { merge: true }).catch(() => {});
+  } catch (err) {
+    console.warn('Error toggling user verification:', err);
+  }
+};
+
+export const submitVerificationRequestToFirestore = async (
+  requestData: {
+    userId: string;
+    userName: string;
+    userPhone: string;
+    userPhoto?: string;
+    role: 'passenger' | 'driver';
+    idCardUrl: string;
+  }
+): Promise<string> => {
+  const reqId = `ver_${requestData.userId}_${Date.now()}`;
+  if (isFirestoreQuotaExceeded()) return reqId;
+  try {
+    const reqRef = doc(db, 'verification_requests', reqId);
+    await setDoc(reqRef, {
+      id: reqId,
+      ...requestData,
+      status: 'pending',
+      submittedAt: new Date().toISOString(),
+      serverCreatedAt: serverTimestamp(),
+    });
+    return reqId;
+  } catch (err) {
+    console.warn('Error submitting verification request:', err);
+    return reqId;
+  }
+};
+

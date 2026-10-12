@@ -332,3 +332,17 @@ export interface RideRequest {
   completedAt?: string;
   cancelledAt?: string;
 }
+
+export interface VerificationRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  userPhoto?: string;
+  role: 'passenger' | 'driver';
+  idCardUrl: string;
+  status: 'pending' | 'approved' | 'rejected';
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
