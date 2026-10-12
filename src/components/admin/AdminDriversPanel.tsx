@@ -81,12 +81,22 @@ const isValidUploadedImage = (url?: string): boolean => {
   return url.length > 15;
 };
 
-export const AdminDriversPanel: React.FC = () => {
+export interface AdminDriversPanelProps {
+  initialStatusFilter?: 'all' | 'pending' | 'approved' | 'rejected';
+}
+
+export const AdminDriversPanel: React.FC<AdminDriversPanelProps> = ({ initialStatusFilter = 'all' }) => {
   const [driversMap, setDriversMap] = useState<Record<string, FirestoreDriverRecord>>({});
   const [appsList, setAppsList] = useState<any[]>([]);
   const [rawDriversList, setRawDriversList] = useState<FirestoreDriverRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>(initialStatusFilter);
+
+  useEffect(() => {
+    if (initialStatusFilter) {
+      setFilter(initialStatusFilter);
+    }
+  }, [initialStatusFilter]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { db, isFirestoreQuotaExceeded } from '../../lib/firebase';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { toggleUserVerification } from '../../services/firestoreService';
 import { VerificationRequest } from '../../types';
-import { Loader2, CheckCircle2, XCircle, Eye, ShieldCheck, User, Phone } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Eye, ShieldCheck, User } from 'lucide-react';
 
 export const AdminVerificationPanel: React.FC = () => {
   const [requests, setRequests] = useState<VerificationRequest[]>([]);
@@ -11,27 +11,83 @@ export const AdminVerificationPanel: React.FC = () => {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string } | null>(null);
 
+  // Load from localStorage fallback + Firestore real-time listener
+  const loadLocalRequests = (): VerificationRequest[] => {
+    try {
+      const saved = localStorage.getItem('motodrive_verification_requests');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  };
+
+  const saveLocalRequests = (list: VerificationRequest[]) => {
+    try {
+      localStorage.setItem('motodrive_verification_requests', JSON.stringify(list));
+    } catch {}
+  };
+
   useEffect(() => {
     setLoading(true);
+    // Initialize with local requests immediately so admin sees them instantly
+    const local = loadLocalRequests();
+    if (local.length > 0) {
+      setRequests(local);
+      setLoading(false);
+    }
+
+    if (isFirestoreQuotaExceeded()) {
+      setLoading(false);
+      return;
+    }
+
     const reqRef = collection(db, 'verification_requests');
     const unsub = onSnapshot(reqRef, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VerificationRequest));
-      setRequests(list);
+      const fsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VerificationRequest));
+      
+      // Merge with local requests to ensure 100% reliability
+      const localList = loadLocalRequests();
+      const mergedMap = new Map<string, VerificationRequest>();
+      
+      [...localList, ...fsList].forEach(r => {
+        if (!mergedMap.has(r.userId) || r.status === 'approved') {
+          mergedMap.set(r.id, r);
+        }
+      });
+
+      const finalMerged = Array.from(mergedMap.values());
+      setRequests(finalMerged);
+      saveLocalRequests(finalMerged);
       setLoading(false);
     }, (err) => {
-      console.warn('Error fetching verification requests:', err);
+      console.warn('Error fetching verification requests from Firestore, using local:', err);
       setLoading(false);
     });
 
-    return () => unsub();
+    const handleNewRequest = () => {
+      setRequests(loadLocalRequests());
+    };
+    window.addEventListener('motodrive_verification_submitted', handleNewRequest);
+
+    return () => {
+      unsub();
+      window.removeEventListener('motodrive_verification_submitted', handleNewRequest);
+    };
   }, []);
 
   const handleApprove = async (req: VerificationRequest) => {
     setUpdatingId(req.id);
     try {
       await toggleUserVerification(req.userId, true);
-      const reqRef = doc(db, 'verification_requests', req.id);
-      await setDoc(reqRef, { status: 'approved', reviewedAt: new Date().toISOString() }, { merge: true });
+      
+      // Update local storage status
+      const updated = requests.map(r => r.id === req.id ? { ...r, status: 'approved' as const } : r);
+      setRequests(updated);
+      saveLocalRequests(updated);
+
+      if (!isFirestoreQuotaExceeded()) {
+        const reqRef = doc(db, 'verification_requests', req.id);
+        await setDoc(reqRef, { status: 'approved', reviewedAt: new Date().toISOString() }, { merge: true });
+      }
     } catch (e) {
       console.warn('Error approving verification:', e);
     } finally {
@@ -42,8 +98,14 @@ export const AdminVerificationPanel: React.FC = () => {
   const handleReject = async (req: VerificationRequest) => {
     setUpdatingId(req.id);
     try {
-      const reqRef = doc(db, 'verification_requests', req.id);
-      await setDoc(reqRef, { status: 'rejected', reviewedAt: new Date().toISOString() }, { merge: true });
+      const updated = requests.map(r => r.id === req.id ? { ...r, status: 'rejected' as const } : r);
+      setRequests(updated);
+      saveLocalRequests(updated);
+
+      if (!isFirestoreQuotaExceeded()) {
+        const reqRef = doc(db, 'verification_requests', req.id);
+        await setDoc(reqRef, { status: 'rejected', reviewedAt: new Date().toISOString() }, { merge: true });
+      }
     } catch (e) {
       console.warn('Error rejecting verification:', e);
     } finally {

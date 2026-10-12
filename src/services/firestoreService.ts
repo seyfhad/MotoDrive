@@ -1233,19 +1233,32 @@ export const submitVerificationRequestToFirestore = async (
   }
 ): Promise<string> => {
   const reqId = `ver_${requestData.userId}_${Date.now()}`;
+  const payload = {
+    id: reqId,
+    ...requestData,
+    status: 'pending' as const,
+    submittedAt: new Date().toISOString(),
+  };
+
+  // Save to localStorage fallback immediately
+  try {
+    const saved = localStorage.getItem('motodrive_verification_requests');
+    const list = saved ? JSON.parse(saved) : [];
+    list.unshift(payload);
+    localStorage.setItem('motodrive_verification_requests', JSON.stringify(list));
+    window.dispatchEvent(new CustomEvent('motodrive_verification_submitted'));
+  } catch {}
+
   if (isFirestoreQuotaExceeded()) return reqId;
   try {
     const reqRef = doc(db, 'verification_requests', reqId);
     await setDoc(reqRef, {
-      id: reqId,
-      ...requestData,
-      status: 'pending',
-      submittedAt: new Date().toISOString(),
+      ...payload,
       serverCreatedAt: serverTimestamp(),
     });
     return reqId;
   } catch (err) {
-    console.warn('Error submitting verification request:', err);
+    console.warn('Error submitting verification request to Firestore:', err);
     return reqId;
   }
 };

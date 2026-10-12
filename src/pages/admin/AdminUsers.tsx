@@ -22,11 +22,17 @@ export interface AdminUsersProps {
 
 export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all' }) => {
   const { passengers, drivers, rides, suspendPassenger, deletePassenger } = useApp();
-  const [roleFilter, setRoleFilter] = useState<'all' | 'driver' | 'passenger'>(initialRoleFilter);
+  const [roleFilter, setRoleFilter] = useState<'all' | 'pending_drivers' | 'approved_drivers' | 'passenger'>(
+    initialRoleFilter === 'driver' ? 'pending_drivers' : initialRoleFilter
+  );
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    setRoleFilter(initialRoleFilter);
+    if (initialRoleFilter === 'driver') {
+      setRoleFilter('pending_drivers');
+    } else {
+      setRoleFilter(initialRoleFilter);
+    }
   }, [initialRoleFilter]);
 
   const [suspendTarget, setSuspendTarget] = useState<UserProfile | null>(null);
@@ -45,6 +51,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
   );
 
   const pendingDriversCount = drivers.filter((d) => d.status === 'pending').length;
+  const approvedDriversCount = drivers.filter((d) => d.status === 'approved').length;
   const totalUsersCount = drivers.length + passengerProfiles.length;
 
   const handleConfirmSuspend = () => {
@@ -81,77 +88,101 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
           </div>
         </div>
 
-        {/* Role Filter Tabs (الكل / السائقين / الركاب) */}
+        {/* Role Filter Tabs */}
         <div className="flex flex-wrap items-center gap-2" id="admin-users-role-filter-tabs">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 ml-2">
             <Filter className="w-3.5 h-3.5 text-amber-400" />
-            <span>نوع المستخدم:</span>
+            <span>نوع العرض:</span>
           </div>
 
           <button
             type="button"
             onClick={() => setRoleFilter('all')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
               roleFilter === 'all'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
                 : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>الكل ({totalUsersCount})</span>
+            <Users className="w-3.5 h-3.5" />
+            <span>الكل</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setRoleFilter('driver')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
-              roleFilter === 'driver'
+            onClick={() => setRoleFilter('pending_drivers')}
+            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+              roleFilter === 'pending_drivers'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
                 : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
             }`}
           >
-            <UserCheck className="w-4 h-4" />
-            <span>السائقين والوثائق ({drivers.length})</span>
+            <Clock className="w-3.5 h-3.5" />
+            <span>طلبات السائقين</span>
             {pendingDriversCount > 0 && (
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                  roleFilter === 'driver'
-                    ? 'bg-slate-950 text-amber-400'
-                    : 'bg-amber-500 text-slate-950 animate-pulse'
-                }`}
-              >
-                {pendingDriversCount} معلق
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                roleFilter === 'pending_drivers' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
+              }`}>
+                {pendingDriversCount}
               </span>
             )}
           </button>
 
           <button
             type="button"
+            onClick={() => setRoleFilter('approved_drivers')}
+            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+              roleFilter === 'approved_drivers'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+            }`}
+          >
+            <UserCheck className="w-3.5 h-3.5" />
+            <span>السائقون المقبولون ({approvedDriversCount})</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setRoleFilter('passenger')}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
               roleFilter === 'passenger'
                 ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
                 : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-3.5 h-3.5" />
             <span>الركاب ({passengerProfiles.length})</span>
           </button>
         </div>
       </div>
 
-      {/* 1. DRIVERS SECTION (Shown when filter is 'all' or 'driver') */}
-      {(roleFilter === 'all' || roleFilter === 'driver') && (
-        <div className="space-y-3" id="admin-unified-drivers-section">
+      {/* 1. PENDING DRIVERS REQUESTS SECTION */}
+      {(roleFilter === 'all' || roleFilter === 'pending_drivers') && (
+        <div className="space-y-3" id="admin-pending-drivers-section">
           {roleFilter === 'all' && (
             <div className="flex items-center justify-between px-1">
               <h3 className="text-sm font-black text-amber-400 flex items-center gap-2">
-                <MotoIcon className="w-4 h-4" />
-                <span>قسم السائقين وطلبات التسجيل ({drivers.length})</span>
+                <Clock className="w-4 h-4" />
+                <span>طلبات تسجيل السائقين المعلقة ({pendingDriversCount})</span>
               </h3>
             </div>
           )}
-          <AdminDriversPanel />
+          <AdminDriversPanel initialStatusFilter="pending" />
+        </div>
+      )}
+
+      {/* 2. APPROVED DRIVERS SECTION */}
+      {(roleFilter === 'all' || roleFilter === 'approved_drivers') && (
+        <div className="space-y-3 pt-4 border-t border-slate-800" id="admin-approved-drivers-section">
+          {roleFilter === 'all' && (
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-sm font-black text-emerald-400 flex items-center gap-2">
+                <UserCheck className="w-4 h-4" />
+                <span>قائمة السائقين المقبولين ({approvedDriversCount})</span>
+              </h3>
+            </div>
+          )}
+          <AdminDriversPanel initialStatusFilter="approved" />
         </div>
       )}
 
