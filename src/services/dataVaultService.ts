@@ -663,3 +663,42 @@ export function loadComplaintsFromSecureStorage(): Complaint[] {
   } catch {}
   return [];
 }
+
+/**
+ * Completely wipes all local users, drivers, rides, complaints, ratings, and sessions
+ * from LocalStorage, SessionStorage, and IndexedDB so the app starts 100% clean.
+ */
+export async function purgeAllLocalVaultData(): Promise<void> {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith('motodrive_') ||
+          k.startsWith('motodz_') ||
+          k.startsWith('firebase:') ||
+          k.includes('phone') ||
+          k.includes('driver') ||
+          k.includes('ride')) &&
+        k !== 'motodrive_clean_production_reset_v5'
+      ) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    sessionStorage.removeItem('motodrive_web_admin_unlocked');
+  } catch {}
+
+  try {
+    const db = await openVaultDB();
+    if (db) {
+      const tx = db.transaction([STORE_USERS, STORE_DRIVERS, STORE_RIDES, STORE_META], 'readwrite');
+      tx.objectStore(STORE_USERS).clear();
+      tx.objectStore(STORE_DRIVERS).clear();
+      tx.objectStore(STORE_RIDES).clear();
+      tx.objectStore(STORE_META).clear();
+    }
+  } catch {}
+}
+

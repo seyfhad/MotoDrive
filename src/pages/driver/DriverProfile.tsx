@@ -100,15 +100,16 @@ export const DriverProfile: React.FC = () => {
           {showCallSupervisor && (
             <div className="p-3.5 bg-slate-950 border border-emerald-500/40 rounded-2xl space-y-2.5 animate-in fade-in">
               <p className="text-xs text-slate-300 font-bold text-center">
-                يرجى الاتصال بالمسؤول مباشرة لمعالجة مشكلتك فوراً:
+                يرجى مراسلة الدعم الفني مباشرة لمعالجة مشكلتك فوراً:
               </p>
-              <a
-                href="tel:0542524728"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
+                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>اتصال بالمسؤول (0542524728)</span>
-              </a>
+                <span>مراسلة الدعم الفني مباشرة</span>
+              </button>
             </div>
           )}
 

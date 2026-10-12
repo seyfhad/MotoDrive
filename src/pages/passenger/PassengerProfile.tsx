@@ -1,16 +1,81 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Phone, Shield, AlertTriangle, LogOut, Lock, PhoneCall, MessageCircle, Trash2 } from 'lucide-react';
+import {
+  Phone,
+  Shield,
+  AlertTriangle,
+  LogOut,
+  Lock,
+  PhoneCall,
+  MessageCircle,
+  Trash2,
+  Home,
+  Briefcase,
+  MapPin,
+  Pencil,
+  CheckCircle2,
+} from 'lucide-react';
 import { signOutUser } from '../../services/authService';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
+import { FavoriteLocationModal } from '../../components/passenger/FavoriteLocationModal';
+import { getSavedFavoritePlaces, SavedFavoritePlaces } from '../../services/dbService';
+import { Coordinates } from '../../types';
 
 export const PassengerProfile: React.FC = () => {
-  const { activePassenger, setCurrentUser, deleteMyAccount } = useApp();
+  const { activePassenger, setCurrentUser, deleteMyAccount, updateSavedLocation } = useApp();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isLoadingProfile] = useState(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState(false);
+
+  // Saved Home & Work Locations state
+  const [favoritePlaces, setFavoritePlaces] = useState<SavedFavoritePlaces>({
+    home: activePassenger.homeLocation ?? null,
+    work: activePassenger.workLocation ?? null,
+  });
+  const [editingFavoriteType, setEditingFavoriteType] = useState<'home' | 'work' | null>(null);
+  const [savedToast, setSavedToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getSavedFavoritePlaces(activePassenger.id, activePassenger.phone, {
+      homeLocation: activePassenger.homeLocation,
+      workLocation: activePassenger.workLocation,
+    }).then((saved) => {
+      if (!active) return;
+      setFavoritePlaces({
+        home: activePassenger.homeLocation ?? saved.home ?? null,
+        work: activePassenger.workLocation ?? saved.work ?? null,
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    activePassenger.id,
+    activePassenger.phone,
+    activePassenger.homeLocation,
+    activePassenger.workLocation,
+  ]);
+
+  const handleSaveFavoriteLocation = async (
+    type: 'home' | 'work',
+    location: Coordinates | null
+  ) => {
+    setFavoritePlaces((prev) => ({
+      ...prev,
+      [type]: location,
+    }));
+    await updateSavedLocation(type, location);
+    const label = type === 'home' ? 'المنزل' : 'مكان العمل';
+    if (location) {
+      setSavedToast(`✅ تم حفظ موقع "${label}" (${location.name || location.address}) وتحديث قاعدة بيانات Firestore بنجاح!`);
+    } else {
+      setSavedToast(`🗑️ تم حذف عنوان "${label}" المحفوظ من حسابك.`);
+    }
+    setTimeout(() => setSavedToast(null), 5000);
+  };
 
   const handleSignOut = async () => {
     try {
@@ -75,6 +140,101 @@ export const PassengerProfile: React.FC = () => {
         </div>
       </div>
 
+      {/* Saved Favorite Places Card (Home & Work - Synced with Firestore) */}
+      <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3.5 shadow-xl" id="profile-saved-locations-card">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-amber-400" />
+            <h4 className="text-sm font-bold text-white">الأماكن المحفوظة (المنزل ومكان العمل)</h4>
+          </div>
+          <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">
+            متزامن مع Firestore
+          </span>
+        </div>
+
+        {savedToast && (
+          <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{savedToast}</span>
+          </div>
+        )}
+
+        <div className="space-y-2.5">
+          {/* Home Address Button */}
+          <div
+            onClick={() => setEditingFavoriteType('home')}
+            className="p-3 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-3 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3 truncate flex-1">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                <Home className="w-4 h-4" />
+              </div>
+              <div className="truncate flex-1 text-right">
+                <div className="text-xs font-black text-white">المنزل</div>
+                <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                  {favoritePlaces.home
+                    ? favoritePlaces.home.name || favoritePlaces.home.address
+                    : 'انقر لتحديد وحفظ موقع المنزل على الخريطة'}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingFavoriteType('home');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+            >
+              <Pencil className="w-3 h-3" />
+              <span>{favoritePlaces.home ? 'تعديل' : 'تحديد'}</span>
+            </button>
+          </div>
+
+          {/* Work Address Button */}
+          <div
+            onClick={() => setEditingFavoriteType('work')}
+            className="p-3 rounded-2xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-blue-500/40 flex items-center justify-between gap-3 transition-all cursor-pointer"
+          >
+            <div className="flex items-center gap-3 truncate flex-1">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+                <Briefcase className="w-4 h-4" />
+              </div>
+              <div className="truncate flex-1 text-right">
+                <div className="text-xs font-black text-white">مكان العمل</div>
+                <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                  {favoritePlaces.work
+                    ? favoritePlaces.work.name || favoritePlaces.work.address
+                    : 'انقر لتحديد وحفظ مكان العمل على الخريطة'}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingFavoriteType('work');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500 text-blue-300 hover:text-white border border-blue-500/30 text-[11px] font-bold flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+            >
+              <Pencil className="w-3 h-3" />
+              <span>{favoritePlaces.work ? 'تعديل' : 'تحديد'}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Favorite Location Modal */}
+      {editingFavoriteType && (
+        <FavoriteLocationModal
+          isOpen={Boolean(editingFavoriteType)}
+          type={editingFavoriteType}
+          initialLocation={favoritePlaces[editingFavoriteType]}
+          onClose={() => setEditingFavoriteType(null)}
+          onSave={handleSaveFavoriteLocation}
+        />
+      )}
+
       {/* Support & Supervisor Contact Card (Report Problem & Facebook Message) */}
       <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3" id="passenger-support-actions">
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
@@ -98,15 +258,16 @@ export const PassengerProfile: React.FC = () => {
           {showCallSupervisor && (
             <div className="p-3.5 bg-slate-950 border border-emerald-500/40 rounded-2xl space-y-2.5 animate-in fade-in">
               <p className="text-xs text-slate-300 font-bold text-center">
-                يرجى الاتصال بالمسؤول مباشرة لمعالجة مشكلتك فوراً:
+                يرجى مراسلة الدعم الفني مباشرة لمعالجة مشكلتك فوراً:
               </p>
-              <a
-                href="tel:0542524728"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all"
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
+                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>اتصال بالمسؤول (0542524728)</span>
-              </a>
+                <span>مراسلة الدعم الفني مباشرة</span>
+              </button>
             </div>
           )}
 

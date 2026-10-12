@@ -1,7 +1,7 @@
 {
   "name": "MotoDrive",
   "short_name": "MotoDrive",
-  "start_url": "./index.html",
+  "start_url": "./index.html?app_source=pwa",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",

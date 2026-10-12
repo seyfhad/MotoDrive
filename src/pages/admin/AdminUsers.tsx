@@ -1,11 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { UserProfile } from '../../types';
-import { Users, Search, Phone, Star, Shield, Ban, Trash2, CheckCircle2, X } from 'lucide-react';
+import { AdminDriversPanel } from '../../components/admin/AdminDriversPanel';
+import { MotoIcon } from '../../components/shared/MotoIcon';
+import {
+  Users,
+  Search,
+  Star,
+  Ban,
+  Trash2,
+  X,
+  UserCheck,
+  Filter,
+  Home,
+  Briefcase,
+} from 'lucide-react';
 
-export const AdminUsers: React.FC = () => {
-  const { passengers, rides, suspendPassenger, deletePassenger } = useApp();
+export interface AdminUsersProps {
+  initialRoleFilter?: 'all' | 'driver' | 'passenger';
+}
+
+export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all' }) => {
+  const { passengers, drivers, rides, suspendPassenger, deletePassenger } = useApp();
+  const [roleFilter, setRoleFilter] = useState<'all' | 'driver' | 'passenger'>(initialRoleFilter);
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    setRoleFilter(initialRoleFilter);
+  }, [initialRoleFilter]);
 
   const [suspendTarget, setSuspendTarget] = useState<UserProfile | null>(null);
   const [suspendReason, setSuspendReason] = useState('مخالفة شروط الاستخدام وقوانين منصة MotoDrive');
@@ -13,9 +35,17 @@ export const AdminUsers: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
   const [deleteReason, setDeleteReason] = useState('قرار من المسؤول بحذف الحساب نهائياً');
 
-  const filtered = passengers.filter(
-    p => p.name.toLowerCase().includes(search.toLowerCase()) || p.phone.includes(search)
+  // Filter out user profiles that belong purely to drivers when displaying passenger cards so there is no confusion, or show all passenger records
+  const passengerProfiles = passengers.filter((p) => p.role !== 'driver');
+
+  const filteredPassengers = passengerProfiles.filter(
+    (p) =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.phone && p.phone.includes(search))
   );
+
+  const pendingDriversCount = drivers.filter((d) => d.status === 'pending').length;
+  const totalUsersCount = drivers.length + passengerProfiles.length;
 
   const handleConfirmSuspend = () => {
     if (!suspendTarget) return;
@@ -30,102 +60,240 @@ export const AdminUsers: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 text-right text-slate-100" id="admin-users-screen">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-        <div>
-          <h2 className="text-xl font-black text-white">مسؤول حسابات الركاب (Passengers Management)</h2>
-          <p className="text-xs text-slate-400">قائمة مستخدمي التطبيق وإحصاءات الرحلات مع إمكانية تعليق أو حذف الحساب مع كتابة السبب</p>
+    <div className="space-y-6 text-right text-slate-100" id="admin-users-screen" dir="rtl">
+      {/* Unified Header */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+              <Users className="w-5 h-5 text-amber-400" />
+              <span>إدارة المستخدمين الموحدة (السائقين والركاب)</span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              قائمة موحدة لجميع مستخدمي المنصة مع تبويب وفلتر خاص لكل نوع مستخدم (سائق / راكب) لسهولة المراجعة والإدارة
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-bold">
+              الإجمالي: <span className="text-amber-400 font-black">{totalUsersCount}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Role Filter Tabs (الكل / السائقين / الركاب) */}
+        <div className="flex flex-wrap items-center gap-2" id="admin-users-role-filter-tabs">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 ml-2">
+            <Filter className="w-3.5 h-3.5 text-amber-400" />
+            <span>نوع المستخدم:</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setRoleFilter('all')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              roleFilter === 'all'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>الكل ({totalUsersCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setRoleFilter('driver')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              roleFilter === 'driver'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+            }`}
+          >
+            <UserCheck className="w-4 h-4" />
+            <span>السائقين والوثائق ({drivers.length})</span>
+            {pendingDriversCount > 0 && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  roleFilter === 'driver'
+                    ? 'bg-slate-950 text-amber-400'
+                    : 'bg-amber-500 text-slate-950 animate-pulse'
+                }`}
+              >
+                {pendingDriversCount} معلق
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setRoleFilter('passenger')}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+              roleFilter === 'passenger'
+                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>الركاب ({passengerProfiles.length})</span>
+          </button>
         </div>
       </div>
 
-      <div className="relative max-w-md">
-        <input
-          type="text"
-          placeholder="بحث بالاسم أو رقم الهاتف..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-2.5 pr-10 pl-4 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
-        />
-        <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-3" />
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(user => {
-          const userRides = rides.filter(r => r.passengerId === user.id);
-          const isSuspended = user.status === 'suspended';
-          return (
-            <div
-              key={user.id}
-              className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3 shadow-lg"
-            >
-              <div className="flex items-center gap-3">
-                <img
-                  src={user.photoUrl || '/icon.jpg'}
-                  alt={user.name}
-                  className="w-12 h-12 rounded-full object-cover border-2 border-amber-500"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/icon.jpg';
-                  }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-white text-sm truncate">{user.name}</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5" dir="ltr">{user.phone}</div>
-                  <div className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold mt-0.5">
-                    <Star className="w-3 h-3 fill-amber-400" />
-                    <span>{(user.rating ?? 5.0).toFixed(1)} ({user.totalTrips ?? userRides.length} رحلة)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-1.5 text-xs text-slate-300">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-[11px]">جهة اتصال الطوارئ:</span>
-                  <span className="font-semibold text-white">
-                    {user.emergencyContact?.name || 'غير مسجلة'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 text-[11px]">حالة الحساب:</span>
-                  <span className={`font-bold ${isSuspended ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {isSuspended ? 'موقوف (معلق)' : 'نشط ومفعل'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Admin Actions: Suspend / Activate & Delete */}
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isSuspended) {
-                      suspendPassenger(user.id, 'إلغاء تعليق الحساب وتفعيله من طرف المسؤول');
-                    } else {
-                      setSuspendTarget(user);
-                    }
-                  }}
-                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
-                    isSuspended
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-                      : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
-                  }`}
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  <span>{isSuspended ? 'إلغاء التعليق (تفعيل)' : 'تعليق الحساب'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDeleteTarget(user)}
-                  className="px-3 py-2 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
-                  title="حذف الحساب نهائياً مع إرسال السبب"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+      {/* 1. DRIVERS SECTION (Shown when filter is 'all' or 'driver') */}
+      {(roleFilter === 'all' || roleFilter === 'driver') && (
+        <div className="space-y-3" id="admin-unified-drivers-section">
+          {roleFilter === 'all' && (
+            <div className="flex items-center justify-between px-1">
+              <h3 className="text-sm font-black text-amber-400 flex items-center gap-2">
+                <MotoIcon className="w-4 h-4" />
+                <span>قسم السائقين وطلبات التسجيل ({drivers.length})</span>
+              </h3>
             </div>
-          );
-        })}
-      </div>
+          )}
+          <AdminDriversPanel />
+        </div>
+      )}
+
+      {/* 2. PASSENGERS SECTION (Shown when filter is 'all' or 'passenger') */}
+      {(roleFilter === 'all' || roleFilter === 'passenger') && (
+        <div className="space-y-4" id="admin-unified-passengers-section">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-400" />
+                <span>قائمة حسابات الركاب ({passengerProfiles.length})</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                إحصاءات الرحلات والعناوين المحفوظة (المنزل/العمل) مع إمكانية تعليق أو حذف الحساب
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="بحث عن راكب بالاسم أو رقم الهاتف..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl py-2.5 pr-10 pl-4 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+              />
+              <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-3" />
+            </div>
+          </div>
+
+          {filteredPassengers.length === 0 ? (
+            <div className="text-center p-10 bg-slate-900/40 border border-slate-800 rounded-3xl text-slate-400 text-xs">
+              لا توجد حسابات ركاب مطابقة للبحث حالياً.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredPassengers.map((user) => {
+                const userRides = rides.filter((r) => r.passengerId === user.id);
+                const isSuspended = user.status === 'suspended';
+                return (
+                  <div
+                    key={user.id}
+                    className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3 shadow-lg"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={user.photoUrl || '/icon.jpg'}
+                          alt={user.name}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-amber-500 shrink-0"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/icon.jpg';
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-white text-sm truncate">{user.name}</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5 font-mono" dir="ltr">
+                            {user.phone}
+                          </div>
+                          <div className="flex items-center gap-1 text-[10px] text-amber-400 font-semibold mt-0.5">
+                            <Star className="w-3 h-3 fill-amber-400" />
+                            <span>
+                              {(user.rating ?? 5.0).toFixed(1)} ({user.totalTrips ?? userRides.length} رحلة)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30 shrink-0">
+                        راكب
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 space-y-1.5 text-xs text-slate-300">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-slate-500 text-[11px] flex items-center gap-1 shrink-0">
+                          <Home className="w-3 h-3 text-amber-400" />
+                          <span>المنزل:</span>
+                        </span>
+                        <span className="font-semibold text-white truncate text-[11px]">
+                          {user.homeLocation?.name || user.homeLocation?.address || 'غير محدد'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-slate-500 text-[11px] flex items-center gap-1 shrink-0">
+                          <Briefcase className="w-3 h-3 text-blue-400" />
+                          <span>العمل:</span>
+                        </span>
+                        <span className="font-semibold text-white truncate text-[11px]">
+                          {user.workLocation?.name || user.workLocation?.address || 'غير محدد'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 text-[11px]">حالة الحساب:</span>
+                        <span
+                          className={`font-bold ${
+                            isSuspended ? 'text-red-400' : 'text-emerald-400'
+                          }`}
+                        >
+                          {isSuspended ? 'موقوف (معلق)' : 'نشط ومفعل'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Admin Actions: Suspend / Activate & Delete */}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isSuspended) {
+                            suspendPassenger(
+                              user.id,
+                              'إلغاء تعليق الحساب وتفعيله من طرف المسؤول'
+                            );
+                          } else {
+                            setSuspendTarget(user);
+                          }
+                        }}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                          isSuspended
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                            : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        <Ban className="w-3.5 h-3.5" />
+                        <span>{isSuspended ? 'إلغاء التعليق (تفعيل)' : 'تعليق الحساب'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(user)}
+                        className="px-3 py-2 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        title="حذف الحساب نهائياً مع إرسال السبب"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Suspend Reason Modal */}
       {suspendTarget && (
@@ -143,13 +311,14 @@ export const AdminUsers: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              يرجى كتابة السبب الموجه لحساب الراكب <span className="text-white font-bold">{suspendTarget.name}</span>:
+              يرجى كتابة السبب الموجه لحساب الراكب{' '}
+              <span className="text-white font-bold">{suspendTarget.name}</span>:
             </p>
 
             <div>
               <textarea
                 value={suspendReason}
-                onChange={e => setSuspendReason(e.target.value)}
+                onChange={(e) => setSuspendReason(e.target.value)}
                 rows={3}
                 placeholder="أدخل سبب تعليق الحساب هنا..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
@@ -161,7 +330,7 @@ export const AdminUsers: React.FC = () => {
                 'مخالفة شروط الاستخدام وقوانين منصة MotoDrive',
                 'إلغاء متكرر للرحلات بدون مبرر',
                 'سلوك غير لائق مع السائقين',
-              ].map(r => (
+              ].map((r) => (
                 <button
                   key={r}
                   type="button"
@@ -213,13 +382,14 @@ export const AdminUsers: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              يرجى كتابة سبب الحذف النهائي الموجه للراكب <span className="text-white font-bold">{deleteTarget.name}</span>:
+              يرجى كتابة سبب الحذف النهائي الموجه للراكب{' '}
+              <span className="text-white font-bold">{deleteTarget.name}</span>:
             </p>
 
             <div>
               <textarea
                 value={deleteReason}
-                onChange={e => setDeleteReason(e.target.value)}
+                onChange={(e) => setDeleteReason(e.target.value)}
                 rows={3}
                 placeholder="أدخل سبب الحذف هنا..."
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
@@ -231,7 +401,7 @@ export const AdminUsers: React.FC = () => {
                 'قرار من المسؤول بحذف الحساب نهائياً لمخالفة سياسة المنصة',
                 'طلب من المستخدم حذف حسابه نهائياً',
                 'حساب وهمي أو بيانات غير صحيحة',
-              ].map(r => (
+              ].map((r) => (
                 <button
                   key={r}
                   type="button"

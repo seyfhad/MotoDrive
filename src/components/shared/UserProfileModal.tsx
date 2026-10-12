@@ -26,13 +26,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
   const isDriverView = currentRole === 'driver' && activeDriver;
   const displayName = isDriverView ? activeDriver.name : activePassenger.name;
-  const displayPhone = isDriverView ? activeDriver.phone : activePassenger.phone || '0542524728';
+  const displayPhone = isDriverView ? activeDriver.phone : activePassenger.phone || 'غير محدد';
   const displayPhoto =
     (isDriverView ? activeDriver.photoUrl : activePassenger.photoUrl) ||
     currentUser?.photoURL ||
-    (activePassenger.role === 'admin'
-      ? '/assets/images/admin_logo.jpg'
-      : isDriverView
+    (isDriverView
       ? '/assets/images/driver_logo.jpg'
       : '/assets/images/passenger_logo.jpg');
 
@@ -134,15 +132,19 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           {showReportOptions && (
             <div className="p-3 bg-slate-950 border border-red-500/30 rounded-2xl space-y-2 animate-in fade-in">
               <p className="text-[11px] text-slate-300 font-semibold text-center">
-                تواصل مباشرة مع المسؤول لحل المشكلة فوراً:
+                تواصل مباشرة مع فريق الدعم الفني لحل المشكلة فوراً:
               </p>
-              <a
-                href="tel:0542524728"
-                className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all"
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new CustomEvent('open-contact-us'));
+                }}
+                className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer"
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>اتصال بالمسؤول (0542524728)</span>
-              </a>
+                <span>مراسلة الدعم الفني مباشرة</span>
+              </button>
             </div>
           )}
 

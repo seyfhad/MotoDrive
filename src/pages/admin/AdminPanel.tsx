@@ -9,6 +9,7 @@ import { AdminServiceAreas } from './AdminServiceAreas';
 import { AdminComplaints } from './AdminComplaints';
 import { AdminUsers } from './AdminUsers';
 import { MotoIcon } from '../../components/shared/MotoIcon';
+import { androidNativeService } from '../../services/androidNativeService';
 import {
   ShieldCheck,
   Users,
@@ -34,14 +35,21 @@ import {
 export const AdminPanel: React.FC = () => {
   const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
   const [activeTab, setActiveTab] = useState<
-    'drivers' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'users'
-  >('drivers');
+    'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints'
+  >('users');
+  const [usersRoleFilter, setUsersRoleFilter] = useState<'all' | 'driver' | 'passenger'>('all');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
-  // Strict Owner Access Control
+  // Strict Owner Access Control: Admin is ONLY allowed on the Web URL when unlocked via the bike icon passcode
+  const isWebBrowser = androidNativeService.isWebBrowserEnvironment();
+  const isWebAdminUnlocked =
+    typeof window !== 'undefined' &&
+    sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
   const isOwner =
-    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com';
+    isWebBrowser &&
+    isWebAdminUnlocked &&
+    (currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+      activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com');
 
   // In-app modals replacing blocked window.confirm / window.prompt in iframes
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -58,9 +66,9 @@ export const AdminPanel: React.FC = () => {
         <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto text-2xl">
           🔒
         </div>
-        <h3 className="text-lg font-black text-white">غير مصرح بالدخول للمسؤول</h3>
+        <h3 className="text-lg font-black text-white">التطبيق مخصص للركاب والسائقين فقط</h3>
         <p className="text-xs text-slate-300 leading-relaxed">
-          عذراً، لوحة تحكم المسؤول مخصصة حصرياً لمالك التطبيق الرئيسي (<span className="text-amber-400 font-mono">seyfhad@gmail.com</span>).
+          لوحة الإدارة متاحة حصرياً عبر موقع الويب الرسمي لمالك المنصة ولا يمكن فتحها من داخل التطبيق.
         </p>
         <button
           onClick={() => setCurrentRole('passenger')}
@@ -73,6 +81,8 @@ export const AdminPanel: React.FC = () => {
   }
 
   const pendingDriversCount = drivers.filter(d => d.status === 'pending').length;
+  const passengerProfilesCount = passengers.filter(p => p.role !== 'driver').length;
+  const totalUnifiedUsersCount = drivers.length + passengerProfilesCount;
   const activeComplaintsCount = complaints.filter(c => c.status !== 'resolved').length;
   const activeRidesCount = rides.filter(
     r => r.status === 'searching' || r.status === 'accepted' || r.status === 'driver_arriving' || r.status === 'trip_started'
@@ -108,27 +118,42 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleNavigateTab = (target: string) => {
+    if (target === 'drivers') {
+      setUsersRoleFilter('driver');
+      setActiveTab('users');
+    } else if (target === 'users') {
+      setUsersRoleFilter('passenger');
+      setActiveTab('users');
+    } else {
+      setActiveTab(target as any);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16 w-full" dir="rtl">
       {/* Main Navigation Bar with All Admin Modules */}
       <div className="bg-slate-900/60 border-b border-slate-800 px-4 py-2.5 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-2 min-w-max">
-          {/* 1. طلبات السائقين */}
+          {/* 1. إدارة المستخدمين الموحدة (السائقين والركاب) */}
           <button
-            onClick={() => setActiveTab('drivers')}
+            onClick={() => {
+              setUsersRoleFilter('all');
+              setActiveTab('users');
+            }}
             className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'drivers'
+              activeTab === 'users'
                 ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
                 : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
             }`}
           >
-            <UserCheck className="w-4 h-4" />
-            <span>طلبات السائقين والوثائق</span>
+            <Users className="w-4 h-4" />
+            <span>المستخدمين: السائقين والركاب ({totalUnifiedUsersCount})</span>
             {pendingDriversCount > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                activeTab === 'drivers' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
+                activeTab === 'users' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
               }`}>
-                {pendingDriversCount}
+                {pendingDriversCount} طلب سائق
               </span>
             )}
           </button>
@@ -218,32 +243,18 @@ export const AdminPanel: React.FC = () => {
               </span>
             )}
           </button>
-
-          {/* 8. حسابات الركاب والمستخدمين */}
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'users'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>المستخدمين ({passengers.length})</span>
-          </button>
         </div>
       </div>
 
       {/* 3. Main Display Container */}
       <main className="w-full p-4 sm:p-6">
-        {activeTab === 'drivers' && <AdminDriversPanel />}
-        {activeTab === 'dashboard' && <AdminDashboard onNavigateTab={(t: any) => setActiveTab(t)} />}
+        {activeTab === 'users' && <AdminUsers initialRoleFilter={usersRoleFilter} />}
+        {activeTab === 'dashboard' && <AdminDashboard onNavigateTab={handleNavigateTab} />}
         {activeTab === 'rides' && <AdminRides />}
         {activeTab === 'map' && <AdminLiveMap />}
         {activeTab === 'pricing' && <AdminPricing />}
         {activeTab === 'service_areas' && <AdminServiceAreas />}
         {activeTab === 'complaints' && <AdminComplaints />}
-        {activeTab === 'users' && <AdminUsers />}
       </main>
 
       {/* Logout Confirmation Modal (Works 100% inside iframes without window.confirm) */}

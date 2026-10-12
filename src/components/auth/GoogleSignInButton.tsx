@@ -40,11 +40,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       if (driver) {
         setActiveDriver(driver);
       }
-      if (profile.role === 'admin' || user.email === 'seyfhad@gmail.com') {
-        setCurrentRole('admin');
-      } else {
-        setCurrentRole(role);
-      }
+      setCurrentRole(role === 'driver' ? 'driver' : 'passenger');
 
       if (onSuccess) {
         onSuccess();

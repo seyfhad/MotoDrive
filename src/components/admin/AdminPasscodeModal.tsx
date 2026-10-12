@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { X, ArrowLeft } from 'lucide-react';
+import { androidNativeService } from '../../services/androidNativeService';
 
 interface AdminPasscodeModalProps {
   isOpen: boolean;
@@ -28,9 +29,15 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  // Strictly block Admin Passcode Modal inside the installed mobile app / APK
+  if (!isOpen || !androidNativeService.isWebBrowserEnvironment()) return null;
 
   const performLogin = () => {
+    if (!androidNativeService.isWebBrowserEnvironment()) {
+      onClose();
+      return;
+    }
+
     const ownerUser: any = {
       uid: 'admin-owner-seyfhad',
       displayName: 'المسؤول',
@@ -48,13 +55,14 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    // Set state and persist session
+    // Set state for current web tab session only (never persist admin role in localStorage so it never opens unexpectedly)
     setCurrentUser(ownerUser);
     setActivePassenger(ownerProfile);
     setCurrentRole('admin');
 
-    localStorage.setItem('motodrive_user_session', JSON.stringify({ user: ownerProfile, timestamp: Date.now() }));
-    localStorage.setItem('motodrive_v3_role', 'admin');
+    try {
+      sessionStorage.setItem('motodrive_web_admin_unlocked', 'true');
+    } catch {}
 
     if (onSuccess) onSuccess();
     onClose();

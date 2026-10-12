@@ -9,6 +9,7 @@ import { fileToCompressedDataUrl } from '../../services/firestoreService';
 import { submitDriverApplication } from '../../services/driverApplicationsService';
 import { MotoIcon } from '../shared/MotoIcon';
 import { AdminPasscodeModal } from '../admin/AdminPasscodeModal';
+import { androidNativeService } from '../../services/androidNativeService';
 import {
   User,
   Zap,
@@ -512,18 +513,28 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
       <div className="absolute -top-24 -right-24 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-amber-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Header / Brand Badge with Hidden Motorcycle Trigger */}
+      {/* Top Header / Brand Badge with Hidden Motorcycle Trigger (Web URL Only — completely disabled inside the App) */}
       <div className="relative z-10 flex items-center justify-between pt-1">
         <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => setIsAdminModalOpen(true)}
-            className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0 cursor-pointer active:scale-95 transition-transform hover:border-amber-400"
-            title="MotoDrive"
-            aria-label="أيقونة الدراجة"
-          >
-            <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
-          </button>
+          {androidNativeService.isWebBrowserEnvironment() ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (androidNativeService.isWebBrowserEnvironment()) {
+                  setIsAdminModalOpen(true);
+                }
+              }}
+              className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0 cursor-pointer active:scale-95 transition-transform hover:border-amber-400"
+              title="MotoDrive"
+              aria-label="أيقونة الدراجة"
+            >
+              <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
+            </button>
+          ) : (
+            <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg shadow-amber-500/20 border border-amber-500/30 shrink-0 select-none pointer-events-none">
+              <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-lg font-black tracking-tight text-white font-sans">
@@ -953,11 +964,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         </div>
       </div>
 
-      {/* Admin Passcode Modal */}
-      <AdminPasscodeModal
-        isOpen={isAdminModalOpen}
-        onClose={() => setIsAdminModalOpen(false)}
-      />
+      {/* Admin Passcode Modal (Strictly Web URL Only) */}
+      {androidNativeService.isWebBrowserEnvironment() && (
+        <AdminPasscodeModal
+          isOpen={isAdminModalOpen}
+          onClose={() => setIsAdminModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

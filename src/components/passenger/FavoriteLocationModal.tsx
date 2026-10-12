@@ -28,6 +28,7 @@ interface FavoriteLocationModalProps {
   defaultCenter?: Coordinates | null;
   onClose: () => void;
   onSave: (type: 'home' | 'work', location: Coordinates | null) => Promise<void>;
+  onSelectAsDestination?: (location: Coordinates) => void;
 }
 
 export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
@@ -37,6 +38,7 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
   defaultCenter,
   onClose,
   onSave,
+  onSelectAsDestination,
 }) => {
   const isHome = type === 'home';
   const titleLabel = isHome ? 'عنوان المنزل' : 'عنوان العمل';
@@ -49,7 +51,12 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
         name: 'ساحة التضامن - وسط مدينة الشلف',
         address: 'وسط مدينة الشلف، الجزائر',
       },
-    [initialLocation, defaultCenter]
+    [
+      initialLocation?.lat,
+      initialLocation?.lng,
+      defaultCenter?.lat,
+      defaultCenter?.lng,
+    ]
   );
 
   const [selectedCoords, setSelectedCoords] = useState<Coordinates>(defaultPoint);
@@ -64,17 +71,33 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
   const [isLocatingGps, setIsLocatingGps] = useState<boolean>(false);
   const [isGeocodingMap, setIsGeocodingMap] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [placePreviewNotice, setPlacePreviewNotice] = useState<string | null>(null);
+  const wasOpenRef = React.useRef<boolean>(false);
+  const geocodeReqIdRef = React.useRef<number>(0);
 
+  // Initialize coordinates ONLY when the modal transitions from closed -> open,
+  // so manual pin clicks on the mini-map are NEVER overwritten by background prop changes!
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
+      wasOpenRef.current = true;
       const startCoords = initialLocation || defaultPoint;
-      setSelectedCoords(startCoords);
+      setSelectedCoords({
+        lat: Number(startCoords.lat),
+        lng: Number(startCoords.lng),
+        name: startCoords.name || startCoords.address || '',
+        address: startCoords.address || startCoords.name || '',
+      });
       setCustomAddressText(
         initialLocation?.name || initialLocation?.address || startCoords.name || ''
       );
       setSearchQuery('');
+      setSaveSuccessMessage(null);
+      setPlacePreviewNotice(null);
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [isOpen, initialLocation, defaultPoint]);
+  }, [isOpen, type, initialLocation, defaultPoint]);
 
   const currentWilaya = useMemo(() => {
     const nearest = findNearestAlgerianWilaya(selectedCoords.lat, selectedCoords.lng);
@@ -106,40 +129,56 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
   if (!isOpen) return null;
 
   const handleMapClick = async (coords: Coordinates) => {
+    const reqId = ++geocodeReqIdRef.current;
+    const exactLat = Number(coords.lat);
+    const exactLng = Number(coords.lng);
+
     setIsGeocodingMap(true);
+    setPlacePreviewNotice(null);
+
+    const immediateFallback = `${exactLat.toFixed(5)}, ${exactLng.toFixed(5)}`;
     setSelectedCoords({
-      lat: coords.lat,
-      lng: coords.lng,
-      name: 'جاري تحديد اسم الشارع...',
-      address: `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`,
+      lat: exactLat,
+      lng: exactLng,
+      name: customAddressText.trim() || 'موقع محدد يدوياً على الخريطة',
+      address: immediateFallback,
     });
 
     try {
-      const address = await reverseGeocodeCoords(coords.lat, coords.lng);
-      const nearest = findNearestLocalLocation(coords.lat, coords.lng);
+      const address = await reverseGeocodeCoords(exactLat, exactLng);
+      if (reqId !== geocodeReqIdRef.current) return;
+
+      const nearest = findNearestLocalLocation(exactLat, exactLng);
       const resolvedName =
         address ||
-        (nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقع محدد على الخريطة');
+        (nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : `موقع محدد (${immediateFallback})`);
 
       const updated: Coordinates = {
-        lat: coords.lat,
-        lng: coords.lng,
+        lat: exactLat,
+        lng: exactLng,
         name: resolvedName,
         address: resolvedName,
       };
       setSelectedCoords(updated);
       setCustomAddressText(resolvedName);
+      setPlacePreviewNotice(
+        `📍 تم تحديد الموقع يدوياً على الخريطة المصغرة (${exactLat.toFixed(4)}, ${exactLng.toFixed(4)}): ${resolvedName}`
+      );
     } catch {
-      const fallback = `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+      if (reqId !== geocodeReqIdRef.current) return;
+      const fallbackLabel = `موقع محدد (${immediateFallback})`;
       setSelectedCoords({
-        lat: coords.lat,
-        lng: coords.lng,
-        name: fallback,
-        address: fallback,
+        lat: exactLat,
+        lng: exactLng,
+        name: fallbackLabel,
+        address: immediateFallback,
       });
-      setCustomAddressText(fallback);
+      setCustomAddressText(fallbackLabel);
+      setPlacePreviewNotice(`📍 تم تحديد الإحداثيات يدوياً: ${immediateFallback}`);
     } finally {
-      setIsGeocodingMap(false);
+      if (reqId === geocodeReqIdRef.current) {
+        setIsGeocodingMap(false);
+      }
     }
   };
 
@@ -147,8 +186,15 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
     setIsLocatingGps(true);
     try {
       const res = await getRobustUserLocation();
-      setSelectedCoords(res.coords);
-      setCustomAddressText(res.coords.name || res.coords.address || 'موقعي الحالي');
+      setSelectedCoords({
+        lat: Number(res.coords.lat),
+        lng: Number(res.coords.lng),
+        name: res.coords.name || res.coords.address || 'موقعي الحالي',
+        address: res.coords.address || res.coords.name || 'موقعي الحالي',
+      });
+      const resolvedLabel = res.coords.name || res.coords.address || 'موقعي الحالي';
+      setCustomAddressText(resolvedLabel);
+      setPlacePreviewNotice(`📍 تم عرض موقعك الحالي على الخريطة المصغرة: ${resolvedLabel}`);
     } catch {
       // Ignore error
     } finally {
@@ -161,37 +207,65 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
     wilaya: string;
     coords: Coordinates;
   }) => {
+    geocodeReqIdRef.current++;
     const fullLabel = item.name.includes(item.wilaya)
       ? item.name
       : `${item.name} (${item.wilaya})`;
     const nextCoords: Coordinates = {
-      lat: item.coords.lat,
-      lng: item.coords.lng,
+      lat: Number(item.coords.lat),
+      lng: Number(item.coords.lng),
       name: fullLabel,
       address: item.coords.address || fullLabel,
     };
     setSelectedCoords(nextCoords);
     setCustomAddressText(fullLabel);
     setSearchQuery('');
+    setPlacePreviewNotice(
+      `🗺️ تم عرض "${fullLabel}" في الخريطة المصغرة — يمكنك النقر على أي نقطة في الخريطة لتعديل المكان يدوياً بدقة`
+    );
+  };
+
+  const buildFinalLocation = (): Coordinates => {
+    const cleanLabel =
+      customAddressText.trim() ||
+      selectedCoords.name ||
+      selectedCoords.address ||
+      (isHome ? 'المنزل' : 'العمل');
+
+    return {
+      lat: Number(selectedCoords.lat),
+      lng: Number(selectedCoords.lng),
+      name: cleanLabel,
+      address: selectedCoords.address || cleanLabel,
+    };
   };
 
   const handleConfirmSave = async () => {
     setIsSaving(true);
+    setSaveSuccessMessage(null);
     try {
-      const cleanLabel =
-        customAddressText.trim() ||
-        selectedCoords.name ||
-        selectedCoords.address ||
-        (isHome ? 'المنزل' : 'العمل');
-
-      const finalLocation: Coordinates = {
-        lat: Number(selectedCoords.lat),
-        lng: Number(selectedCoords.lng),
-        name: cleanLabel,
-        address: selectedCoords.address || cleanLabel,
-      };
-
+      const finalLocation = buildFinalLocation();
       await onSave(type, finalLocation);
+      setSaveSuccessMessage(
+        `✅ تم حفظ ${titleLabel} (${finalLocation.name}) بالإحداثيات المحددة في قاعدة بيانات Firestore بنجاح!`
+      );
+      setTimeout(() => {
+        onClose();
+      }, 900);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveAndGoNow = async () => {
+    setIsSaving(true);
+    setSaveSuccessMessage(null);
+    try {
+      const finalLocation = buildFinalLocation();
+      await onSave(type, finalLocation);
+      if (onSelectAsDestination) {
+        onSelectAsDestination(finalLocation);
+      }
       onClose();
     } finally {
       setIsSaving(false);
@@ -200,9 +274,13 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
 
   const handleDeleteSaved = async () => {
     setIsSaving(true);
+    setSaveSuccessMessage(null);
     try {
       await onSave(type, null);
-      onClose();
+      setSaveSuccessMessage(`🗑️ تم حذف ${titleLabel} وتحديث قاعدة بيانات Firestore بنجاح!`);
+      setTimeout(() => {
+        onClose();
+      }, 800);
     } finally {
       setIsSaving(false);
     }
@@ -338,7 +416,7 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
             <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
               <span className="font-bold text-slate-300 flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>أو انقر على الخريطة لتحديد الموقع بدقة:</span>
+                <span>الخريطة المصغرة لتحديد ومعاينة المكان بدقة:</span>
               </span>
               {isGeocodingMap && (
                 <span className="text-amber-400 flex items-center gap-1 text-[10px]">
@@ -348,15 +426,37 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
               )}
             </div>
 
-            <div className="h-52 w-full rounded-2xl overflow-hidden border border-slate-800 relative">
+            {placePreviewNotice && (
+              <div className="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-[11px] font-bold text-amber-300 flex items-center gap-1.5 animate-in fade-in">
+                <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{placePreviewNotice}</span>
+              </div>
+            )}
+
+            <div className="h-56 w-full rounded-2xl overflow-hidden border-2 border-amber-500/40 relative shadow-inner">
               <LeafletMap
                 center={[selectedCoords.lat, selectedCoords.lng]}
-                zoom={15}
-                destination={selectedCoords}
+                zoom={16}
+                destination={{
+                  ...selectedCoords,
+                  name:
+                    customAddressText.trim() ||
+                    selectedCoords.name ||
+                    (isHome ? 'المنزل 🏠' : 'العمل 💼'),
+                }}
                 interactive={true}
                 onMapClick={handleMapClick}
                 className="h-full w-full"
               />
+              {/* Selected Place Floating Badge inside Mini-Map */}
+              <div className="absolute top-2.5 right-2.5 left-2.5 z-20 pointer-events-none flex items-center justify-between gap-2 bg-slate-950/90 backdrop-blur-md border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-[11px] text-white shadow-lg">
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-amber-400 font-black">📍 المكان المحدد:</span>
+                  <span className="font-bold text-slate-200 truncate">
+                    {customAddressText.trim() || selectedCoords.name || selectedCoords.address}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -378,43 +478,69 @@ export const FavoriteLocationModal: React.FC<FavoriteLocationModalProps> = ({
               <span>
                 الإحداثيات: {selectedCoords.lat.toFixed(5)}, {selectedCoords.lng.toFixed(5)}
               </span>
-              <span className="text-emerald-400 font-semibold">يُحفظ تلقائياً في حسابك</span>
+              <span className="text-emerald-400 font-semibold">يُحفظ في Firestore تلقائياً</span>
             </div>
           </div>
+
+          {/* Visual Confirmation Banner on Save */}
+          {saveSuccessMessage && (
+            <div className="p-3 rounded-2xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-black flex items-center justify-center gap-2 text-center animate-in fade-in shadow-lg">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{saveSuccessMessage}</span>
+            </div>
+          )}
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex items-center gap-2">
-          {initialLocation && (
+        <div className="p-4 border-t border-slate-800 bg-slate-950/90 space-y-2">
+          <div className="flex items-center gap-2">
+            {initialLocation && (
+              <button
+                type="button"
+                onClick={handleDeleteSaved}
+                disabled={isSaving || Boolean(saveSuccessMessage)}
+                className="px-3.5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                title="حذف العنوان المحفوظ"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>حذف</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={handleDeleteSaved}
-              disabled={isSaving}
-              className="px-3.5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
-              title="حذف العنوان المحفوظ"
+              onClick={handleConfirmSave}
+              disabled={isSaving || Boolean(saveSuccessMessage)}
+              className={`flex-1 py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-[0.98] disabled:opacity-75 ${
+                saveSuccessMessage
+                  ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/25'
+                  : isHome
+                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/20'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white shadow-blue-500/20'
+              }`}
             >
-              <Trash2 className="w-4 h-4" />
-              <span>حذف</span>
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )}
+              <span>
+                {saveSuccessMessage ? 'تم الحفظ في قاعدة البيانات بنجاح!' : `حفظ ${titleLabel} بشكل دائم`}
+              </span>
+            </button>
+          </div>
+
+          {onSelectAsDestination && (
+            <button
+              type="button"
+              onClick={handleSaveAndGoNow}
+              disabled={isSaving || Boolean(saveSuccessMessage)}
+              className="w-full py-2.5 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50"
+            >
+              <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+              <span>حفظ وتوجيه الرحلة الآن إلى هذا المكان المحدد 🏍️</span>
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={handleConfirmSave}
-            disabled={isSaving}
-            className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer active:scale-[0.98] ${
-              isHome
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/20'
-                : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white shadow-blue-500/20'
-            }`}
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Check className="w-4 h-4" />
-            )}
-            <span>حفظ {titleLabel} بشكل دائم</span>
-          </button>
         </div>
       </div>
     </div>

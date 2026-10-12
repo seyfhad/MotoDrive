@@ -86,17 +86,23 @@ export const PassengerHome: React.FC = () => {
     activePassenger.workLocation,
   ]);
 
-  // معالجة النقر السريع على زر المنزل أو العمل: إذا كان محدداً مسبقاً يتم تعيينه فوراً كوجهة للرحلة، وإلا تفتح نافذة التحديد
+  // معالجة النقر السريع على زر المنزل أو العمل كإتجاه: يوجه الراكب مباشرة إلى المكان المحدد يدوياً في الخريطة المصغرة ويفتح نافذة الحجز بالإحداثيات الدقيقة
   const handleFavoriteButtonClick = (type: 'home' | 'work') => {
     if (isLongPressTriggeredRef.current) {
       isLongPressTriggeredRef.current = false;
       return;
     }
-    const existing = favoritePlaces[type];
-    if (existing) {
-      setSelectedDestination(existing);
+    const existing = favoritePlaces[type] || (type === 'home' ? activePassenger.homeLocation : activePassenger.workLocation);
+    if (existing && typeof existing.lat === 'number' && typeof existing.lng === 'number') {
+      const exactTarget: Coordinates = {
+        lat: Number(existing.lat),
+        lng: Number(existing.lng),
+        name: existing.name || existing.address || (type === 'home' ? 'المنزل' : 'العمل'),
+        address: existing.address || existing.name || `${Number(existing.lat).toFixed(5)}, ${Number(existing.lng).toFixed(5)}`,
+      };
+      setSelectedDestination(exactTarget);
       setMapNotice(
-        `🏁 تم تحديد "${type === 'home' ? 'المنزل' : 'العمل'}" (${existing.name || existing.address}) كوجهة لرحلتك!`
+        `🏁 تم توجيه المسار وتحديد "${type === 'home' ? 'المنزل' : 'العمل'}" (${exactTarget.name}) كوجهة لرحلتك!`
       );
       setTimeout(() => setMapNotice(null), 4000);
       setShowBookingModal(true);
@@ -124,25 +130,39 @@ export const PassengerHome: React.FC = () => {
     }
   };
 
-  // حفظ أو تعديل موقع المنزل / العمل وربطه بملف الراكب في Firebase والكاش المحلي
+  // حفظ أو تعديل موقع المنزل / العمل المحدد يدوياً في الخريطة المصغرة وربطه بملف الراكب في Firebase والكاش المحلي وتعيينه كوجهة مباشرة
   const handleSaveFavoriteLocation = async (
     type: 'home' | 'work',
     location: Coordinates | null
   ) => {
+    const normalizedLocation: Coordinates | null = location
+      ? {
+          lat: Number(location.lat),
+          lng: Number(location.lng),
+          name: location.name || location.address || (type === 'home' ? 'المنزل' : 'العمل'),
+          address:
+            location.address ||
+            location.name ||
+            `${Number(location.lat).toFixed(5)}, ${Number(location.lng).toFixed(5)}`,
+        }
+      : null;
+
     setFavoritePlaces((prev) => ({
       ...prev,
-      [type]: location,
+      [type]: normalizedLocation,
     }));
-    await updateSavedLocation(type, location);
+    await updateSavedLocation(type, normalizedLocation);
 
     const label = type === 'home' ? 'المنزل 🏠' : 'العمل 💼';
-    if (location) {
-      setSelectedDestination(location);
-      setMapNotice(`✅ تم حفظ موقع ${label} (${location.name || location.address}) في حسابك بنجاح!`);
+    if (normalizedLocation) {
+      setSelectedDestination(normalizedLocation);
+      setMapNotice(
+        `✅ تم حفظ وتوجيه الوجهة إلى موقع ${label} المحدد يدوياً (${normalizedLocation.name})!`
+      );
     } else {
       setMapNotice(`🗑️ تم مسح عنوان ${label} المحفوظ.`);
     }
-    setTimeout(() => setMapNotice(null), 4000);
+    setTimeout(() => setMapNotice(null), 4500);
   };
 
   // جلب موقع الـ GPS الحقيقي للهاتف أو الحاسوب مع طلب إذن صريح وعكس الإحداثيات لاسم شارع حقيقي
@@ -206,7 +226,13 @@ export const PassengerHome: React.FC = () => {
       {/* Interactive Map Header / Background */}
       <div className="h-72 sm:h-96 w-full relative">
         <LeafletMap
-          center={selectedPickup ? [selectedPickup.lat, selectedPickup.lng] : [36.1652, 1.3345]}
+          center={
+            selectedDestination
+              ? [selectedDestination.lat, selectedDestination.lng]
+              : selectedPickup
+              ? [selectedPickup.lat, selectedPickup.lng]
+              : [36.1652, 1.3345]
+          }
           zoom={14}
           pickup={currentPassengerRide?.pickup || selectedPickup}
           destination={currentPassengerRide?.destination || selectedDestination}
@@ -216,6 +242,8 @@ export const PassengerHome: React.FC = () => {
               ? currentPassengerRide.driverLocation ||
                 drivers.find((d) => d.id === currentPassengerRide.driverId)?.location ||
                 currentPassengerRide.pickup
+              : selectedPickup && selectedDestination
+              ? selectedPickup
               : undefined
           }
           routeTo={
@@ -225,6 +253,8 @@ export const PassengerHome: React.FC = () => {
               : currentPassengerRide &&
                 ['driver_arrived', 'trip_started'].includes(currentPassengerRide.status)
               ? currentPassengerRide.destination
+              : selectedPickup && selectedDestination
+              ? selectedDestination
               : undefined
           }
           routeColor="#facc15"
@@ -584,6 +614,10 @@ export const PassengerHome: React.FC = () => {
           defaultCenter={selectedDestination || selectedPickup}
           onClose={() => setEditingFavoriteType(null)}
           onSave={handleSaveFavoriteLocation}
+          onSelectAsDestination={(loc) => {
+            setSelectedDestination(loc);
+            setShowBookingModal(true);
+          }}
         />
       )}
 

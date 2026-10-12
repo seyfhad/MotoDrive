@@ -3,7 +3,7 @@
   "name": "MotoDrive",
   "short_name": "MotoDrive",
   "description": "تطبيق حجز ونقل الركاب بالدراجات النارية - سرعة، أمان، وأسعار مناسبة",
-  "start_url": "/",
+  "start_url": "/?app_source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
@@ -38,14 +38,14 @@
       "name": "حجز رحلة جديدة",
       "short_name": "احجز رحلة",
       "description": "طلب سائق دراجة نارية الآن",
-      "url": "/?role=passenger",
+      "url": "/?app_source=pwa&role=passenger",
       "icons": [{ "src": "/assets/aistudio/pwa-icon.png", "sizes": "192x192" }]
     },
     {
       "name": "لوحة السائق",
       "short_name": "السائق",
       "description": "استقبال طلبات الرحلات القريبة",
-      "url": "/?role=driver",
+      "url": "/?app_source=pwa&role=driver",
       "icons": [{ "src": "/assets/aistudio/pwa-icon.png", "sizes": "192x192" }]
     }
   ],

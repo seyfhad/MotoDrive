@@ -611,22 +611,18 @@ export const subscribeToAuth = (
 
       if (userSnap.exists()) {
         const snapData = userSnap.data() as UserProfile;
-        if (
-          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' &&
-          (!snapData.phone || snapData.phone === '0550000000' || snapData.phone === '0550123456')
-        ) {
-          snapData.phone = '0542524728';
+        if (snapData.role === 'admin') {
+          snapData.role = 'passenger';
         }
         callback(firebaseUser, snapData);
       } else {
-        const isOwner = firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com';
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-          phone: firebaseUser.phoneNumber || (isOwner ? '0542524728' : '0550123456'),
+          phone: firebaseUser.phoneNumber || '',
           email: firebaseUser.email || undefined,
           photoUrl: firebaseUser.photoURL || undefined,
-          role: isOwner ? 'admin' : 'passenger',
+          role: 'passenger',
           status: 'active',
           cancellationCount: 0,
           createdAt: new Date().toISOString(),
@@ -646,14 +642,13 @@ export const subscribeToAuth = (
       }
     } catch (err: any) {
       console.warn('Auth subscriber profile fetch warning (using offline fallback profile):', err?.message || err);
-      const isOwner = firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com';
       const fallbackProfile: UserProfile = {
         id: firebaseUser.uid,
         name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
-        phone: firebaseUser.phoneNumber || (isOwner ? '0542524728' : '0550123456'),
+        phone: firebaseUser.phoneNumber || '',
         email: firebaseUser.email || undefined,
         photoUrl: firebaseUser.photoURL || undefined,
-        role: isOwner ? 'admin' : 'passenger',
+        role: 'passenger',
         status: 'active',
         cancellationCount: 0,
         createdAt: new Date().toISOString(),
@@ -1001,13 +996,12 @@ export const signInWithEmailPass = async (
   // Auto-provision profile if not found in Firestore
   const userId = user.uid;
   const userDocRef = doc(db, 'users', userId);
-  const isAdmin = cleanEmail === 'seyfhad@gmail.com';
   const profile: UserProfile = {
     id: userId,
     name: user.displayName || cleanEmail.split('@')[0],
-    phone: '0550123456',
+    phone: '',
     email: cleanEmail,
-    role: isAdmin ? 'admin' : 'passenger',
+    role: 'passenger',
     status: 'active',
     cancellationCount: 0,
     createdAt: new Date().toISOString(),
@@ -1093,7 +1087,6 @@ export const signUpWithEmailPass = async (
     }
   }
 
-  const isAdmin = cleanEmail === 'seyfhad@gmail.com';
   const userId = user.uid;
   const userDocRef = doc(db, 'users', userId);
 
@@ -1102,7 +1095,7 @@ export const signUpWithEmailPass = async (
     name: cleanName,
     phone: cleanPhone,
     email: cleanEmail,
-    role: isAdmin ? 'admin' : role,
+    role: role === 'driver' ? 'driver' : 'passenger',
     status: 'active',
     cancellationCount: 0,
     createdAt: new Date().toISOString(),
@@ -1241,10 +1234,10 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
       } catch (anonErr: any) {
         console.warn('Anonymous auth restricted, fallback to local session:', anonErr?.code || anonErr?.message);
         user = {
-          uid: 'owner-seyfhad',
-          displayName: 'سيف الدين (المالك)',
-          email: 'seyfhad@gmail.com',
-          photoURL: '/assets/images/admin_logo.jpg',
+          uid: 'guest-' + Math.random().toString(36).substring(2, 9),
+          displayName: 'مستخدم MotoDrive',
+          email: undefined,
+          photoURL: undefined,
         } as any;
       }
     }
@@ -1261,16 +1254,12 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
   let profile: UserProfile;
   if (userSnap && userSnap.exists()) {
     profile = userSnap.data() as UserProfile;
-    // التحديث التلقائي للبيانات المتغيرة من حساب Google
     const updates: Partial<UserProfile> = {};
     if (user.photoURL && !profile.photoUrl) updates.photoUrl = user.photoURL;
     if (user.displayName && (!profile.name || profile.name.includes('مستخدم'))) updates.name = user.displayName;
     if (user.email && !profile.email) updates.email = user.email;
-    if (user.email === 'seyfhad@gmail.com') {
-      updates.role = 'admin';
-      if (!profile.phone || profile.phone === '0550000000' || profile.phone === '0550123456') {
-        updates.phone = '0542524728';
-      }
+    if (profile.role === 'admin') {
+      updates.role = role === 'driver' ? 'driver' : 'passenger';
     }
 
     if (Object.keys(updates).length > 0) {
@@ -1285,10 +1274,10 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     profile = {
       id: user.uid,
       name: user.displayName || 'مستخدم MotoDrive',
-      phone: user.phoneNumber || (user.email === 'seyfhad@gmail.com' ? '0542524728' : '0550123456'),
+      phone: user.phoneNumber || '',
       email: user.email || undefined,
       photoUrl: user.photoURL || undefined,
-      role: user.email === 'seyfhad@gmail.com' ? 'admin' : role,
+      role: role === 'driver' ? 'driver' : 'passenger',
       status: 'active',
       cancellationCount: 0,
       createdAt: new Date().toISOString(),

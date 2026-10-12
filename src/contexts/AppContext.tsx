@@ -99,7 +99,9 @@ import {
   isPendingRideExpired,
   removeRideFromSecureVault,
   removeAccountFromLocalVault,
+  purgeAllLocalVaultData,
 } from '../services/dataVaultService';
+import { androidNativeService } from '../services/androidNativeService';
 import {
   syncOfflineQueueToFirestore,
   addToOfflineQueue,
@@ -199,11 +201,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
 
-  // Current role selector for seamless UI preview
-  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+  // Current role selector for passenger/driver (never defaults to admin from localStorage)
+  const [currentRole, setCurrentRoleState] = useState<UserRole>(() => {
     const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
-    return (saved as UserRole) || 'passenger';
+    if (saved === 'driver' || saved === 'passenger') {
+      return saved;
+    }
+    return 'passenger';
   });
+
+  // Strict guard: Admin role can NEVER be activated inside the mobile app (APK / Capacitor / Installed PWA / WebView)
+  const setCurrentRole = useCallback((nextRole: UserRole) => {
+    if (nextRole === 'admin') {
+      const isAllowedOnWeb =
+        androidNativeService.isWebBrowserEnvironment() &&
+        typeof window !== 'undefined' &&
+        sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+      if (!isAllowedOnWeb) {
+        setCurrentRoleState('passenger');
+        return;
+      }
+    }
+    setCurrentRoleState(nextRole);
+  }, []);
 
   const [passengers, setPassengers] = useState<UserProfile[]>(INITIAL_PASSENGERS);
   const [drivers, setDrivers] = useState<DriverProfile[]>(INITIAL_DRIVERS);
@@ -232,13 +252,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_PENDING_DRIVER;
   });
 
-  // Hydrate and self-heal from IndexedDB Vault on startup
+  // One-time Production Reset v5 (Purge all legacy users, drivers, rides, complaints, ratings, and local vaults)
   useEffect(() => {
-    hydrateVaultOnStartup().then(({ restoredRidesCount }) => {
-      if (restoredRidesCount > 0) {
-        setRides(loadRidesFromSecureStorage());
+    const runCleanResetAndHydrate = async () => {
+      try {
+        const localResetDone = localStorage.getItem('motodrive_clean_production_reset_v5') === 'true';
+        if (!localResetDone) {
+          localStorage.setItem('motodrive_clean_production_reset_v5', 'true');
+          await purgeAllLocalVaultData();
+          await signOutUser().catch(() => {});
+          setCurrentUser(null);
+          setActivePassenger(GUEST_PASSENGER);
+          setActiveDriver(DEFAULT_PENDING_DRIVER);
+          setCurrentRole('passenger');
+          setPassengers([]);
+          setDrivers([]);
+          setRides([]);
+          setComplaints([]);
+          setRatings([]);
+          setNotifications([]);
+        } else {
+          const { restoredRidesCount } = await hydrateVaultOnStartup();
+          if (restoredRidesCount > 0) {
+            setRides(loadRidesFromSecureStorage());
+          }
+        }
+
+        // Check and execute cloud Firestore production reset v5 once
+        const resetDocRef = doc(db, 'system_config', 'production_reset_v5');
+        const resetSnap = await getDoc(resetDocRef).catch(() => null);
+        if (!resetSnap || !resetSnap.exists() || !resetSnap.data()?.completed) {
+          await clearAllTestDataFromFirestore();
+          await setDoc(resetDocRef, {
+            completed: true,
+            completedAt: serverTimestamp(),
+          }).catch(() => {});
+          await purgeAllLocalVaultData();
+          setCurrentUser(null);
+          setActivePassenger(GUEST_PASSENGER);
+          setActiveDriver(DEFAULT_PENDING_DRIVER);
+          setCurrentRole('passenger');
+          setPassengers([]);
+          setDrivers([]);
+          setRides([]);
+          setComplaints([]);
+          setRatings([]);
+        }
+      } catch (e) {
+        console.warn('Production reset check notice:', e);
       }
-    });
+    };
+
+    runCleanResetAndHydrate();
   }, []);
 
   // Persist rides, complaints, ratings, and activePassenger/activeDriver profiles into multi-layer vault
@@ -327,17 +392,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
   useEffect(() => {
-    // 1a. Hydrate cached local user session for instant startup (with automatic backup recovery)
+    // 1a. Hydrate cached local user session for instant startup (Passengers & Drivers ONLY — never auto-open Admin)
     const hydrateLocalSession = () => {
       try {
         const { user: rawCachedUser, driver: cachedDriver } = loadActiveSessionSecurely();
         if (rawCachedUser) {
           const cachedUser = { ...rawCachedUser };
-          const isExplicitAdminSession =
-            cachedUser.id === 'admin-owner-seyfhad' ||
-            cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com';
-
-          if (!isExplicitAdminSession && cachedUser.role === 'admin') {
+          if (cachedUser.id === 'admin-owner-seyfhad' || cachedUser.role === 'admin') {
             cachedUser.role = cachedDriver ? 'driver' : 'passenger';
           }
           setActivePassenger(cachedUser);
@@ -352,9 +413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setActiveDriver(cachedDriver);
           }
 
-          if (isExplicitAdminSession) {
-            setCurrentRole('admin');
-          } else if (cachedUser.role === 'driver') {
+          if (cachedUser.role === 'driver') {
             setCurrentRole('driver');
           } else {
             setCurrentRole('passenger');
@@ -370,11 +429,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
       if (firebaseUser && userProfile) {
-        const isExplicitOwnerEmail =
-          firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-          userProfile.email?.toLowerCase() === 'seyfhad@gmail.com';
-
-        if (!isExplicitOwnerEmail && userProfile.role === 'admin') {
+        if (userProfile.role === 'admin') {
           userProfile.role = 'passenger';
         }
         setCurrentUser(firebaseUser);
@@ -396,19 +451,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Driver profile auto restore notice:', err);
           });
 
-        // Direct admin redirect ONLY if user is seyfhad@gmail.com
-        if (isExplicitOwnerEmail) {
-          setCurrentRole('admin');
-          localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
-        } else if (userProfile.role === 'driver') {
-          setCurrentRole('driver');
-          localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
-        } else {
-          setCurrentRole('passenger');
-          localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
+        // Never auto-switch to admin on auth; only passenger or driver unless explicitly unlocked via Web bike icon
+        const isWebAdminActive =
+          androidNativeService.isWebBrowserEnvironment() &&
+          sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+
+        if (!isWebAdminActive) {
+          if (userProfile.role === 'driver') {
+            setCurrentRole('driver');
+            localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
+          } else {
+            setCurrentRole('passenger');
+            localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
+          }
         }
       } else {
-        // Do NOT wipe local phone or passcode-admin session if one is saved in primary or backup vault
+        const isWebAdminActive =
+          androidNativeService.isWebBrowserEnvironment() &&
+          sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+        if (isWebAdminActive) return;
+
         const { user: existingSessionUser } = loadActiveSessionSecurely();
         if (!existingSessionUser) {
           setCurrentUser(null);
@@ -1929,6 +1991,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const purgeAllTestData = async (): Promise<{ deletedCount: number }> => {
     const result = await clearAllTestDataFromFirestore();
+    await purgeAllLocalVaultData();
     setRides([]);
     setDrivers([]);
     setPassengers([]);
@@ -1942,23 +2005,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     location: Coordinates | null
   ): Promise<void> => {
     const fieldName = type === 'home' ? 'homeLocation' : 'workLocation';
-    const uid = activePassenger?.id || 'passenger-guest';
+    const uid =
+      (activePassenger?.id && activePassenger.id !== 'passenger-guest' && activePassenger.id !== 'guest'
+        ? activePassenger.id
+        : currentUser?.uid) || 'passenger-guest';
     const phone = activePassenger?.phone;
 
     const updatedPassenger: UserProfile = {
       ...activePassenger,
+      id: uid,
       [fieldName]: location,
     };
 
     setActivePassenger(updatedPassenger);
     setPassengers((prev) =>
       prev.map((p) =>
-        p.id === uid || (phone && p.phone === phone) ? { ...p, [fieldName]: location } : p
+        p.id === uid || p.id === activePassenger?.id || (phone && p.phone === phone)
+          ? { ...p, [fieldName]: location }
+          : p
       )
     );
 
     await saveFavoritePlace(uid, type, location, phone);
-    await updatePassengerSavedLocation(uid, phone, type, location);
+    await updatePassengerSavedLocation(uid, phone, type, location, updatedPassenger);
   };
 
   return (

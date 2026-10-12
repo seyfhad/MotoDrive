@@ -113,51 +113,106 @@ export const updatePassengerSavedLocation = async (
   userId: string,
   phone: string | undefined,
   type: 'home' | 'work',
-  location: Coordinates | null
-): Promise<void> => {
+  location: Coordinates | null,
+  fullProfile?: UserProfile
+): Promise<boolean> => {
   const fieldName = type === 'home' ? 'homeLocation' : 'workLocation';
   const cleanPhone = phone
     ? phone.trim().replace(/[\s\-().]/g, '').replace(/^(?:\+213|00213|213)/, '0')
     : '';
 
+  const cleanLocation = location
+    ? {
+        lat: Number(location.lat),
+        lng: Number(location.lng),
+        name: String(location.name || location.address || (type === 'home' ? 'المنزل' : 'العمل')),
+        address: String(location.address || location.name || (type === 'home' ? 'المنزل' : 'العمل')),
+      }
+    : null;
+
   if (!isFirestoreQuotaExceeded()) {
-    const payload = sanitizeFirestoreData({
-      [fieldName]: location,
+    const updatePayload = sanitizeFirestoreData({
+      [fieldName]: cleanLocation,
       updatedAt: serverTimestamp(),
     });
 
-    if (userId && userId !== 'passenger-guest') {
+    const targetIds = new Set<string>();
+    if (userId && userId !== 'passenger-guest' && userId !== 'guest') {
+      targetIds.add(userId);
+    }
+    if (cleanPhone) {
+      targetIds.add(`user-${cleanPhone}`);
+    }
+
+    for (const targetId of targetIds) {
       try {
-        const userRef = doc(db, 'users', userId);
-        await setDoc(userRef, payload, { merge: true });
+        const userRef = doc(db, 'users', targetId);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          await updateDoc(userRef, updatePayload);
+        } else {
+          const createPayload = sanitizeFirestoreData({
+            id: targetId,
+            name: fullProfile?.name || 'راكب MotoDrive',
+            phone: cleanPhone || fullProfile?.phone || '',
+            role: fullProfile?.role || 'passenger',
+            status: fullProfile?.status || 'active',
+            createdAt: fullProfile?.createdAt || new Date().toISOString(),
+            ...(fullProfile || {}),
+            [fieldName]: cleanLocation,
+            updatedAt: serverTimestamp(),
+          });
+          await setDoc(userRef, createPayload, { merge: true });
+        }
       } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/${userId}`);
+        try {
+          const userRef = doc(db, 'users', targetId);
+          await setDoc(
+            userRef,
+            sanitizeFirestoreData({
+              ...(fullProfile || {}),
+              id: targetId,
+              [fieldName]: cleanLocation,
+              updatedAt: serverTimestamp(),
+            }),
+            { merge: true }
+          );
+        } catch (innerErr) {
+          handleFirestoreError(innerErr, OperationType.WRITE, `users/${targetId}`);
+        }
       }
     }
 
-    if (cleanPhone && `user-${cleanPhone}` !== userId) {
+    // Also update any existing user documents matching phone number in 'users' collection
+    if (cleanPhone) {
       try {
-        const phoneUserRef = doc(db, 'users', `user-${cleanPhone}`);
-        await setDoc(phoneUserRef, payload, { merge: true });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `users/user-${cleanPhone}`);
-      }
+        const qPhone = query(collection(db, 'users'), where('phone', '==', cleanPhone));
+        const snapPhone = await getDocs(qPhone);
+        for (const docSnap of snapPhone.docs) {
+          if (!targetIds.has(docSnap.id)) {
+            await updateDoc(docSnap.ref, updatePayload).catch(() => {});
+          }
+        }
+      } catch {}
     }
   }
 
   try {
     const { user: currentSessUser, driver: currentSessDriver } = loadActiveSessionSecurely();
-    if (currentSessUser) {
+    const baseUser = currentSessUser || fullProfile;
+    if (baseUser) {
       const mergedUser: UserProfile = {
-        ...currentSessUser,
-        [fieldName]: location,
+        ...baseUser,
+        [fieldName]: cleanLocation,
       };
       saveActiveSessionSecurely(mergedUser, currentSessDriver);
-      if (mergedUser.phone) {
-        saveUserToSecureVault(mergedUser.phone, mergedUser, currentSessDriver).catch(() => {});
+      if (mergedUser.phone || cleanPhone) {
+        saveUserToSecureVault(mergedUser.phone || cleanPhone, mergedUser, currentSessDriver).catch(() => {});
       }
     }
   } catch (e) {}
+
+  return true;
 };
 
 export const getDriverByUserIdOrPhone = async (
@@ -1064,24 +1119,33 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
     handleFirestoreError(e, OperationType.DELETE, 'drivers');
   }
 
-  // 3. Delete non-admin users (preserve seyfhad@gmail.com)
+  // 3. Delete ALL users (passengers, drivers, and any legacy admin records including 0542524728 / 0662688714)
   try {
     if (!isFirestoreQuotaExceeded()) {
       const usersSnap = await getDocs(collection(db, 'users'));
       for (const userDoc of usersSnap.docs) {
         if (isFirestoreQuotaExceeded()) break;
-        const data = userDoc.data();
-        if (data?.email?.toLowerCase() !== 'seyfhad@gmail.com' && data?.role !== 'admin') {
-          await deleteDoc(userDoc.ref);
-          deletedCount++;
-        }
+        await deleteDoc(userDoc.ref);
+        deletedCount++;
       }
     }
   } catch (e) {
     handleFirestoreError(e, OperationType.DELETE, 'users');
   }
 
-  // 4. Delete complaints
+  // 4. Delete ride_requests
+  try {
+    if (!isFirestoreQuotaExceeded()) {
+      const reqSnap = await getDocs(collection(db, 'ride_requests'));
+      for (const reqDoc of reqSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(reqDoc.ref);
+        deletedCount++;
+      }
+    }
+  } catch (e) {}
+
+  // 5. Delete complaints
   try {
     if (!isFirestoreQuotaExceeded()) {
       const complaintsSnap = await getDocs(collection(db, 'complaints'));
@@ -1095,7 +1159,7 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
     handleFirestoreError(e, OperationType.DELETE, 'complaints');
   }
 
-  // 5. Delete ratings
+  // 6. Delete ratings
   try {
     if (!isFirestoreQuotaExceeded()) {
       const ratingsSnap = await getDocs(collection(db, 'ratings'));
@@ -1108,6 +1172,18 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
   } catch (e) {
     handleFirestoreError(e, OperationType.DELETE, 'ratings');
   }
+
+  // 7. Delete support_messages
+  try {
+    if (!isFirestoreQuotaExceeded()) {
+      const msgSnap = await getDocs(collection(db, 'support_messages'));
+      for (const mDoc of msgSnap.docs) {
+        if (isFirestoreQuotaExceeded()) break;
+        await deleteDoc(mDoc.ref);
+        deletedCount++;
+      }
+    }
+  } catch (e) {}
 
   return { deletedCount };
 };

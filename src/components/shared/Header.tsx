@@ -9,6 +9,7 @@ import { AuthModal } from '../auth/AuthModal';
 import { AdminInAppMessageModal } from './AdminInAppMessageModal';
 import { AdminPasscodeModal } from '../admin/AdminPasscodeModal';
 import { pushNotificationService } from '../../services/pushNotificationService';
+import { androidNativeService } from '../../services/androidNativeService';
 
 export const Header: React.FC = () => {
   const {
@@ -42,9 +43,21 @@ export const Header: React.FC = () => {
 
   const unreadNotifs = notifications.filter(n => !n.isRead);
   const isTripActive = Boolean(currentPassengerRide || currentDriverRide);
-  const isOwner =
-    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com';
+  const [isWebBrowser, setIsWebBrowser] = useState(() =>
+    androidNativeService.isWebBrowserEnvironment()
+  );
+
+  React.useEffect(() => {
+    setIsWebBrowser(androidNativeService.isWebBrowserEnvironment());
+    const unsub = androidNativeService.subscribe(() => {
+      const webEnv = androidNativeService.isWebBrowserEnvironment();
+      setIsWebBrowser(webEnv);
+      if (!webEnv) {
+        setShowPasscodeModal(false);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   return (
     <>
@@ -56,17 +69,27 @@ export const Header: React.FC = () => {
         id="app-main-header"
       >
         <div className="w-full flex items-center justify-between gap-2">
-          {/* Brand Icon & Name: Bike icon at top acts as secret admin trigger */}
+          {/* Brand Icon & Name: Bike icon at top acts as secret admin trigger ONLY on Web URL */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => setShowPasscodeModal(true)}
-              className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30 hover:border-amber-400 active:scale-95 transition-all cursor-pointer"
-              title="دراجة MotoDrive"
-              aria-label="أيقونة الدراجة"
-            >
-              <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
-            </button>
+            {isWebBrowser ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (androidNativeService.isWebBrowserEnvironment()) {
+                    setShowPasscodeModal(true);
+                  }
+                }}
+                className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30 hover:border-amber-400 active:scale-95 transition-all cursor-pointer"
+                title="دراجة MotoDrive"
+                aria-label="أيقونة الدراجة"
+              >
+                <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
+              </button>
+            ) : (
+              <div className="w-8 h-8 rounded-xl overflow-hidden shadow-sm shadow-amber-500/20 shrink-0 border border-amber-500/30 select-none pointer-events-none">
+                <img src="/icon.jpg" alt="MotoDrive" className="w-full h-full object-cover" />
+              </div>
+            )}
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent('open-welcome'))}
@@ -164,8 +187,8 @@ export const Header: React.FC = () => {
               <span className="text-[10px] font-bold hidden md:inline">الشروط</span>
             </button>
 
-            {/* Owner/Admin Controls: Strictly visible ONLY when in admin role */}
-            {currentRole === 'admin' && (
+            {/* Owner/Admin Controls: Strictly visible ONLY when in admin role on Web URL */}
+            {currentRole === 'admin' && isWebBrowser && (
               <>
                 <button
                   id="header-admin-panel-btn"
@@ -287,14 +310,18 @@ export const Header: React.FC = () => {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
       />
-      <AdminInAppMessageModal
-        isOpen={showAdminMessageModal}
-        onClose={() => setShowAdminMessageModal(false)}
-      />
-      <AdminPasscodeModal
-        isOpen={showPasscodeModal}
-        onClose={() => setShowPasscodeModal(false)}
-      />
+      {isWebBrowser && (
+        <>
+          <AdminInAppMessageModal
+            isOpen={showAdminMessageModal}
+            onClose={() => setShowAdminMessageModal(false)}
+          />
+          <AdminPasscodeModal
+            isOpen={showPasscodeModal}
+            onClose={() => setShowPasscodeModal(false)}
+          />
+        </>
+      )}
     </>
   );
 };

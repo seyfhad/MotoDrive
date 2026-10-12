@@ -64,6 +64,11 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const fullRouteCoordsRef = useRef<[number, number][]>([]);
   const lastFittedKeyRef = useRef<string>('');
+  const onMapClickRef = useRef<GoogleMapViewProps['onMapClick']>(onMapClick);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   const [isLocating, setIsLocating] = useState(false);
   const [locationToast, setLocationToast] = useState<string | null>(null);
@@ -116,12 +121,14 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
         className: theme === 'dark' ? 'motodrive-algeria-dark-tiles' : '',
       }).addTo(map);
 
-      if (interactive && onMapClick) {
+      if (interactive) {
         map.on('click', (e) => {
-          onMapClick({
-            lat: Math.round(e.latlng.lat * 100000) / 100000,
-            lng: Math.round(e.latlng.lng * 100000) / 100000,
-          });
+          if (onMapClickRef.current) {
+            onMapClickRef.current({
+              lat: Math.round(e.latlng.lat * 100000) / 100000,
+              lng: Math.round(e.latlng.lng * 100000) / 100000,
+            });
+          }
         });
       }
 
@@ -131,6 +138,10 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       routeLayerRef.current = routeLayer;
       markersLayerRef.current = markersLayer;
       mapInstanceRef.current = map;
+
+      setTimeout(() => {
+        map.invalidateSize();
+      }, 150);
     }
 
     return () => {
@@ -141,15 +152,18 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
     };
   }, []);
 
-  // Keep map centered when `center` prop updates across any Wilaya in Algeria
+  // Keep map centered when `center` or `destination` prop updates across any Wilaya in Algeria
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !center) return;
     setUserGPSPosition({ lat: center[0], lng: center[1] });
-    if (!pickup && !destination) {
-      map.panTo([center[0], center[1]]);
+    if (!routeFrom || !routeTo) {
+      map.invalidateSize();
+      map.setView([center[0], center[1]], Math.max(map.getZoom(), zoom || 15), {
+        animate: true,
+      });
     }
-  }, [center?.[0], center?.[1]]);
+  }, [center?.[0], center?.[1], destination?.lat, destination?.lng]);
 
   // Continuous background GPS tracking
   useEffect(() => {
@@ -317,13 +331,13 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
       L.marker([pickup.lat, pickup.lng], { icon: pickupIcon }).addTo(markersLayer);
     }
 
-    // 2. Destination Marker (Google Maps Red Teardrop Pin + Label)
+    // 2. Destination Marker (Google Maps Red Teardrop Pin + Label, draggable when interactive & onMapClick provided)
     if (destination) {
       const destLabel = destination.name || 'الوجهة';
       const destIcon = L.divIcon({
         className: 'custom-leaflet-marker',
         html: `
-          <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);">
+          <div style="position: relative; display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%); cursor: pointer;">
             <svg width="34" height="42" viewBox="0 0 24 30" fill="none" style="filter: drop-shadow(0 5px 10px rgba(0,0,0,0.55));">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="#EA4335"/>
               <circle cx="12" cy="11.5" r="4.5" fill="#75140C"/>
@@ -336,7 +350,22 @@ export const LeafletFallbackMap: React.FC<GoogleMapViewProps> = ({
         iconSize: [0, 0],
         iconAnchor: [0, 0],
       });
-      L.marker([destination.lat, destination.lng], { icon: destIcon }).addTo(markersLayer);
+      const destMarker = L.marker([destination.lat, destination.lng], {
+        icon: destIcon,
+        draggable: Boolean(interactive && onMapClickRef.current),
+      }).addTo(markersLayer);
+
+      if (interactive) {
+        destMarker.on('dragend', (ev) => {
+          const pos = (ev.target as L.Marker).getLatLng();
+          if (onMapClickRef.current && pos) {
+            onMapClickRef.current({
+              lat: Math.round(pos.lat * 100000) / 100000,
+              lng: Math.round(pos.lng * 100000) / 100000,
+            });
+          }
+        });
+      }
     }
 
     // 3. Active Driver Marker

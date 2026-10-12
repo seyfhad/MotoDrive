@@ -45,11 +45,10 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
 
   if (!isOpen) return null;
 
-  const supportPhone = '0542524728';
-  const displayPhone = '0542 52 47 28';
+  const supportEmail = 'support@motodrive.dz';
 
-  const handleCopyPhone = () => {
-    navigator.clipboard.writeText(supportPhone);
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText(supportEmail);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -64,7 +63,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
       try {
         await addDoc(collection(db, 'support_messages'), {
           name: name.trim() || 'مستخدم مجهول',
-          phone: phone.trim() || supportPhone,
+          phone: phone.trim() || '',
           email: email.trim(),
           subject: subject,
           message: message.trim(),
@@ -78,7 +77,6 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
       setMessage('');
     } catch (error) {
       console.error('Error submitting contact form:', error);
-      alert('تم استلام رسالتك وسيتواصل معك الدعم الفني قريباً.');
       setSubmitted(true);
     } finally {
       setIsSubmitting(false);
@@ -105,22 +103,22 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
           <div className="flex items-center gap-2.5">
             <div>
               <h2 className="text-base sm:text-lg font-black text-white">اتصل بنا • الدعم الفني MotoDrive</h2>
-              <p className="text-[11px] text-amber-400 font-medium">خدمة الزبائن ودعم مراجعي Google Play على مدار 24/7</p>
+              <p className="text-[11px] text-amber-400 font-medium">خدمة الزبائن والدعم الفني على مدار 24/7</p>
             </div>
             <div className="w-10 h-10 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
-              <Phone className="w-5 h-5 text-amber-400" />
+              <MessageSquare className="w-5 h-5 text-amber-400" />
             </div>
           </div>
         </div>
 
         {/* Content */}
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
-          {/* Direct Call / WhatsApp Card */}
+          {/* Direct Support Card */}
           <div className="bg-gradient-to-br from-amber-500/15 via-slate-950 to-slate-900 border border-amber-500/30 rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>رقم هاتف الدعم الفني المباشر</span>
+                <span>قنوات الدعم الفني المباشر</span>
               </span>
               <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
                 متاح الآن 24/7
@@ -129,41 +127,41 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
 
             <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 p-3 rounded-xl">
               <div className="space-y-0.5">
-                <span className="text-[10px] text-slate-400">الخط المباشر للمسؤول والدعم:</span>
-                <p className="text-lg font-mono font-black text-white" dir="ltr">
-                  {supportPhone}
+                <span className="text-[10px] text-slate-400">البريد الرسمي للدعم الفني:</span>
+                <p className="text-sm font-mono font-black text-white" dir="ltr">
+                  {supportEmail}
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={handleCopyPhone}
+                onClick={handleCopyEmail}
                 className="p-2 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-[11px] font-bold"
-                title="نسخ الرقم"
+                title="نسخ البريد"
               >
                 {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                 <span>{copied ? 'تم النسخ!' : 'نسخ'}</span>
               </button>
             </div>
 
-            {/* Quick Action Buttons: Call & WhatsApp */}
+            {/* Quick Action Buttons */}
             <div className="grid grid-cols-2 gap-2 pt-1">
               <a
-                href={`tel:${supportPhone}`}
+                href={`mailto:${supportEmail}`}
                 className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-amber-500/20"
               >
-                <Phone className="w-4 h-4" />
-                <span>اتصال بالمسؤول ({supportPhone})</span>
+                <Mail className="w-4 h-4" />
+                <span>مراسلة عبر البريد</span>
               </a>
 
               <a
-                href={`https://wa.me/213542524728?text=${encodeURIComponent('السلام عليكم، أتواصل معكم بخصوص تطبيق MotoDrive')}`}
+                href="https://www.facebook.com/share/1DnSTUk7WL/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-emerald-600/20"
+                className="py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-blue-600/20"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>محادثة واتساب</span>
+                <span>صفحة فيسبوك الرسمية</span>
               </a>
             </div>
           </div>
@@ -199,7 +197,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
           <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-3">
             <h3 className="font-bold text-white text-xs sm:text-sm flex items-center gap-2">
               <Send className="w-4 h-4 text-amber-400" />
-              <span>إرسال رسالة مباشرة لمسؤول MotoDrive</span>
+              <span>إرسال رسالة مباشرة لفريق الدعم</span>
             </h3>
 
             {submitted ? (
@@ -207,7 +205,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
                 <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
                 <h4 className="font-bold text-emerald-400 text-sm">تم إرسال رسالتك بنجاح!</h4>
                 <p className="text-slate-300 text-xs">
-                  سيتواصل معك المسؤول والدعم الفني عبر رقم الهاتف <span className="font-mono text-amber-400">{phone || supportPhone}</span> في أسرع وقت.
+                  سيتواصل معك فريق الدعم الفني عبر رقم الهاتف <span className="font-mono text-amber-400">{phone}</span> في أسرع وقت.
                 </p>
                 <button
                   type="button"
@@ -239,7 +237,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="مثال: 0542524728"
+                      placeholder="مثال: 0661234567"
                       className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 text-left"
                       dir="ltr"
                     />
@@ -283,7 +281,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>إرسال الرسالة للمسؤول فوراً</span>
+                      <span>إرسال الرسالة للدعم الفني فوراً</span>
                     </>
                   )}
                 </button>
@@ -297,7 +295,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
             <div className="space-y-1">
               <h4 className="font-bold text-emerald-300 text-xs">إشعار لمراجعي Google Play Console:</h4>
               <p className="text-[11px] text-slate-300 leading-normal">
-                فريق التطوير والدعم الفني متواجد ومتاح للاستجابة المباشرة لأي استفسار عبر الهاتف المذكور أعلاه (0542524728 / +213542524728). نضمن الامتثال الكامل لسياسات Google Play ومطابقة شروط حماية بيانات المستخدمين.
+                فريق التطوير والدعم الفني متواجد ومتاح للاستجابة المباشرة لأي استفسار عبر البريد الرسمي (support@motodrive.dz) أو نموذج المراسلة الفوري أعلاه. نضمن الامتثال الكامل لسياسات Google Play ومطابقة شروط حماية بيانات المستخدمين.
               </p>
             </div>
           </div>

@@ -31,6 +31,7 @@ import { DriverPendingApprovalView } from './pages/driver/DriverPendingApprovalV
 import { AdminPanel } from './pages/admin/AdminPanel';
 
 import { signInQuickGuest } from './services/authService';
+import { androidNativeService } from './services/androidNativeService';
 
 const GOOGLE_MAPS_API_KEY =
   (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) ||
@@ -288,8 +289,8 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main Responsive Frame (max-w-md for mobile passenger/driver, max-w-5xl for full admin management) */}
-      <div className={`w-full ${currentRole === 'admin' ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
+      {/* Main Responsive Frame (max-w-md for mobile passenger/driver, max-w-5xl for full admin management on Web URL only) */}
+      <div className={`w-full ${currentRole === 'admin' && androidNativeService.isWebBrowserEnvironment() ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
         {/* Push Notification System Top Toast & Permission Banner */}
         <PushNotificationToast />
         <OfflineIndicator />
@@ -301,11 +302,13 @@ const AppContent: React.FC = () => {
         <main className="flex-1 w-full">
           {currentRole === 'passenger' && renderPassengerView()}
           {currentRole === 'driver' && renderDriverView()}
-          {currentRole === 'admin' && <AdminPanel />}
+          {currentRole === 'admin' && (
+            androidNativeService.isWebBrowserEnvironment() ? <AdminPanel /> : renderPassengerView()
+          )}
         </main>
 
         {/* Bottom Navigation for Mobile / Handheld View */}
-        {currentRole !== 'admin' && (
+        {(currentRole !== 'admin' || !androidNativeService.isWebBrowserEnvironment()) && (
           <BottomNav
             activeTab={activeTab}
             setActiveTab={setActiveTab}

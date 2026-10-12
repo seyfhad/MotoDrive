@@ -17,9 +17,29 @@ class AndroidNativeService {
   private init() {
     if (typeof window === 'undefined') return;
 
-    // Check if running in standalone mode (installed as native Android app/PWA)
+    // Check URL query parameter or permanent flag indicating this instance is an installed app (PWA / APK / TWA)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('app_source') === 'pwa' || params.get('mode') === 'app') {
+        localStorage.setItem('motodrive_installed_app_env', 'true');
+      }
+    } catch {}
+
+    const hasPermanentAppFlag = (() => {
+      try {
+        return localStorage.getItem('motodrive_installed_app_env') === 'true';
+      } catch {
+        return false;
+      }
+    })();
+
+    // Check if running in standalone mode (installed as native Android app/PWA/TWA)
     const isStandalone =
+      hasPermanentAppFlag ||
       window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      window.matchMedia('(display-mode: minimal-ui)').matches ||
+      window.matchMedia('(display-mode: window-controls-overlay)').matches ||
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
 
@@ -28,9 +48,31 @@ class AndroidNativeService {
     if (isStandalone || isNativeCapacitor) {
       document.documentElement.classList.add('is-capacitor');
       document.body.classList.add('is-capacitor');
+      try {
+        localStorage.setItem('motodrive_installed_app_env', 'true');
+        sessionStorage.removeItem('motodrive_web_admin_unlocked');
+      } catch {}
     }
 
     this.isInstalledState = isStandalone || isNativeCapacitor;
+
+    // Listen for display-mode changes dynamically
+    try {
+      const mql = window.matchMedia('(display-mode: standalone)');
+      const onChange = (e: MediaQueryListEvent) => {
+        if (e.matches) {
+          this.isInstalledState = true;
+          try {
+            localStorage.setItem('motodrive_installed_app_env', 'true');
+            sessionStorage.removeItem('motodrive_web_admin_unlocked');
+          } catch {}
+          this.notifyListeners();
+        }
+      };
+      if (mql.addEventListener) {
+        mql.addEventListener('change', onChange);
+      }
+    } catch {}
 
     // Listen for Android beforeinstallprompt
     window.addEventListener('beforeinstallprompt', (e: Event) => {
@@ -92,12 +134,98 @@ class AndroidNativeService {
 
   // Check if running as native Capacitor app
   public isCapacitorNative(): boolean {
-    return Capacitor.isNativePlatform();
+    try {
+      return Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'web';
+    } catch {
+      return false;
+    }
   }
 
   // Check if installed on phone home screen
   public isInstalled(): boolean {
     return this.isInstalledState || this.isCapacitorNative();
+  }
+
+  /**
+   * Returns true if running inside ANY mobile/installed application:
+   * - Native Android APK / AAB (Capacitor / Cordova / Android Bridge)
+   * - Android WebView (`wv`, `Version/X.X Chrome/... Mobile`)
+   * - Trusted Web Activity (TWA: `android-app://` referrer)
+   * - Installed PWA / Home Screen WebAPK (`display-mode: standalone/fullscreen/minimal-ui` or `?app_source=pwa`)
+   * Admin access is strictly and permanently forbidden in this mode.
+   */
+  public isStandaloneOrNativeApp(): boolean {
+    if (typeof window === 'undefined') return false;
+    try {
+      if (Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'web') return true;
+    } catch {}
+
+    const win = window as any;
+    const hasNativeBridge = Boolean(
+      win.AndroidBridge ||
+        win.cordova ||
+        win.CapacitorCustomPlatform ||
+        (win.Capacitor && typeof win.Capacitor.isNativePlatform === 'function' && win.Capacitor.isNativePlatform()) ||
+        (win.webkit && win.webkit.messageHandlers)
+    );
+    if (hasNativeBridge) return true;
+
+    const protocol = window.location?.protocol || '';
+    const hostname = window.location?.hostname || '';
+    // Native Capacitor APK serves from capacitor://localhost or https://localhost or file://
+    if (
+      protocol === 'capacitor:' ||
+      protocol === 'file:' ||
+      protocol === 'ionic:' ||
+      protocol === 'content:' ||
+      (hostname === 'localhost' && /Android/i.test(navigator?.userAgent || ''))
+    ) {
+      return true;
+    }
+
+    let hasAppQueryOrStorage = false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('app_source') === 'pwa' || params.get('mode') === 'app') {
+        localStorage.setItem('motodrive_installed_app_env', 'true');
+        hasAppQueryOrStorage = true;
+      } else if (localStorage.getItem('motodrive_installed_app_env') === 'true') {
+        hasAppQueryOrStorage = true;
+      }
+    } catch {}
+
+    const isMediaStandalone =
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      window.matchMedia('(display-mode: minimal-ui)').matches ||
+      window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
+
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+    const isAndroidWebView =
+      /;\s*wv\)/i.test(ua) ||
+      /\bwv\b/i.test(ua) ||
+      /Capacitor/i.test(ua) ||
+      /MotoDriveApp/i.test(ua) ||
+      (/Android/i.test(ua) && /Version\/\d+\.\d+/i.test(ua) && /Chrome\/\d+/i.test(ua));
+
+    if (isMediaStandalone || isAndroidWebView || hasAppQueryOrStorage) {
+      try {
+        localStorage.setItem('motodrive_installed_app_env', 'true');
+        sessionStorage.removeItem('motodrive_web_admin_unlocked');
+      } catch {}
+      return true;
+    }
+
+    return Boolean(this.isInstalledState);
+  }
+
+  /**
+   * Returns true ONLY when opened as a normal website URL in a standard web browser (never inside the installed app or APK).
+   */
+  public isWebBrowserEnvironment(): boolean {
+    return !this.isStandaloneOrNativeApp();
   }
 
   // Check if 1-tap installation is available

@@ -1,5 +1,5 @@
 // MotoDrive Service Worker - versioned cache with aggressive cleanup
-const CACHE_NAME = 'motodrive-v1.3-auth-fix';
+const CACHE_NAME = 'motodrive-v2.0-strict-user-app';
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json', '/assets/aistudio/pwa-icon.png', '/favicon.png'];
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS).catch(() => undefined))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))); self.clients.claim(); });

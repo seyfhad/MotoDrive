@@ -36,7 +36,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   initialPickup,
   initialDestination,
 }) => {
-  const { requestRide, pricing } = useApp();
+  const { requestRide, pricing, activePassenger } = useApp();
 
   const [pickup, setPickup] = useState<Coordinates>(
     initialPickup || {
@@ -54,6 +54,19 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       address: 'حي السلام / أولاد فارس، الشلف',
     }
   );
+
+  // Sync pickup and destination whenever initialPickup / initialDestination props change
+  React.useEffect(() => {
+    if (initialPickup && typeof initialPickup.lat === 'number' && typeof initialPickup.lng === 'number') {
+      setPickup(initialPickup);
+    }
+  }, [initialPickup?.lat, initialPickup?.lng, initialPickup?.name]);
+
+  React.useEffect(() => {
+    if (initialDestination && typeof initialDestination.lat === 'number' && typeof initialDestination.lng === 'number') {
+      setDestination(initialDestination);
+    }
+  }, [initialDestination?.lat, initialDestination?.lng, initialDestination?.name]);
 
   const [searchType, setSearchType] = useState<'pickup' | 'destination' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -94,15 +107,15 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     };
   }, [searchQuery, currentWilaya]);
 
-  // Auto-detect GPS position immediately on modal open if initialPickup is default/missing
+  // Auto-detect GPS position immediately on modal open ONLY for pickup if initialPickup is missing
   React.useEffect(() => {
     if (!initialPickup) {
-      handleUseRealGPS();
+      handleUseRealGPS('pickup');
     }
   }, []);
 
   // Real GPS Geolocation with robust high/low accuracy fallback
-  const handleUseRealGPS = async () => {
+  const handleUseRealGPS = async (forcedTarget?: 'pickup' | 'destination') => {
     if (!navigator.geolocation) {
       setGpsError('خاصية تحديد المواقع الجغرافي غير مدعومة في متصفحك أو جهازك.');
       return;
@@ -184,7 +197,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
         address: address || `موقع: ${latitude.toFixed(4)}, ${longitude.toFixed(4)} (${nearest?.item?.wilaya || 'الجزائر'})`,
       };
 
-      if (searchType === 'pickup') {
+      const targetField = forcedTarget || searchType || 'pickup';
+      if (targetField === 'pickup') {
         setPickup(realLoc);
       } else {
         setDestination(realLoc);
@@ -199,7 +213,8 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
         name: nearest ? `${nearest.item.name} (${nearest.item.wilaya})` : 'موقعي الحالي (GPS)',
         address: `إحداثيات: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
       };
-      if (searchType === 'pickup') setPickup(fallbackLoc);
+      const targetField = forcedTarget || searchType || 'pickup';
+      if (targetField === 'pickup') setPickup(fallbackLoc);
       else setDestination(fallbackLoc);
       setSearchType(null);
     } finally {
@@ -333,7 +348,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
 
             {/* Current Real GPS option */}
             <button
-              onClick={handleUseRealGPS}
+              onClick={() => handleUseRealGPS(searchType || 'pickup')}
               disabled={isGpsLoading}
               className="w-full flex items-center justify-center gap-3 p-3 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold transition-all disabled:opacity-50"
             >
@@ -447,6 +462,46 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 <span className="text-[10px] text-slate-500 underline">تغيير</span>
               </button>
             </div>
+
+            {/* Quick Saved Home / Work Destination Selector inside Booking Modal */}
+            {(activePassenger?.homeLocation || activePassenger?.workLocation) && (
+              <div className="grid grid-cols-2 gap-2" dir="rtl">
+                {activePassenger?.homeLocation && (
+                  <button
+                    type="button"
+                    onClick={() => setDestination(activePassenger.homeLocation!)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer truncate ${
+                      destination.lat === activePassenger.homeLocation.lat &&
+                      destination.lng === activePassenger.homeLocation.lng
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-amber-500/40'
+                    }`}
+                  >
+                    <span>🏠</span>
+                    <span className="truncate">
+                      المنزل: {activePassenger.homeLocation.name || activePassenger.homeLocation.address}
+                    </span>
+                  </button>
+                )}
+                {activePassenger?.workLocation && (
+                  <button
+                    type="button"
+                    onClick={() => setDestination(activePassenger.workLocation!)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer truncate ${
+                      destination.lat === activePassenger.workLocation.lat &&
+                      destination.lng === activePassenger.workLocation.lng
+                        ? 'bg-blue-500/20 border-blue-500 text-blue-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-blue-500/40'
+                    }`}
+                  >
+                    <span>💼</span>
+                    <span className="truncate">
+                      العمل: {activePassenger.workLocation.name || activePassenger.workLocation.address}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Distance & Time Metrics Bar */}
             <div className="grid grid-cols-2 gap-2.5">
