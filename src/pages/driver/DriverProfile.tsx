@@ -1,15 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
-import { Star, BadgeCheck, Lock, AlertTriangle, PhoneCall, MessageCircle, Trash2 } from 'lucide-react';
+import { Star, BadgeCheck, Lock, AlertTriangle, PhoneCall, MessageCircle, Trash2, LogOut } from 'lucide-react';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const DriverProfile: React.FC = () => {
-  const { activeDriver, deleteMyAccount } = useApp();
+  const { activeDriver, deleteMyAccount, logout } = useApp();
   const [isLoadingProfile] = useState<boolean>(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [isSigningOut, setIsSigningOut] = useState<boolean>(false);
+
+  const handleSignOut = async () => {
+    try {
+      setIsSigningOut(true);
+      await logout();
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   const handleConfirmDeleteAccount = async () => {
     try {
@@ -77,55 +87,6 @@ export const DriverProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Support & Supervisor Contact Card (Report Problem & Facebook Message) */}
-      <div className="bg-slate-900 border border-slate-800/90 rounded-3xl p-5 space-y-3" id="driver-support-actions">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            <h4 className="text-sm font-bold text-white">الدعم والتواصل مع المسؤول</h4>
-          </div>
-        </div>
-
-        <div className="space-y-2.5">
-          {/* Button 1: Report a problem -> directs to Call Supervisor */}
-          <button
-            type="button"
-            onClick={() => setShowCallSupervisor(!showCallSupervisor)}
-            className="w-full py-3 px-4 rounded-2xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span>إبلاغ عن مشكلة</span>
-          </button>
-
-          {showCallSupervisor && (
-            <div className="p-3.5 bg-slate-950 border border-emerald-500/40 rounded-2xl space-y-2.5 animate-in fade-in">
-              <p className="text-xs text-slate-300 font-bold text-center">
-                يرجى مراسلة الدعم الفني مباشرة لمعالجة مشكلتك فوراً:
-              </p>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
-                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-              >
-                <PhoneCall className="w-4 h-4" />
-                <span>مراسلة الدعم الفني مباشرة</span>
-              </button>
-            </div>
-          )}
-
-          {/* Button 2: Send message via Facebook */}
-          <a
-            href="https://www.facebook.com/share/1DnSTUk7WL/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3 px-4 rounded-2xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
-          >
-            <MessageCircle className="w-4 h-4 text-blue-400" />
-            <span>إرسال رسالة عبر فيسبوك</span>
-          </a>
-        </div>
-      </div>
-
       {/* Motorcycle Specs */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
@@ -167,15 +128,16 @@ export const DriverProfile: React.FC = () => {
         </div>
       </div>
 
-      {/* Driver Legal & Policies */}
+      {/* Driver Legal, Support & Account Actions */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 space-y-2.5 text-xs">
         <div className="flex items-center justify-between">
           <div className="font-bold text-white flex items-center gap-1.5">
             <span>⚖️</span>
-            <span>الميثاق القانوني والخصوصية</span>
+            <span>الدعم والحساب والميثاق القانوني</span>
           </div>
           <span className="text-[10px] text-amber-400 font-mono">MotoDrive Algérie</span>
         </div>
+
         <div className="grid grid-cols-2 gap-2 pt-1">
           <button
             type="button"
@@ -193,11 +155,59 @@ export const DriverProfile: React.FC = () => {
           </button>
         </div>
 
+        {/* Two compact side-by-side rectangular buttons: Report a problem & Contact Admin directly above Sign Out / Delete Account */}
+        <div className="grid grid-cols-2 gap-2 pt-1" id="driver-support-actions">
+          <button
+            type="button"
+            onClick={() => setShowCallSupervisor(!showCallSupervisor)}
+            className="py-2 px-2.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+            <span className="truncate">إبلاغ عن مشكلة</span>
+          </button>
+
+          <a
+            href="https://www.facebook.com/share/1DnSTUk7WL/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-2 px-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold text-[11px] flex items-center justify-center gap-1.5 transition-all"
+          >
+            <MessageCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <span className="truncate">التواصل مع مسؤول</span>
+          </a>
+        </div>
+
+        {showCallSupervisor && (
+          <div className="p-3 bg-slate-950 border border-emerald-500/40 rounded-2xl space-y-2 animate-in fade-in">
+            <p className="text-[11px] text-slate-300 font-bold text-center">
+              يرجى مراسلة الدعم الفني مباشرة لمعالجة مشكلتك فوراً:
+            </p>
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
+              className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>مراسلة الدعم الفني مباشرة</span>
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSignOut}
+          disabled={isSigningOut}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-slate-700 text-slate-200 font-semibold text-xs transition-all disabled:opacity-60 cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          <span>{isSigningOut ? 'جاري تسجيل الخروج...' : 'تسجيل الخروج من الحساب'}</span>
+        </button>
+
         {/* Google Play Account Deletion Policy Button */}
         <button
           type="button"
           onClick={() => setShowDeleteConfirm(true)}
-          className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs transition-all cursor-pointer"
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold text-xs transition-all cursor-pointer"
         >
           <Trash2 className="w-3.5 h-3.5" />
           <span>حذف حساب السائق والبيانات نهائياً</span>

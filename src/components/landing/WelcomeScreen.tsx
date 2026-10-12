@@ -32,7 +32,15 @@ interface WelcomeScreenProps {
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => {
-  const { setCurrentUser, setActivePassenger, setActiveDriver, setCurrentRole, broadcastNotification } = useApp();
+  const {
+    setCurrentUser,
+    setActivePassenger,
+    setActiveDriver,
+    setCurrentRole,
+    broadcastNotification,
+    passengers,
+    drivers,
+  } = useApp();
 
   const [activeFormTab, setActiveFormTab] = useState<'passenger' | 'driver'>('passenger');
   const [passengerMode, setPassengerMode] = useState<'register' | 'login'>('register');
@@ -94,12 +102,56 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
   const isGenericOrOwnerName = (n?: string | null) =>
     !n ||
     !n.trim() ||
-    ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive', 'زائر', 'مالك التطبيق (Seyf)', 'مالك التطبيق (Admin)', 'سائق جديد'].includes(
-      n.trim()
-    ) ||
+    [
+      'راكب MotoDrive',
+      'سائق MotoDrive',
+      'مستخدم MotoDrive',
+      'ضيف MotoDrive',
+      'زائر',
+      'مالك التطبيق (Seyf)',
+      'مالك التطبيق (Admin)',
+      'المسؤول',
+      'سائق جديد',
+    ].includes(n.trim()) ||
     n.includes('مالك التطبيق');
 
-  // Auto-restore remembered phone number on mount for passenger without auto-filling driver login
+  // Helper to resolve existing profile & driver from both Firestore/Vault and real-time in-memory AppContext state
+  const resolveExistingAccountByPhone = async (rawPhoneInput: string) => {
+    const clean = rawPhoneInput.trim().replace(/[\s\-().]/g, '');
+    const normalized = clean.startsWith('+213')
+      ? '0' + clean.slice(4)
+      : clean.startsWith('00213')
+      ? '0' + clean.slice(5)
+      : clean.startsWith('213') && clean.length >= 11
+      ? '0' + clean.slice(3)
+      : clean;
+
+    const { profile: vaultProfile, driver: vaultDriver } = await findUserAndDriverByPhone(normalized);
+
+    const stateProfile =
+      passengers.find(
+        (p) =>
+          (p.phone === normalized || p.phone === clean) &&
+          (p as any).status !== 'deleted' &&
+          !isGenericOrOwnerName(p.name)
+      ) || null;
+
+    const stateDriver =
+      drivers.find(
+        (d) =>
+          (d.phone === normalized || d.phone === clean) &&
+          (d as any).status !== 'deleted' &&
+          !isGenericOrOwnerName(d.name)
+      ) || null;
+
+    return {
+      cleanPhone: normalized,
+      profile: vaultProfile || stateProfile,
+      driver: vaultDriver || stateDriver,
+    };
+  };
+
+  // Do NOT auto-fill passenger name on mount so user must enter their exact registered name
   useEffect(() => {
     try {
       const remembered =
@@ -135,9 +187,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     setFormError(null);
 
     const rawName = passengerName.trim();
-    const cleanPhone = passengerPhone.trim().replace(/\s+/g, '');
+    const rawPhone = passengerPhone.trim().replace(/\s+/g, '');
 
-    if (!cleanPhone || cleanPhone.length < 8) {
+    if (!rawPhone || rawPhone.length < 8) {
       setFormError('يرجى إدخال رقم هاتف صحيح للتواصل عند طلب الرحلة.');
       return;
     }
@@ -150,7 +202,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     try {
       setIsPassengerSubmitting(true);
 
-      const { profile: existingProfile, driver: existingDriver } = await findUserAndDriverByPhone(cleanPhone);
+      const {
+        cleanPhone,
+        profile: existingProfile,
+        driver: existingDriver,
+      } = await resolveExistingAccountByPhone(rawPhone);
 
       // 1. Strict Role Exclusivity: Cannot register/login as Passenger if phone is registered as a Driver
       if (existingDriver || (existingProfile && existingProfile.role === 'driver')) {
@@ -204,10 +260,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
     e.preventDefault();
     setFormError(null);
 
-    const cleanPhone = driverPhone.trim().replace(/\s+/g, '');
+    const rawPhone = driverPhone.trim().replace(/\s+/g, '');
     const rawName = driverName.trim();
 
-    if (!cleanPhone || cleanPhone.length < 8) {
+    if (!rawPhone || rawPhone.length < 8) {
       setFormError('يرجى إدخال رقم الهاتف الذي قمت بالتسجيل به.');
       return;
     }
@@ -219,7 +275,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
     try {
       setIsDriverSubmitting(true);
-      const { profile, driver } = await findUserAndDriverByPhone(cleanPhone);
+      const { cleanPhone, profile, driver } = await resolveExistingAccountByPhone(rawPhone);
 
       // 1. Role Exclusivity Check: If registered as Passenger only
       if (!driver && profile && profile.role === 'passenger') {
@@ -316,16 +372,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
 
     let preservedRejectionCount = 0;
 
-    // Check if phone number is already registered in Firestore or local vault
+    // Check if phone number is already registered in Firestore, local vault, or AppContext state
     try {
       setIsDriverSubmitting(true);
-      const existing = await findUserAndDriverByPhone(cleanPhone);
+      const existing = await resolveExistingAccountByPhone(cleanPhone);
 
       // 1. Block if phone belongs to a Passenger account (must delete passenger account first)
       if (!existing.driver && existing.profile && existing.profile.role === 'passenger') {
         setIsDriverSubmitting(false);
         setFormError(
-          `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
+          `⚠️ رقم الهاتف (${existing.cleanPhone}) مسجل مسبقاً كراكب بهذا الرقم. لا يمكنك التسجيل به كسائق إلا بعد حذف حسابك كراكب.`
         );
         return;
       }
@@ -347,7 +403,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           if (!isGenericOrOwnerName(regName) && normExisting !== normTyped) {
             setIsDriverSubmitting(false);
             setFormError(
-              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+              `⚠️ رقم الهاتف (${existing.cleanPhone}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
             );
             return;
           }

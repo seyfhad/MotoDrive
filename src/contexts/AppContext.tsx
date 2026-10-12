@@ -372,18 +372,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setNotifications(prev => [newNotif, ...prev.slice(0, 29)]);
 
-    // Send Push Notification & Play Audio Chime only for essential events
+    // Send Notification Sound & Vibration (Notification stays pending in header bell button without top popup banner)
     let soundType: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general' = 'general';
-    if (title.includes('طلب') || title.includes('عرض')) {
+    if (title.includes('طلب') || title.includes('عرض') || title.includes('قبول')) {
       soundType = 'new_ride';
     } else if (title.includes('وصل') || title.includes('أقترب') || title.includes('اقترب')) {
       soundType = 'driver_arriving';
-    } else if (title.includes('مسؤول') || title.includes('قبول') || title.includes('رفض') || title.includes('موافقة')) {
+    } else if (title.includes('مسؤول') || title.includes('رفض') || title.includes('موافقة')) {
       soundType = 'admin_update';
     }
 
+    const shouldVibrate = Boolean(
+      data?.vibrate ||
+        type === 'ride_update' ||
+        title.includes('طلب') ||
+        title.includes('قبول') ||
+        title.includes('عرض')
+    );
+
     pushNotificationService.sendPushNotification(title, body, {
       soundType,
+      vibrateDevice: shouldVibrate,
       data,
     });
   }, []);
@@ -1016,6 +1025,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       r.driverId === activeDriver.id &&
       !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
   ) || null;
+
+  // Track notified ride IDs and statuses so we alert & vibrate once per real-time event
+  const notifiedDriverRequestsRef = useRef<Set<string>>(new Set());
+  const notifiedPassengerAcceptsRef = useRef<Set<string>>(new Set());
+  const notifiedPassengerOffersRef = useRef<Set<string>>(new Set());
+
+  // Alert & vibrate Driver when a Passenger requests a ride
+  useEffect(() => {
+    if (currentRole !== 'driver' || !activeDriver.isOnline || activeDriver.status !== 'approved') return;
+
+    for (const r of rides) {
+      if (isPendingRideExpired(r)) continue;
+      if (r.status === 'searching' || r.status === 'offers_available') {
+        if (!notifiedDriverRequestsRef.current.has(r.id)) {
+          notifiedDriverRequestsRef.current.add(r.id);
+          addNotification(
+            activeDriver.id,
+            'driver',
+            '🏍️ طلب رحلة جديد من راكب',
+            `الراكب ${r.passengerName || 'راكب'} يطلب رحلة من ${r.pickup.name || r.pickup.address || 'نقطة الانطلاق'} إلى ${r.destination.name || r.destination.address || 'الوجهة'} بسعر ${r.passengerOfferedPrice || r.estimatedPrice} د.ج.`,
+            'ride_request',
+            { rideId: r.id, vibrate: true }
+          );
+        }
+      }
+    }
+  }, [rides, currentRole, activeDriver.id, activeDriver.isOnline, activeDriver.status, addNotification]);
+
+  // Alert & vibrate Passenger when a Driver accepts or submits an offer for their ride
+  useEffect(() => {
+    if (!currentPassengerRide) return;
+
+    // 1. Driver accepted the passenger's ride
+    if (
+      currentPassengerRide.status === 'accepted' &&
+      currentPassengerRide.driverId &&
+      !notifiedPassengerAcceptsRef.current.has(currentPassengerRide.id)
+    ) {
+      notifiedPassengerAcceptsRef.current.add(currentPassengerRide.id);
+      addNotification(
+        activePassenger.id,
+        'passenger',
+        '✅ تم قبول رحلتك من السائق!',
+        `قبل السائق ${currentPassengerRide.driverName || 'سائق MotoDrive'} طلب رحلتك وهو في طريقه إليك الآن.`,
+        'ride_update',
+        { rideId: currentPassengerRide.id, vibrate: true }
+      );
+    }
+
+    // 2. Driver sent a new offer to the passenger
+    const pendingOffers = (currentPassengerRide.offers || []).filter((o) => o.status === 'pending');
+    for (const offer of pendingOffers) {
+      if (!notifiedPassengerOffersRef.current.has(offer.id)) {
+        notifiedPassengerOffersRef.current.add(offer.id);
+        addNotification(
+          activePassenger.id,
+          'passenger',
+          '🏍️ عرض/قبول جديد من سائق لرحلتك',
+          `قدم السائق ${offer.driverName} عرضاً بقيمة ${offer.offeredPrice} د.ج لرحلتك.`,
+          'ride_update',
+          { rideId: currentPassengerRide.id, offerId: offer.id, vibrate: true }
+        );
+      }
+    }
+  }, [currentPassengerRide, activePassenger.id, addNotification]);
 
   // --------------------------------------------------------------------------
   // 3. REAL GPS TRACKING FOR ACTIVE DRIVER (SYNCS TO BOTH DRIVER & ACTIVE RIDE)

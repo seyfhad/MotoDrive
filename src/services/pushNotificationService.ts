@@ -39,47 +39,35 @@ class PushNotificationService {
 
   sendPushNotification(
     title: string,
-    body: string,
+    _body: string,
     options?: {
       tag?: string;
       icon?: string;
       soundType?: 'new_ride' | 'driver_arriving' | 'admin_update' | 'general';
+      vibrateDevice?: boolean;
       data?: any;
       onClickUrl?: string;
     }
   ) {
     const soundType = options?.soundType || 'general';
 
-    // 1. Always play chime and vibration
+    // 1. Always play notification sound chime when any notification arrives (keeps notification pending in the header bell icon)
     notificationSound.playChime(soundType);
-    notificationSound.vibrate(
-      soundType === 'new_ride' ? [300, 150, 300, 150, 400] : [200, 100, 200]
-    );
 
-    // 2. Trigger System Native Push Notification if permitted
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        try {
-          const notif = new Notification(title, {
-            body,
-            icon: options?.icon || '/favicon.ico',
-            badge: '/favicon.ico',
-            tag: options?.tag || 'motodrive-alert',
-            dir: 'rtl',
-            lang: 'ar',
-            data: options?.data,
-          } as NotificationOptions);
+    // 2. Vibrate phone on driver acceptance of passenger ride or passenger ride request to driver
+    const shouldVibrate =
+      options?.vibrateDevice === true ||
+      soundType === 'new_ride' ||
+      title.includes('طلب') ||
+      title.includes('قبول') ||
+      title.includes('عرض') ||
+      title.includes('وافق');
 
-          notif.onclick = () => {
-            window.focus();
-            notif.close();
-          };
-        } catch (err) {
-          console.warn('System push notice:', err);
-        }
-      }
+    if (shouldVibrate) {
+      notificationSound.vibrate([350, 150, 350, 150, 450]);
     }
   }
 }
 
 export const pushNotificationService = new PushNotificationService();
+

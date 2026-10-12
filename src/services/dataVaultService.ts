@@ -214,16 +214,14 @@ export function loadPhoneDirectoryFromStorage(): Record<
       prof &&
       (prof.role === 'admin' ||
         prof.name?.includes('مالك التطبيق') ||
-        prof.name?.includes('المسؤول') ||
-        prof.name?.toLowerCase().includes('seyf') ||
+        prof.name?.trim() === 'المسؤول' ||
         !prof.name?.trim())
     ) {
       if (
         !drv &&
         (!prof.name?.trim() ||
-          prof.name?.includes('مالك') ||
-          prof.name?.includes('المسؤول') ||
-          prof.name?.toLowerCase().includes('seyf'))
+          prof.name?.includes('مالك التطبيق') ||
+          prof.name?.trim() === 'المسؤول')
       ) {
         delete merged[key];
         continue;
@@ -278,8 +276,7 @@ export async function getUserFromIndexedDBVault(
           if (
             prof.role === 'admin' ||
             prof.name?.includes('مالك التطبيق') ||
-            prof.name?.includes('المسؤول') ||
-            prof.name?.toLowerCase().includes('seyf')
+            prof.name?.trim() === 'المسؤول'
           ) {
             prof = {
               ...prof,

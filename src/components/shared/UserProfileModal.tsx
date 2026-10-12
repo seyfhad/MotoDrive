@@ -19,8 +19,10 @@ interface UserProfileModalProps {
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
-  const { activePassenger, activeDriver, currentRole, currentUser, logout } = useApp();
+  const { activePassenger, activeDriver, currentRole, currentUser, logout, deleteMyAccount } = useApp();
   const [showReportOptions, setShowReportOptions] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isOpen) return null;
 
@@ -33,6 +35,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
     (isDriverView
       ? '/assets/images/driver_logo.jpg'
       : '/assets/images/passenger_logo.jpg');
+
+  const handleConfirmDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      await deleteMyAccount();
+      setShowDeleteConfirm(false);
+      onClose();
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div
@@ -118,16 +131,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
           </div>
         </div>
 
-        {/* Report a Problem & Facebook Contact Buttons */}
-        <div className="pt-2 border-t border-slate-800 space-y-2.5">
-          <button
-            type="button"
-            onClick={() => setShowReportOptions(!showReportOptions)}
-            className="w-full py-3 px-4 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-          >
-            <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span>إبلاغ عن مشكلة</span>
-          </button>
+        {/* Two compact side-by-side rectangular buttons: Report a problem & Contact Admin directly above Sign Out / Delete Account */}
+        <div className="pt-2 border-t border-slate-800 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setShowReportOptions(!showReportOptions)}
+              className="py-2 px-2.5 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span className="truncate">إبلاغ عن مشكلة</span>
+            </button>
+
+            <a
+              href="https://www.facebook.com/share/1DnSTUk7WL/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="py-2 px-2.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-[11px] flex items-center justify-center gap-1.5 transition-all"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="truncate">التواصل مع مسؤول</span>
+            </a>
+          </div>
 
           {showReportOptions && (
             <div className="p-3 bg-slate-950 border border-red-500/30 rounded-2xl space-y-2 animate-in fade-in">
@@ -148,30 +173,55 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             </div>
           )}
 
-          <a
-            href="https://www.facebook.com/share/1DnSTUk7WL/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3 px-4 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all"
-          >
-            <MessageCircle className="w-4 h-4 text-blue-400" />
-            <span>إرسال رسالة عبر فيسبوك</span>
-          </a>
-        </div>
+          {currentUser && (
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  await logout();
+                  onClose();
+                }}
+                className="w-full py-2.5 bg-slate-800 hover:bg-red-500/20 border border-slate-700 hover:border-red-500/30 text-slate-300 hover:text-red-400 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>تسجيل الخروج من الحساب</span>
+              </button>
 
-        {currentUser && (
-          <button
-            type="button"
-            onClick={async () => {
-              await logout();
-              onClose();
-            }}
-            className="w-full py-2.5 bg-slate-800 hover:bg-red-500/20 border border-slate-700 hover:border-red-500/30 text-slate-300 hover:text-red-400 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-colors mt-2 cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>تسجيل الخروج من الحساب</span>
-          </button>
-        )}
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full py-2.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <span>🗑️ حذف الحساب نهائياً</span>
+              </button>
+            </div>
+          )}
+
+          {showDeleteConfirm && (
+            <div className="p-3 bg-slate-950 border border-red-500/40 rounded-2xl space-y-2.5 animate-in fade-in">
+              <p className="text-[11px] text-slate-300 font-bold text-center">
+                هل أنت متأكد من حذف الحساب وجميع بياناته نهائياً؟
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="py-2 bg-slate-800 text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteAccount}
+                  disabled={isDeleting}
+                  className="py-2 bg-red-600 text-white rounded-xl text-xs font-black cursor-pointer disabled:opacity-50"
+                >
+                  {isDeleting ? 'جاري الحذف...' : 'نعم، احذف حسابي'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

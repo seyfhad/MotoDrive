@@ -71,8 +71,7 @@ export const isPlaceholderOrSystemName = (n?: string | null): boolean => {
   return (
     placeholders.includes(trimmed) ||
     trimmed.includes('مالك التطبيق') ||
-    trimmed.includes('المسؤول') ||
-    trimmed.toLowerCase().includes('seyf')
+    trimmed === 'المسؤول'
   );
 };
 
@@ -353,30 +352,14 @@ export const registerOrRestoreUserByPhone = async (
   const isExisting = Boolean(foundProfile || foundDriver);
 
   const isRealName = (n?: string | null) =>
-    Boolean(n && n.trim()) &&
-    ![
-      'راكب MotoDrive',
-      'سائق MotoDrive',
-      'مستخدم MotoDrive',
-      'ضيف MotoDrive',
-      'زائر',
-      'مالك التطبيق (Seyf)',
-      'مالك التطبيق (Admin)',
-      'سيف الدين (المالك)',
-      'المسؤول',
-      'سائق جديد',
-    ].includes(n!.trim()) &&
-    !n!.includes('مالك التطبيق') &&
-    !n!.includes('المسؤول') &&
-    !n!.toLowerCase().includes('seyf');
+    Boolean(n && n.trim()) && !isPlaceholderOrSystemName(n);
 
-  // Clean up any legacy owner/admin label if registering/logging in by phone (including 0542524728 and 0662688714)
+  // Clean up any legacy owner/admin label if registering/logging in by phone
   if (
     foundProfile &&
     (foundProfile.role === 'admin' ||
       foundProfile.name?.includes('مالك التطبيق') ||
-      foundProfile.name?.includes('المسؤول') ||
-      foundProfile.name?.toLowerCase().includes('seyf'))
+      foundProfile.name?.trim() === 'المسؤول')
   ) {
     foundProfile = {
       ...foundProfile,
@@ -418,7 +401,7 @@ export const registerOrRestoreUserByPhone = async (
     const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
     if (normalizedExistingName !== normalizedInputName) {
       throw new Error(
-        `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredName}"). يرجى كتابة الاسم الصحيح المسجل سابقاً ليتم فتح حسابك.`
+        `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
       );
     }
   }

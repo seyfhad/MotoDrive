@@ -42,6 +42,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setActiveDriver,
     setCurrentRole,
     broadcastNotification,
+    passengers,
+    drivers,
   } = useApp();
 
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -95,7 +97,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const isGenericOrOwnerName = (n?: string | null) =>
     !n ||
     !n.trim() ||
-    ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive', 'زائر', 'مالك التطبيق (Seyf)', 'مالك التطبيق (Admin)', 'سائق جديد'].includes(
+    ['راكب MotoDrive', 'سائق MotoDrive', 'مستخدم MotoDrive', 'ضيف MotoDrive', 'زائر', 'مالك التطبيق (Seyf)', 'مالك التطبيق (Admin)', 'المسؤول', 'سائق جديد'].includes(
       n.trim()
     ) ||
     n.includes('مالك التطبيق');
@@ -119,7 +121,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg(null);
 
     try {
-      const { profile: existingProfile, driver } = await findUserAndDriverByPhone(cleanPhone);
+      const { profile: vaultProfile, driver: vaultDriver } = await findUserAndDriverByPhone(cleanPhone);
+      const stateProfile =
+        passengers.find(
+          (p) => p.phone === cleanPhone && (p as any).status !== 'deleted' && !isGenericOrOwnerName(p.name)
+        ) || null;
+      const stateDriver =
+        drivers.find(
+          (d) => d.phone === cleanPhone && (d as any).status !== 'deleted' && !isGenericOrOwnerName(d.name)
+        ) || null;
+      const existingProfile = vaultProfile || stateProfile;
+      const driver = vaultDriver || stateDriver;
 
       if (selectedRole === 'driver') {
         // 1. Role Exclusivity: Cannot login/register as Driver if registered as Passenger
