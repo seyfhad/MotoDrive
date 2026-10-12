@@ -696,6 +696,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (matched) {
               return {
                 ...prev,
+                isVerified: matched.isVerified !== undefined ? matched.isVerified : prev.isVerified,
                 homeLocation: matched.homeLocation !== undefined ? matched.homeLocation : prev.homeLocation,
                 workLocation: matched.workLocation !== undefined ? matched.workLocation : prev.workLocation,
               };
