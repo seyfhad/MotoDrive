@@ -11,7 +11,11 @@ const deleteDoc = async (reference: any): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
   await fbDeleteDoc(reference);
 };
-import { updateDriverStatusInFirestore, deleteUserAccountFromFirestore } from '../../services/firestoreService';
+import { 
+  updateDriverStatusInFirestore, 
+  deleteUserAccountFromFirestore,
+  toggleDriverVerification,
+} from '../../services/firestoreService';
 import { approveDriverApplication, rejectDriverApplication } from '../../services/driverApplicationsService';
 import { removeAccountFromLocalVault } from '../../services/dataVaultService';
 import {
@@ -48,6 +52,7 @@ export interface FirestoreDriverRecord {
   rejectionCount?: number;
   isPermanentlyRejected?: boolean;
   createdAt?: any;
+  isVerified?: boolean;
   motorcycle?: {
     brand?: string;
     model?: string;
@@ -831,6 +836,28 @@ export const AdminDriversPanel: React.FC = () => {
                       )}
                     </button>
                   )}
+
+                  {/* زر التوثيق الجديد */}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setUpdatingId(drv.id);
+                      try {
+                        await toggleDriverVerification(drv.id, !drv.isVerified);
+                      } finally {
+                        setUpdatingId(null);
+                      }
+                    }}
+                    disabled={updatingId === drv.id}
+                    className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                      drv.isVerified
+                        ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 hover:text-amber-400'
+                    }`}
+                    title={drv.isVerified ? 'إلغاء التوثيق' : 'توثيق الحساب'}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                  </button>
 
                   {drv.phone && (
                     <a

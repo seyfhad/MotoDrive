@@ -66,6 +66,7 @@ export interface UserProfile {
   };
   homeLocation?: Coordinates | null;
   workLocation?: Coordinates | null;
+  isVerified?: boolean;
 }
 
 export interface MotorcycleInfo {
@@ -126,6 +127,7 @@ export interface DriverProfile {
   heading?: number;
   updatedAt: string;
   createdAt: string;
+  isVerified?: boolean;
 }
 
 export interface Ride {

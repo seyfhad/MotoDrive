@@ -660,23 +660,11 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           </div>
         )}
 
-        {/* Form Error Banner with Call Admin Button */}
+        {/* Form Error Banner */}
         {formError && (
-          <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-2xl text-xs text-red-300 space-y-2 animate-in fade-in leading-relaxed">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <span className="font-bold">{formError}</span>
-            </div>
-
-            <div className="pt-1 flex items-center justify-end">
-              <a
-                href="tel:0542524728"
-                className="py-2 px-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
-              >
-                <PhoneCall className="w-3.5 h-3.5 text-slate-950" />
-                <span>الاتصال بالمسؤول</span>
-              </a>
-            </div>
+          <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-2xl text-xs text-red-300 flex items-start gap-2 animate-in fade-in leading-relaxed">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <span className="font-bold">{formError}</span>
           </div>
         )}
 

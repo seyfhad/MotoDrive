@@ -1187,3 +1187,20 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ deletedCount: n
 
   return { deletedCount };
 };
+
+export const toggleDriverVerification = async (
+  driverId: string,
+  isVerified: boolean
+): Promise<void> => {
+  if (isFirestoreQuotaExceeded()) return;
+  try {
+    const driverRef = doc(db, 'drivers', driverId);
+    await setDoc(driverRef, { isVerified }, { merge: true });
+    
+    // Also try updating secondary doc if it exists
+    const altRef = doc(db, 'drivers', `driver-${driverId.replace('driver-', '')}`);
+    await setDoc(altRef, { isVerified }, { merge: true }).catch(() => {});
+  } catch (err) {
+    console.warn('Error toggling driver verification:', err);
+  }
+};

@@ -8,6 +8,7 @@ import { AdminPricing } from './AdminPricing';
 import { AdminServiceAreas } from './AdminServiceAreas';
 import { AdminComplaints } from './AdminComplaints';
 import { AdminUsers } from './AdminUsers';
+import { AdminVerificationPanel } from '../../components/admin/AdminVerificationPanel';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { androidNativeService } from '../../services/androidNativeService';
 import {
@@ -35,7 +36,7 @@ import {
 export const AdminPanel: React.FC = () => {
   const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
   const [activeTab, setActiveTab] = useState<
-    'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints'
+    'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'verification'
   >('users');
   const [usersRoleFilter, setUsersRoleFilter] = useState<'all' | 'driver' | 'passenger'>('all');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
@@ -68,16 +69,10 @@ export const AdminPanel: React.FC = () => {
         <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto text-2xl">
           🔒
         </div>
-        <h3 className="text-lg font-black text-white">التطبيق مخصص للركاب والسائقين فقط</h3>
+        <h3 className="text-lg font-black text-white">الوصول مرفوض</h3>
         <p className="text-xs text-slate-300 leading-relaxed">
-          لوحة الإدارة متاحة حصرياً عبر موقع الويب الرسمي لمالك المنصة ولا يمكن فتحها من داخل التطبيق.
+          هذه اللوحة مخصصة للمسؤول فقط.
         </p>
-        <button
-          onClick={() => setCurrentRole('passenger')}
-          className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-all shadow-md shadow-amber-500/20 cursor-pointer"
-        >
-          العودة لوضع الراكب
-        </button>
       </div>
     );
   }
@@ -245,6 +240,18 @@ export const AdminPanel: React.FC = () => {
               </span>
             )}
           </button>
+          {/* 8. توثيق الحسابات */}
+          <button
+            onClick={() => setActiveTab('verification')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'verification'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>توثيق الحسابات</span>
+          </button>
         </div>
       </div>
 
@@ -257,6 +264,7 @@ export const AdminPanel: React.FC = () => {
         {activeTab === 'pricing' && <AdminPricing />}
         {activeTab === 'service_areas' && <AdminServiceAreas />}
         {activeTab === 'complaints' && <AdminComplaints />}
+        {activeTab === 'verification' && <AdminVerificationPanel />}
       </main>
 
       {/* Logout Confirmation Modal (Works 100% inside iframes without window.confirm) */}

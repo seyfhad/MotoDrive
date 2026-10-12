@@ -133,24 +133,6 @@ export const DriverEarnings: React.FC = () => {
             <div className="text-3xl sm:text-4xl font-black text-amber-400 tracking-tight relative z-10 font-mono">
               {formatCurrencyDZD(totalEarningsDZD)}
             </div>
-
-            {/* Breakdown Mini Grid */}
-            <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3.5 space-y-2 text-xs relative z-10">
-              <div className="flex items-center justify-between text-slate-300">
-                <span>إجمالي مبالغ الركاب (التحصيل الكامل):</span>
-                <span className="font-bold text-white font-mono">{formatCurrencyDZD(totalGrossDZD)}</span>
-              </div>
-              <div className="flex items-center justify-between text-slate-300">
-                <span>عمولة المنصة ({pricing.platformCommissionPercent ?? 0}%):</span>
-                <span className="font-bold text-emerald-400 font-mono">
-                  {totalCommissionDZD === 0 ? '0 د.ج (الأرباح 100% للسائق)' : `-${formatCurrencyDZD(totalCommissionDZD)}`}
-                </span>
-              </div>
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between font-bold text-emerald-400">
-                <span>صافي أرباح الكابتن (Cash باليد):</span>
-                <span className="text-sm font-black font-mono">{formatCurrencyDZD(totalEarningsDZD)}</span>
-              </div>
-            </div>
           </div>
 
           {/* KPI Stat Cards Row */}

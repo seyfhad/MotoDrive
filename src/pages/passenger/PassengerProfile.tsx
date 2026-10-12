@@ -9,12 +9,14 @@ import {
   PhoneCall,
   MessageCircle,
   Trash2,
+  BadgeCheck,
+  Star,
 } from 'lucide-react';
 import { signOutUser } from '../../services/authService';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const PassengerProfile: React.FC = () => {
-  const { activePassenger, setCurrentUser, deleteMyAccount } = useApp();
+  const { activePassenger, setCurrentUser, deleteMyAccount, rides } = useApp();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -75,8 +77,34 @@ export const PassengerProfile: React.FC = () => {
         </div>
 
         <div>
-          <h3 className="text-lg font-black text-white">{activePassenger.name}</h3>
+          <div className="flex items-center justify-center gap-1.5">
+            <h3 className="text-lg font-black text-white">{activePassenger.name}</h3>
+            {activePassenger.isVerified && <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />}
+          </div>
           <p className="text-xs text-slate-400 mt-0.5 font-mono" dir="ltr">{activePassenger.phone}</p>
+          
+          {(() => {
+            const passengerRides = rides.filter(r => r.passengerId === activePassenger.id && r.status === 'completed');
+            const ratedRides = passengerRides.filter(r => r.ratingStars !== undefined && r.ratingStars !== null);
+            const avgRating = ratedRides.length > 0 
+              ? (ratedRides.reduce((sum, r) => sum + (r.ratingStars || 0), 0) / ratedRides.length) 
+              : 5.0;
+            const totalTrips = passengerRides.length;
+            const totalRatings = ratedRides.length;
+            
+            return (
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold text-amber-400">
+                  <Star className="w-3.5 h-3.5 fill-amber-400" />
+                  <span>{avgRating.toFixed(1)} ({totalRatings} تقييم)</span>
+                </div>
+                <div className="inline-flex items-center gap-1 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold text-blue-400">
+                  <span>{totalTrips} رحلة مكتملة</span>
+                </div>
+              </div>
+            );
+          })()}
+
           <span className="inline-flex items-center gap-1 mt-2 text-[10px] text-slate-400 bg-slate-950/80 border border-slate-800 px-2.5 py-1 rounded-full">
             <Lock className="w-3 h-3 text-amber-400" />
             <span>الاسم ورقم الهاتف والصورة الشخصية ثابتة وغير قابلة للتعديل</span>
@@ -134,21 +162,16 @@ export const PassengerProfile: React.FC = () => {
             </a>
           </div>
 
-          {showCallSupervisor && (
-            <div className="p-3 bg-slate-950 border border-emerald-500/40 rounded-2xl space-y-2 animate-in fade-in">
-              <p className="text-[11px] text-slate-300 font-bold text-center">
-                يرجى مراسلة الدعم الفني مباشرة لمعالجة مشكلتك فوراً:
-              </p>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
-                className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
-              >
-                <PhoneCall className="w-3.5 h-3.5" />
-                <span>مراسلة الدعم الفني مباشرة</span>
-              </button>
-            </div>
-          )}
+          {/* Direct Support */}
+          <div className="pt-2">
+            <a
+              href="tel:0542524728"
+              className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>0542524728</span>
+            </a>
+          </div>
 
           <button
             onClick={handleSignOut}

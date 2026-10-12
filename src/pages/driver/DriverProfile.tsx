@@ -5,7 +5,7 @@ import { MotoIcon } from '../../components/shared/MotoIcon';
 import { ProfileSkeleton } from '../../components/shared/Skeleton';
 
 export const DriverProfile: React.FC = () => {
-  const { activeDriver, deleteMyAccount, logout } = useApp();
+  const { activeDriver, deleteMyAccount, logout, rides } = useApp();
   const [isLoadingProfile] = useState<boolean>(false);
   const [showCallSupervisor, setShowCallSupervisor] = useState<boolean>(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false);
@@ -52,32 +52,46 @@ export const DriverProfile: React.FC = () => {
               (e.target as HTMLImageElement).src = '/icon.jpg';
             }}
           />
-          <span
-            className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-2 border-slate-900 flex items-center justify-center text-[10px] font-bold ${
-              activeDriver.status === 'approved'
-                ? 'bg-emerald-500 text-slate-950'
-                : activeDriver.status === 'pending'
-                ? 'bg-amber-500 text-slate-950'
-                : 'bg-red-500 text-white'
-            }`}
-            title={activeDriver.status === 'approved' ? 'موثق رسمياً' : 'قيد المراجعة'}
-          >
-            {activeDriver.status === 'approved' ? '✓' : '⏳'}
-          </span>
+          {activeDriver.status !== 'approved' && (
+            <button
+              onClick={() => alert('لتأكيد حسابك يرجى إرسال بطاقة الهوية إلى المسؤول.')}
+              className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-2 border-slate-900 bg-amber-500 text-slate-950 flex items-center justify-center text-xs font-bold cursor-pointer hover:bg-amber-400"
+              title="تأكيد الحساب"
+            >
+              !
+            </button>
+          )}
         </div>
 
         <div>
           <div className="flex items-center justify-center gap-1.5 text-sm font-black text-white">
             <span>{activeDriver.name}</span>
-            {activeDriver.status === 'approved' && (
-              <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            )}
+            {activeDriver.isVerified && <BadgeCheck className="w-4 h-4 text-emerald-400 shrink-0" />}
           </div>
           <p className="text-xs text-slate-400 mt-0.5 font-mono" dir="ltr">{activeDriver.phone}</p>
-          <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold text-amber-400 mt-2">
-            <Star className="w-3.5 h-3.5 fill-amber-400" />
-            <span>{(activeDriver.rating ?? 5.0).toFixed(1)} ({activeDriver.totalTrips ?? 0} رحلة منجزة)</span>
-          </div>
+          
+          {(() => {
+            const driverRides = rides.filter(r => r.driverId === activeDriver.id && r.status === 'completed');
+            const ratedRides = driverRides.filter(r => r.driverRating !== undefined && r.driverRating !== null);
+            const avgRating = ratedRides.length > 0 
+              ? (ratedRides.reduce((sum, r) => sum + (r.driverRating || 0), 0) / ratedRides.length) 
+              : 5.0;
+            const totalTrips = driverRides.length;
+            const totalRatings = ratedRides.length;
+            
+            return (
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                <div className="inline-flex items-center gap-1 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-bold text-amber-400">
+                  <Star className="w-3.5 h-3.5 fill-amber-400" />
+                  <span>{avgRating.toFixed(1)} ({totalRatings} تقييم)</span>
+                </div>
+                <div className="inline-flex items-center gap-1 bg-blue-500/10 border border-blue-500/30 px-3 py-1 rounded-full text-xs font-bold text-blue-400">
+                  <span>{totalTrips} رحلة مكتملة</span>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="mt-2">
             <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 bg-slate-950/80 border border-slate-800 px-2.5 py-1 rounded-full">
               <Lock className="w-3 h-3 text-amber-400" />
@@ -122,10 +136,7 @@ export const DriverProfile: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 text-[10px] text-slate-400 flex items-center gap-1.5">
-          <span>🛡️</span>
-          <span>اسم السائق واسم الدراجة ثابتان على شاشة الركاب ولا يمكن للسائق تغييرهما بعد اعتماد المسؤول.</span>
-        </div>
+
       </div>
 
       {/* Driver Legal, Support & Account Actions */}

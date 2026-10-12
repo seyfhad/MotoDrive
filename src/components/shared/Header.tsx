@@ -191,18 +191,6 @@ export const Header: React.FC = () => {
             {currentRole === 'admin' && isWebBrowser && (
               <>
                 <button
-                  id="header-admin-panel-btn"
-                  onClick={() => {
-                    setCurrentRole('passenger');
-                  }}
-                  className="h-8 px-2.5 rounded-xl border flex items-center gap-1.5 transition-all font-bold text-xs bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20 cursor-pointer"
-                  title="العودة لوضع الراكب"
-                >
-                  <ShieldCheck className="w-4 h-4 text-slate-950" />
-                  <span>العودة للمستخدم</span>
-                </button>
-
-                <button
                   id="header-admin-inapp-message-btn"
                   onClick={() => setShowAdminMessageModal(true)}
                   className="h-8 px-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 flex items-center gap-1.5 text-amber-300 transition-colors cursor-pointer"
