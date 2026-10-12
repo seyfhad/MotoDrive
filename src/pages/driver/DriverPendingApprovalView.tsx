@@ -519,20 +519,35 @@ export const DriverPendingApprovalView: React.FC<DriverPendingApprovalViewProps>
           </div>
 
           {/* Support / Help */}
-          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 text-slate-300">
-              <PhoneCall className="w-4 h-4 text-emerald-400" />
-              <span>هل لديك استفسار حول ملفك؟</span>
+          <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-300">
+                <PhoneCall className="w-4 h-4 text-emerald-400" />
+                <span className="font-bold">هل لديك استفسار حول ملفك؟</span>
+              </div>
+              <span className="text-[10px] text-amber-400 font-mono">0542524728</span>
             </div>
-            <button
-              type="button"
-              onClick={() => window.dispatchEvent(new CustomEvent('open-contact-us'))}
-              className="py-2 px-3.5 bg-slate-900 hover:bg-slate-800 active:scale-95 border border-amber-500/30 text-amber-400 font-bold rounded-xl text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
-              title="مراسلة الدعم الفني"
-            >
-              <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
-              <span>تواصل مع الدعم</span>
-            </button>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <a
+                href="tel:0542524728"
+                className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+                title="اتصال مباشر بالمسؤول"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-slate-950" />
+                <span>تواصل مع مسؤول</span>
+              </a>
+
+              <a
+                href="https://www.facebook.com/share/1DnSTUk7WL/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2.5 px-3 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 cursor-pointer"
+                title="إبلاغ عن مشكلة عبر فيسبوك"
+              >
+                <span>إبلاغ عن مشكلة</span>
+              </a>
+            </div>
           </div>
 
           <div className="flex flex-col items-center gap-2 pt-2">

@@ -49,7 +49,9 @@ export const AdminPanel: React.FC = () => {
     isWebBrowser &&
     isWebAdminUnlocked &&
     (currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-      activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com');
+      activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+      currentUser?.uid === 'admin-owner-seyfhad' ||
+      activePassenger?.id === 'admin-owner-seyfhad');
 
   // In-app modals replacing blocked window.confirm / window.prompt in iframes
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);

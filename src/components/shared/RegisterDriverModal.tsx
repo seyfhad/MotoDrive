@@ -15,6 +15,7 @@ import {
   AlertCircle,
   ShieldCheck,
   CheckCircle2,
+  PhoneCall,
 } from 'lucide-react';
 import { MotoIcon } from './MotoIcon';
 
@@ -288,7 +289,7 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           if (regName && normExisting !== normTyped) {
             setIsSubmitting(false);
             setErrorMsg(
-              `⚠️ رقم الهاتف (${phone.trim()}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً.`
+              `⚠️ رقم الهاتف (${phone.trim()}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول (0542524728).`
             );
             return;
           }
@@ -504,9 +505,20 @@ export const RegisterDriverModal: React.FC<RegisterDriverModalProps> = ({ isOpen
           /* Single-Step Registration & Document Upload Form */
           <form onSubmit={handleSubmit} className="space-y-4">
             {errorMsg && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-300 space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{errorMsg}</span>
+                </div>
+                <div className="pt-1 flex items-center justify-end">
+                  <a
+                    href="tel:0542524728"
+                    className="py-1.5 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>الاتصال بالمسؤول</span>
+                  </a>
+                </div>
               </div>
             )}
 

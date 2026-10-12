@@ -23,6 +23,7 @@ import {
   Image as ImageIcon,
   LogIn,
   UserPlus,
+  PhoneCall,
 } from 'lucide-react';
 
 interface WelcomeScreenProps {
@@ -223,7 +224,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
         if (normExisting !== normTyped) {
           setFormError(
-            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${existingProfile.name}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول.`
           );
           setIsPassengerSubmitting(false);
           return;
@@ -304,7 +305,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
         const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
         if (normExisting !== normTyped) {
           setFormError(
-            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredDriverName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+            `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول.`
           );
           return;
         }
@@ -403,7 +404,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           if (!isGenericOrOwnerName(regName) && normExisting !== normTyped) {
             setIsDriverSubmitting(false);
             setFormError(
-              `⚠️ رقم الهاتف (${existing.cleanPhone}) مسجل مسبقاً باسم آخر ("${regName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+              `⚠️ رقم الهاتف (${existing.cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول.`
             );
             return;
           }
@@ -659,11 +660,23 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onOpenLegal }) => 
           </div>
         )}
 
-        {/* Form Error Banner */}
+        {/* Form Error Banner with Call Admin Button */}
         {formError && (
-          <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-2xl text-xs text-red-300 flex items-start gap-2 animate-in fade-in leading-relaxed">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <span className="font-bold">{formError}</span>
+          <div className="p-3 bg-red-500/15 border border-red-500/40 rounded-2xl text-xs text-red-300 space-y-2 animate-in fade-in leading-relaxed">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span className="font-bold">{formError}</span>
+            </div>
+
+            <div className="pt-1 flex items-center justify-end">
+              <a
+                href="tel:0542524728"
+                className="py-2 px-3.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-slate-950" />
+                <span>الاتصال بالمسؤول</span>
+              </a>
+            </div>
           </div>
         )}
 

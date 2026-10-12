@@ -55,14 +55,17 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
       createdAt: new Date().toISOString(),
     };
 
+    // Unlock admin session in sessionStorage first so AppContext setCurrentRole guard allows it
+    try {
+      sessionStorage.setItem('motodrive_web_admin_unlocked', 'true');
+    } catch {}
+
     // Set state for current web tab session only (never persist admin role in localStorage so it never opens unexpectedly)
     setCurrentUser(ownerUser);
     setActivePassenger(ownerProfile);
     setCurrentRole('admin');
 
-    try {
-      sessionStorage.setItem('motodrive_web_admin_unlocked', 'true');
-    } catch {}
+    window.dispatchEvent(new CustomEvent('motodrive_admin_logged_in'));
 
     if (onSuccess) onSuccess();
     onClose();

@@ -19,6 +19,7 @@ import {
   AlertCircle,
   LogIn,
   UserPlus,
+  PhoneCall,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -163,7 +164,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
           if (normExisting !== normTyped) {
             setErrorMsg(
-              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredDriverName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول.`
             );
             setIsSubmitting(false);
             return;
@@ -205,7 +206,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           const normTyped = rawName.replace(/\s+/g, ' ').toLowerCase();
           if (normExisting !== normTyped) {
             setErrorMsg(
-              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${existingProfile.name}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+              `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول.`
             );
             setIsSubmitting(false);
             return;
@@ -427,12 +428,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             )}
 
             {errorMsg && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs leading-relaxed space-y-1">
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs leading-relaxed space-y-2">
                 <div className="flex items-center gap-1 font-bold">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>تنبيه:</span>
                 </div>
                 <p>{errorMsg}</p>
+                <div className="pt-1 flex items-center justify-end">
+                  <a
+                    href="tel:0542524728"
+                    className="py-1.5 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>الاتصال بالمسؤول</span>
+                  </a>
+                </div>
               </div>
             )}
 

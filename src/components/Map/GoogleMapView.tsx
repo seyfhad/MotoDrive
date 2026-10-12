@@ -102,8 +102,8 @@ const MapController: React.FC<{
       routePolylineRef.current = null;
     }
 
-    const start = routeFrom || pickup;
-    const end = routeTo || destination;
+    const start = routeFrom;
+    const end = routeTo;
     if (!start || !end) return;
 
     const origin = { lat: start.lat, lng: start.lng };

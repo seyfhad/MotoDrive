@@ -127,6 +127,23 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
 
             <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 p-3 rounded-xl">
               <div className="space-y-0.5">
+                <span className="text-[10px] text-slate-400">رقم هاتف المسؤول المباشر:</span>
+                <p className="text-sm font-mono font-black text-amber-400" dir="ltr">
+                  0542524728
+                </p>
+              </div>
+
+              <a
+                href="tel:0542524728"
+                className="py-1.5 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition-all font-black text-xs flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                <span>اتصال بالمسؤول</span>
+              </a>
+            </div>
+
+            <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 p-3 rounded-xl">
+              <div className="space-y-0.5">
                 <span className="text-[10px] text-slate-400">البريد الرسمي للدعم الفني:</span>
                 <p className="text-sm font-mono font-black text-white" dir="ltr">
                   {supportEmail}
@@ -147,11 +164,11 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
             {/* Quick Action Buttons */}
             <div className="grid grid-cols-2 gap-2 pt-1">
               <a
-                href={`mailto:${supportEmail}`}
-                className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-amber-500/20"
+                href="tel:0542524728"
+                className="py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-emerald-500/20"
               >
-                <Mail className="w-4 h-4" />
-                <span>مراسلة عبر البريد</span>
+                <Phone className="w-4 h-4" />
+                <span>اتصال بالمسؤول</span>
               </a>
 
               <a
@@ -161,7 +178,7 @@ export const ContactUsModal: React.FC<ContactUsModalProps> = ({ isOpen, onClose 
                 className="py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-md shadow-blue-600/20"
               >
                 <MessageSquare className="w-4 h-4" />
-                <span>صفحة فيسبوك الرسمية</span>
+                <span>إبلاغ عبر فيسبوك</span>
               </a>
             </div>
           </div>

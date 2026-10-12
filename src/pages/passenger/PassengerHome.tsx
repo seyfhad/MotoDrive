@@ -242,8 +242,6 @@ export const PassengerHome: React.FC = () => {
               ? currentPassengerRide.driverLocation ||
                 drivers.find((d) => d.id === currentPassengerRide.driverId)?.location ||
                 currentPassengerRide.pickup
-              : selectedPickup && selectedDestination
-              ? selectedPickup
               : undefined
           }
           routeTo={
@@ -253,8 +251,6 @@ export const PassengerHome: React.FC = () => {
               : currentPassengerRide &&
                 ['driver_arrived', 'trip_started'].includes(currentPassengerRide.status)
               ? currentPassengerRide.destination
-              : selectedPickup && selectedDestination
-              ? selectedDestination
               : undefined
           }
           routeColor="#facc15"

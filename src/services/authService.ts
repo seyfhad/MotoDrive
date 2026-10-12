@@ -401,7 +401,7 @@ export const registerOrRestoreUserByPhone = async (
     const normalizedInputName = rawInputName.trim().replace(/\s+/g, ' ').toLowerCase();
     if (normalizedExistingName !== normalizedInputName) {
       throw new Error(
-        `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر ("${registeredName}"). يرجى تصحيح الاسم وكتابة الاسم المسجل سابقاً ليفتح حسابك.`
+        `⚠️ رقم الهاتف (${cleanPhone}) مسجل مسبقاً باسم آخر. يرجى تصحيح الاسم ليفتح حسابك أو الاتصال بالمسؤول (0542524728).`
       );
     }
   }
