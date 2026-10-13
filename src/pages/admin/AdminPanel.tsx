@@ -37,22 +37,21 @@ export const AdminPanel: React.FC = () => {
   const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
   const [activeTab, setActiveTab] = useState<
     'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'verification'
-  >('users');
+  >('dashboard');
   const [usersRoleFilter, setUsersRoleFilter] = useState<'all' | 'driver' | 'passenger'>('all');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
-  // Strict Owner Access Control: Admin is ONLY allowed on the Web URL when unlocked via the bike icon passcode
-  const isWebBrowser = androidNativeService.isWebBrowserEnvironment();
+  // Admin Access Control: Check if unlocked via passcode or owner identity
   const isWebAdminUnlocked =
     typeof window !== 'undefined' &&
-    sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+    (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+      localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
   const isOwner =
-    isWebBrowser &&
-    isWebAdminUnlocked &&
-    (currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-      activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-      currentUser?.uid === 'admin-owner-seyfhad' ||
-      activePassenger?.id === 'admin-owner-seyfhad');
+    isWebAdminUnlocked ||
+    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+    currentUser?.uid === 'admin-owner-seyfhad' ||
+    activePassenger?.id === 'admin-owner-seyfhad';
 
   // In-app modals replacing blocked window.confirm / window.prompt in iframes
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -132,7 +131,20 @@ export const AdminPanel: React.FC = () => {
       {/* Main Navigation Bar with All Admin Modules */}
       <div className="bg-slate-900/60 border-b border-slate-800 px-4 py-2.5 overflow-x-auto scrollbar-none">
         <div className="flex items-center gap-2 min-w-max">
-          {/* 1. إدارة المستخدمين الموحدة (السائقين والركاب) */}
+          {/* 1. لوحة البيانات والإحصائيات الشاملة */}
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>لوحة البيانات (Dashboard)</span>
+          </button>
+
+          {/* 2. إدارة المستخدمين الموحدة (السائقين والركاب) */}
           <button
             onClick={() => {
               setUsersRoleFilter('all');
@@ -153,19 +165,6 @@ export const AdminPanel: React.FC = () => {
                 {pendingDriversCount} طلب سائق
               </span>
             )}
-          </button>
-
-          {/* 2. لوحة الإحصائيات الشاملة */}
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
-              activeTab === 'dashboard'
-                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span>الإحصائيات والبيانات</span>
           </button>
 
           {/* 3. الرحلات المباشرة */}

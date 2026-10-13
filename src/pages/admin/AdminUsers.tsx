@@ -11,9 +11,11 @@ import {
   Trash2,
   X,
   UserCheck,
-  Filter,
   Home,
   Briefcase,
+  Clock,
+  Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 
 export interface AdminUsersProps {
@@ -22,16 +24,27 @@ export interface AdminUsersProps {
 
 export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all' }) => {
   const { passengers, drivers, rides, suspendPassenger, deletePassenger } = useApp();
-  const [roleFilter, setRoleFilter] = useState<'all' | 'pending_drivers' | 'approved_drivers' | 'passenger'>(
-    initialRoleFilter === 'driver' ? 'pending_drivers' : initialRoleFilter
-  );
+
+  // Main Tabs: 'requests' (طلبات السواق) OR 'users' (المستخدمون)
+  const [mainTab, setMainTab] = useState<'requests' | 'users'>(() => {
+    if (initialRoleFilter === 'driver') return 'requests';
+    return 'users';
+  });
+
+  // Sub Tabs under 'users': 'drivers' (سواق) OR 'passengers' (ركاب)
+  const [usersSubTab, setUsersSubTab] = useState<'drivers' | 'passengers'>(() => {
+    if (initialRoleFilter === 'passenger') return 'passengers';
+    return 'drivers';
+  });
+
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (initialRoleFilter === 'driver') {
-      setRoleFilter('pending_drivers');
-    } else {
-      setRoleFilter(initialRoleFilter);
+      setMainTab('requests');
+    } else if (initialRoleFilter === 'passenger') {
+      setMainTab('users');
+      setUsersSubTab('passengers');
     }
   }, [initialRoleFilter]);
 
@@ -41,7 +54,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
   const [deleteTarget, setDeleteTarget] = useState<UserProfile | null>(null);
   const [deleteReason, setDeleteReason] = useState('قرار من المسؤول بحذف الحساب نهائياً');
 
-  // Filter out user profiles that belong purely to drivers when displaying passenger cards so there is no confusion, or show all passenger records
+  // Passenger profiles (filtered from driver-only accounts)
   const passengerProfiles = passengers.filter((p) => p.role !== 'driver');
 
   const filteredPassengers = passengerProfiles.filter(
@@ -52,7 +65,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
 
   const pendingDriversCount = drivers.filter((d) => d.status === 'pending').length;
   const approvedDriversCount = drivers.filter((d) => d.status === 'approved').length;
-  const totalUsersCount = drivers.length + passengerProfiles.length;
+  const totalUsersCount = approvedDriversCount + passengerProfiles.length;
 
   const handleConfirmSuspend = () => {
     if (!suspendTarget) return;
@@ -68,127 +81,134 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
 
   return (
     <div className="space-y-6 text-right text-slate-100" id="admin-users-screen" dir="rtl">
-      {/* Unified Header */}
+      {/* Navigation Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div>
-            <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
-              <Users className="w-5 h-5 text-amber-400" />
-              <span>إدارة المستخدمين الموحدة (السائقين والركاب)</span>
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              قائمة موحدة لجميع مستخدمي المنصة مع تبويب وفلتر خاص لكل نوع مستخدم (سائق / راكب) لسهولة المراجعة والإدارة
-            </p>
-          </div>
+        {/* Main Tab Controls: زر طلبات السواق + زر المستخدمون */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            {/* زر 1: طلبات السواق */}
+            <button
+              type="button"
+              onClick={() => setMainTab('requests')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                mainTab === 'requests'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 ring-2 ring-amber-400'
+                  : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>طلبات السواق</span>
+              {pendingDriversCount > 0 && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                    mainTab === 'requests'
+                      ? 'bg-slate-950 text-amber-400'
+                      : 'bg-amber-500 text-slate-950 animate-pulse'
+                  }`}
+                >
+                  {pendingDriversCount}
+                </span>
+              )}
+            </button>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-bold">
-              الإجمالي: <span className="text-amber-400 font-black">{totalUsersCount}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Role Filter Tabs */}
-        <div className="flex flex-wrap items-center gap-2" id="admin-users-role-filter-tabs">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 ml-2">
-            <Filter className="w-3.5 h-3.5 text-amber-400" />
-            <span>نوع العرض:</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setRoleFilter('all')}
-            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              roleFilter === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>الكل</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRoleFilter('pending_drivers')}
-            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              roleFilter === 'pending_drivers'
-                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>طلبات السائقين</span>
-            {pendingDriversCount > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-                roleFilter === 'pending_drivers' ? 'bg-slate-950 text-amber-400' : 'bg-amber-500 text-slate-950 animate-pulse'
-              }`}>
-                {pendingDriversCount}
+            {/* زر 2: المستخدمون */}
+            <button
+              type="button"
+              onClick={() => setMainTab('users')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                mainTab === 'users'
+                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/25 ring-2 ring-amber-400'
+                  : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>المستخدمون</span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  mainTab === 'users' ? 'bg-slate-950 text-amber-400' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {totalUsersCount}
               </span>
+            </button>
+          </div>
+
+          <div className="text-xs text-slate-400">
+            {mainTab === 'requests' ? (
+              <span>طلبات التسجيل قيد المراجعة: <strong className="text-amber-400">{pendingDriversCount}</strong></span>
+            ) : (
+              <span>إجمالي المستخدمين المعتمدين: <strong className="text-emerald-400">{totalUsersCount}</strong></span>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRoleFilter('approved_drivers')}
-            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              roleFilter === 'approved_drivers'
-                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span>السائقون المقبولون ({approvedDriversCount})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setRoleFilter('passenger')}
-            className={`px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              roleFilter === 'passenger'
-                ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>الركاب ({passengerProfiles.length})</span>
-          </button>
+          </div>
         </div>
+
+        {/* Sub-buttons when 'المستخدمون' is selected: زرين واحد فيه سواق وواحد فيه ركاب */}
+        {mainTab === 'users' && (
+          <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-200" id="admin-users-sub-tabs">
+            <span className="text-xs font-bold text-slate-400 ml-1">تحديد القائمة:</span>
+
+            {/* Sub-button 1: سواق */}
+            <button
+              type="button"
+              onClick={() => setUsersSubTab('drivers')}
+              className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                usersSubTab === 'drivers'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                  : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>سواق</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  usersSubTab === 'drivers' ? 'bg-slate-950 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {approvedDriversCount}
+              </span>
+            </button>
+
+            {/* Sub-button 2: ركاب */}
+            <button
+              type="button"
+              onClick={() => setUsersSubTab('passengers')}
+              className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer ${
+                usersSubTab === 'passengers'
+                  ? 'bg-blue-500 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>ركاب</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  usersSubTab === 'passengers' ? 'bg-slate-950 text-blue-300' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {passengerProfiles.length}
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* 1. PENDING DRIVERS REQUESTS SECTION */}
-      {(roleFilter === 'all' || roleFilter === 'pending_drivers') && (
-        <div className="space-y-3" id="admin-pending-drivers-section">
-          {roleFilter === 'all' && (
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-sm font-black text-amber-400 flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                <span>طلبات تسجيل السائقين المعلقة ({pendingDriversCount})</span>
-              </h3>
-            </div>
-          )}
+      {/* Main Tab 1: طلبات السواق */}
+      {mainTab === 'requests' && (
+        <div className="space-y-3" id="admin-pending-drivers-requests-view">
           <AdminDriversPanel initialStatusFilter="pending" />
         </div>
       )}
 
-      {/* 2. APPROVED DRIVERS SECTION */}
-      {(roleFilter === 'all' || roleFilter === 'approved_drivers') && (
-        <div className="space-y-3 pt-4 border-t border-slate-800" id="admin-approved-drivers-section">
-          {roleFilter === 'all' && (
-            <div className="flex items-center justify-between px-1">
-              <h3 className="text-sm font-black text-emerald-400 flex items-center gap-2">
-                <UserCheck className="w-4 h-4" />
-                <span>قائمة السائقين المقبولين ({approvedDriversCount})</span>
-              </h3>
-            </div>
-          )}
+      {/* Main Tab 2: المستخدمون -> Sub-tab 1: سواق */}
+      {mainTab === 'users' && usersSubTab === 'drivers' && (
+        <div className="space-y-3" id="admin-approved-drivers-view">
           <AdminDriversPanel initialStatusFilter="approved" />
         </div>
       )}
 
-      {/* 2. PASSENGERS SECTION (Shown when filter is 'all' or 'passenger') */}
-      {(roleFilter === 'all' || roleFilter === 'passenger') && (
-        <div className="space-y-4" id="admin-unified-passengers-section">
+      {/* Main Tab 2: المستخدمون -> Sub-tab 2: ركاب */}
+      {mainTab === 'users' && usersSubTab === 'passengers' && (
+        <div className="space-y-4" id="admin-passengers-view">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-base font-black text-white flex items-center gap-2">
@@ -196,7 +216,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
                 <span>قائمة حسابات الركاب ({passengerProfiles.length})</span>
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                إحصاءات الرحلات والعناوين المحفوظة (المنزل/العمل) مع إمكانية تعليق أو حذف الحساب
+                إدارة الركاب والتحقق من الحسابات مع إمكانية تعليق أو حذف الحساب
               </p>
             </div>
 
@@ -237,7 +257,12 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
                           }}
                         />
                         <div className="flex-1 min-w-0">
-                          <div className="font-bold text-white text-sm truncate">{user.name}</div>
+                          <div className="font-bold text-white text-sm truncate flex items-center gap-1.5">
+                            <span>{user.name}</span>
+                            {user.isVerified && (
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-400 mt-0.5 font-mono" dir="ltr">
                             {user.phone}
                           </div>
@@ -301,7 +326,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
                         }}
                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                           isSuspended
-                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                            ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black'
                             : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
                         }`}
                       >
@@ -328,14 +353,14 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
 
       {/* Suspend Reason Modal */}
       {suspendTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full text-right space-y-3.5 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <h4 className="text-sm font-black text-amber-400">سبب تعليق حساب الراكب</h4>
               <button
                 type="button"
                 onClick={() => setSuspendTarget(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -366,7 +391,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
                   key={r}
                   type="button"
                   onClick={() => setSuspendReason(r)}
-                  className={`w-full text-right px-3 py-1.5 rounded-xl text-[11px] transition-all border ${
+                  className={`w-full text-right px-3 py-1.5 rounded-xl text-[11px] transition-all border cursor-pointer ${
                     suspendReason === r
                       ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
@@ -399,14 +424,14 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
 
       {/* Delete Reason Modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full text-right space-y-3.5 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
               <h4 className="text-sm font-black text-red-400">سبب حذف حساب الراكب</h4>
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -437,7 +462,7 @@ export const AdminUsers: React.FC<AdminUsersProps> = ({ initialRoleFilter = 'all
                   key={r}
                   type="button"
                   onClick={() => setDeleteReason(r)}
-                  className={`w-full text-right px-3 py-1.5 rounded-xl text-[11px] transition-all border ${
+                  className={`w-full text-right px-3 py-1.5 rounded-xl text-[11px] transition-all border cursor-pointer ${
                     deleteReason === r
                       ? 'bg-red-500/20 border-red-500/50 text-red-300 font-bold'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'

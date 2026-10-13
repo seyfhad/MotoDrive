@@ -203,21 +203,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Current role selector for passenger/driver (never defaults to admin from localStorage)
   const [currentRole, setCurrentRoleState] = useState<UserRole>(() => {
-    const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
-    if (saved === 'driver' || saved === 'passenger') {
-      return saved;
-    }
+    try {
+      const isWebAdminUnlocked =
+        sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+        localStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+      const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
+      if (saved === 'admin' && isWebAdminUnlocked) {
+        return 'admin';
+      }
+      if (saved === 'driver' || saved === 'passenger') {
+        return saved;
+      }
+    } catch {}
     return 'passenger';
   });
 
-  // Strict guard: Admin role can NEVER be activated inside the mobile app (APK / Capacitor / Installed PWA / WebView)
   const setCurrentRole = useCallback((nextRole: UserRole) => {
     if (nextRole === 'admin') {
-      const isAllowedOnWeb =
-        androidNativeService.isWebBrowserEnvironment() &&
+      const isAllowed =
         typeof window !== 'undefined' &&
-        sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
-      if (!isAllowedOnWeb) {
+        (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+          localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
+      if (!isAllowed) {
         setCurrentRoleState('passenger');
         return;
       }
@@ -462,8 +469,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // Never auto-switch to admin on auth; only passenger or driver unless explicitly unlocked via Web bike icon
         const isWebAdminActive =
-          androidNativeService.isWebBrowserEnvironment() &&
-          sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+          typeof window !== 'undefined' &&
+          (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+            localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
 
         if (!isWebAdminActive) {
           if (userProfile.role === 'driver') {
@@ -476,8 +484,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } else {
         const isWebAdminActive =
-          androidNativeService.isWebBrowserEnvironment() &&
-          sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true';
+          typeof window !== 'undefined' &&
+          (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+            localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
         if (isWebAdminActive) return;
 
         const { user: existingSessionUser } = loadActiveSessionSecurely();

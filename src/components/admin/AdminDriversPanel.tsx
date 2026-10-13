@@ -827,11 +827,11 @@ export const AdminDriversPanel: React.FC<AdminDriversPanelProps> = ({ initialSta
                     </button>
                   )}
 
-                  {drv.status !== 'rejected' && (
+                  {drv.status === 'approved' ? (
                     <button
                       type="button"
                       onClick={() => {
-                        setRejectingDriverId(rejectingDriverId === drv.id ? null : drv.id);
+                        setConfirmDeleteId(confirmDeleteId === drv.id ? null : drv.id);
                       }}
                       disabled={updatingId === drv.id}
                       className="flex-1 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
@@ -840,14 +840,34 @@ export const AdminDriversPanel: React.FC<AdminDriversPanelProps> = ({ initialSta
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <>
-                          <X className="w-4 h-4" />
-                          <span>رفض الطلب</span>
+                          <Trash2 className="w-4 h-4" />
+                          <span>حذف السائق</span>
                         </>
                       )}
                     </button>
+                  ) : (
+                    drv.status !== 'rejected' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRejectingDriverId(rejectingDriverId === drv.id ? null : drv.id);
+                        }}
+                        disabled={updatingId === drv.id}
+                        className="flex-1 py-2.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        {updatingId === drv.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <X className="w-4 h-4" />
+                            <span>رفض الطلب</span>
+                          </>
+                        )}
+                      </button>
+                    )
                   )}
 
-                  {/* زر التوثيق الجديد */}
+                  {/* زر التوثيق */}
                   <button
                     type="button"
                     onClick={async () => {
@@ -879,15 +899,17 @@ export const AdminDriversPanel: React.FC<AdminDriversPanelProps> = ({ initialSta
                     </a>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeleteId(confirmDeleteId === drv.id ? null : drv.id)}
-                    disabled={updatingId === drv.id}
-                    className="p-2.5 bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors cursor-pointer"
-                    title="حذف ملف السائق نهائياً"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {drv.status !== 'approved' && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(confirmDeleteId === drv.id ? null : drv.id)}
+                      disabled={updatingId === drv.id}
+                      className="p-2.5 bg-slate-800 hover:bg-red-600/20 text-slate-400 hover:text-red-400 rounded-xl border border-slate-700 transition-colors cursor-pointer"
+                      title="حذف ملف السائق نهائياً"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );

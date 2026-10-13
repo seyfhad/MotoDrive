@@ -33,25 +33,16 @@ class AndroidNativeService {
       }
     })();
 
-    // Check if running in standalone mode (installed as native Android app/PWA/TWA)
+    // Check if running as native Capacitor app
+    const isNativeCapacitor = Capacitor.isNativePlatform();
     const isStandalone =
-      hasPermanentAppFlag ||
       window.matchMedia('(display-mode: standalone)').matches ||
-      window.matchMedia('(display-mode: fullscreen)').matches ||
-      window.matchMedia('(display-mode: minimal-ui)').matches ||
-      window.matchMedia('(display-mode: window-controls-overlay)').matches ||
       (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
-
-    const isNativeCapacitor = Capacitor.isNativePlatform();
 
     if (isStandalone || isNativeCapacitor) {
       document.documentElement.classList.add('is-capacitor');
       document.body.classList.add('is-capacitor');
-      try {
-        localStorage.setItem('motodrive_installed_app_env', 'true');
-        sessionStorage.removeItem('motodrive_web_admin_unlocked');
-      } catch {}
     }
 
     this.isInstalledState = isStandalone || isNativeCapacitor;
@@ -62,10 +53,6 @@ class AndroidNativeService {
       const onChange = (e: MediaQueryListEvent) => {
         if (e.matches) {
           this.isInstalledState = true;
-          try {
-            localStorage.setItem('motodrive_installed_app_env', 'true');
-            sessionStorage.removeItem('motodrive_web_admin_unlocked');
-          } catch {}
           this.notifyListeners();
         }
       };
@@ -157,72 +144,27 @@ class AndroidNativeService {
   public isStandaloneOrNativeApp(): boolean {
     if (typeof window === 'undefined') return false;
     try {
-      if (Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'web') return true;
-    } catch {}
-
-    const win = window as any;
-    const hasNativeBridge = Boolean(
-      win.AndroidBridge ||
-        win.cordova ||
-        win.CapacitorCustomPlatform ||
-        (win.Capacitor && typeof win.Capacitor.isNativePlatform === 'function' && win.Capacitor.isNativePlatform()) ||
-        (win.webkit && win.webkit.messageHandlers)
-    );
-    if (hasNativeBridge) return true;
-
-    const protocol = window.location?.protocol || '';
-    const hostname = window.location?.hostname || '';
-    // Native Capacitor APK serves from capacitor://localhost or https://localhost or file://
-    if (
-      protocol === 'capacitor:' ||
-      protocol === 'file:' ||
-      protocol === 'ionic:' ||
-      protocol === 'content:' ||
-      (hostname === 'localhost' && /Android/i.test(navigator?.userAgent || ''))
-    ) {
-      return true;
-    }
-
-    let hasAppQueryOrStorage = false;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('app_source') === 'pwa' || params.get('mode') === 'app') {
-        localStorage.setItem('motodrive_installed_app_env', 'true');
-        hasAppQueryOrStorage = true;
-      } else if (localStorage.getItem('motodrive_installed_app_env') === 'true') {
-        hasAppQueryOrStorage = true;
+      if (Capacitor.isNativePlatform() || (Capacitor.getPlatform && Capacitor.getPlatform() !== 'web')) {
+        return true;
       }
     } catch {}
 
-    const isMediaStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.matchMedia('(display-mode: fullscreen)').matches ||
-      window.matchMedia('(display-mode: minimal-ui)').matches ||
-      window.matchMedia('(display-mode: window-controls-overlay)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-    const isAndroidWebView =
-      /;\s*wv\)/i.test(ua) ||
-      /\bwv\b/i.test(ua) ||
-      /Capacitor/i.test(ua) ||
-      /MotoDriveApp/i.test(ua) ||
-      (/Android/i.test(ua) && /Version\/\d+\.\d+/i.test(ua) && /Chrome\/\d+/i.test(ua));
-
-    if (isMediaStandalone || isAndroidWebView || hasAppQueryOrStorage) {
-      try {
-        localStorage.setItem('motodrive_installed_app_env', 'true');
-        sessionStorage.removeItem('motodrive_web_admin_unlocked');
-      } catch {}
+    const protocol = window.location?.protocol || '';
+    if (protocol === 'capacitor:' || protocol === 'file:' || protocol === 'ionic:') {
       return true;
     }
 
-    return Boolean(this.isInstalledState);
+    // Only strictly native wrapped android bridges
+    const win = window as any;
+    if (win.AndroidBridge || (win.Capacitor && typeof win.Capacitor.isNativePlatform === 'function' && win.Capacitor.isNativePlatform())) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
-   * Returns true ONLY when opened as a normal website URL in a standard web browser (never inside the installed app or APK).
+   * Returns true when opened as a web application (desktop, mobile web, preview iframe, etc.)
    */
   public isWebBrowserEnvironment(): boolean {
     return !this.isStandaloneOrNativeApp();

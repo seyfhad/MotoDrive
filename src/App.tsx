@@ -289,8 +289,8 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Main Responsive Frame (max-w-md for mobile passenger/driver, max-w-5xl for full admin management on Web URL only) */}
-      <div className={`w-full ${currentRole === 'admin' && androidNativeService.isWebBrowserEnvironment() ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
+      {/* Main Responsive Frame (max-w-md for mobile passenger/driver, max-w-5xl for full admin management) */}
+      <div className={`w-full ${currentRole === 'admin' ? 'max-w-5xl' : 'max-w-md'} min-h-screen flex flex-col bg-slate-950 shadow-2xl relative border-x border-slate-900/60 pb-20 transition-all duration-300`}>
         {/* Push Notification System Top Toast & Permission Banner */}
         <PushNotificationToast />
         <OfflineIndicator />
@@ -302,13 +302,11 @@ const AppContent: React.FC = () => {
         <main className="flex-1 w-full">
           {currentRole === 'passenger' && renderPassengerView()}
           {currentRole === 'driver' && renderDriverView()}
-          {currentRole === 'admin' && (
-            androidNativeService.isWebBrowserEnvironment() ? <AdminPanel /> : renderPassengerView()
-          )}
+          {currentRole === 'admin' && <AdminPanel />}
         </main>
 
         {/* Bottom Navigation for Mobile / Handheld View */}
-        {(currentRole !== 'admin' || !androidNativeService.isWebBrowserEnvironment()) && (
+        {currentRole !== 'admin' && (
           <BottomNav
             activeTab={activeTab}
             setActiveTab={setActiveTab}
