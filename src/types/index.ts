@@ -269,8 +269,11 @@ export interface AppNotification {
 
 export interface PromoCode {
   code: string;
-  discountPercent: number;
-  maxDiscount: number;
+  discountType?: 'percent' | 'fixed'; // percentage or fixed DZD discount
+  discountValue?: number; // value according to discountType
+  discountPercent: number; // fallback percent
+  maxDiscount: number; // max discount cap in DZD
+  maxUsageLimit?: number; // max times code can be redeemed (e.g. 100 uses)
   isActive: boolean;
   expiresAt: string;
   usageCount: number;

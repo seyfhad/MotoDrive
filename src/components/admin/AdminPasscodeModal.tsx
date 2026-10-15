@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { X, ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { androidNativeService } from '../../services/androidNativeService';
+import { saveActiveSessionSecurely } from '../../services/dataVaultService';
 
 interface AdminPasscodeModalProps {
   isOpen: boolean;
@@ -9,9 +9,25 @@ interface AdminPasscodeModalProps {
   onSuccess?: () => void;
 }
 
-// Strict Admin Passcode: EXACT match only
-const EXACT_ADMIN_PASSCODE = 'seyyffhd##54';
 export const ADMIN_OWNER_EMAIL = 'seyfhad@gmail.com';
+
+// Normalized admin secret passcodes (requires the full secret 54 suffix, rejecting incomplete 'seyyffhd')
+const VALID_PASSCODES = [
+  'seyyffhd##54',
+  'seyfhad##54',
+  'seyyffhd#54',
+  'seyfhad#54',
+  'seyyffhd54',
+  'seyfhad54',
+];
+
+const normalizePasscode = (str: string): string => {
+  return str
+    .trim()
+    .toLowerCase()
+    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
+};
 
 export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
   isOpen,
@@ -54,12 +70,15 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
     try {
       sessionStorage.setItem('motodrive_web_admin_unlocked', 'true');
       localStorage.setItem('motodrive_web_admin_unlocked', 'true');
+      localStorage.setItem('motodz_v2_role', 'admin');
       localStorage.setItem('motodrive_current_role', 'admin');
+      localStorage.setItem('motodrive_v3_role', 'admin');
     } catch {}
 
     setCurrentUser(ownerUser);
     setActivePassenger(ownerProfile);
     setCurrentRole('admin');
+    saveActiveSessionSecurely(ownerProfile);
 
     window.dispatchEvent(new CustomEvent('motodrive_admin_logged_in'));
 
@@ -67,9 +86,9 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
     onClose();
   };
 
-  const handleCheck = (codeToTest: string) => {
-    // Strictly exact match only
-    if (codeToTest.trim() === EXACT_ADMIN_PASSCODE) {
+  const handleCheck = (rawCode: string) => {
+    const clean = normalizePasscode(rawCode);
+    if (VALID_PASSCODES.includes(clean)) {
       performLogin();
       return true;
     }
@@ -88,9 +107,9 @@ export const AdminPasscodeModal: React.FC<AdminPasscodeModalProps> = ({
     const val = e.target.value;
     setPasscode(val);
     setIsError(false);
-    // Instant unlock as soon as the exact passcode is entered
-    if (val.trim() === EXACT_ADMIN_PASSCODE) {
-      performLogin();
+    // Instant unlock as soon as any valid admin passcode variation is typed
+    if (handleCheck(val)) {
+      // successfully logged in
     }
   };
 

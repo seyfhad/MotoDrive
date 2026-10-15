@@ -55,9 +55,10 @@ const AppContent: React.FC = () => {
     const checkUrlAndHash = () => {
       const params = new URLSearchParams(window.location.search);
       const page = params.get('page');
-      const rideQuery = params.get('ride');
+      const rideQuery = params.get('track') || params.get('ride');
       const hash = window.location.hash || '';
-      const hashRideMatch = hash.match(/ride=([a-zA-Z0-9_-]+)/);
+      const hashRideMatch = hash.match(/(?:ride|track)=([a-zA-Z0-9_-]+)/);
+      const pathMatch = window.location.pathname.match(/\/track\/([a-zA-Z0-9_-]+)/);
 
       if (page === 'privacy' || page === 'terms' || page === 'gcp-guide') {
         setLegalTab(page as any);
@@ -66,6 +67,8 @@ const AppContent: React.FC = () => {
 
       if (rideQuery) {
         setSharedRideId(rideQuery);
+      } else if (pathMatch && pathMatch[1]) {
+        setSharedRideId(pathMatch[1]);
       } else if (hashRideMatch && hashRideMatch[1]) {
         setSharedRideId(hashRideMatch[1]);
       } else {

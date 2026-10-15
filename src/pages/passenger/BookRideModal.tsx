@@ -14,7 +14,25 @@ import {
   searchAlgeriaPlaces,
 } from '../../utils/geo';
 import { calculateFare, formatCurrencyDZD, getQuickFareChips, validateOfferedPrice } from '../../utils/pricing';
-import { MapPin, Navigation, ArrowLeft, Clock, Check, Search, X, Plus, Minus, Sparkles, MessageSquare, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import {
+  MapPin,
+  Navigation,
+  ArrowLeft,
+  Clock,
+  Check,
+  Search,
+  X,
+  Plus,
+  Minus,
+  Sparkles,
+  MessageSquare,
+  Loader2,
+  RefreshCw,
+  AlertTriangle,
+  Tag,
+  ShieldAlert,
+  CheckCircle2,
+} from 'lucide-react';
 
 interface BookRideModalProps {
   onClose: () => void;
@@ -36,7 +54,11 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   initialPickup,
   initialDestination,
 }) => {
-  const { requestRide, pricing, activePassenger } = useApp();
+  const { requestRide, pricing, activePassenger, serviceAreas, applyPromoCode } = useApp();
+
+  const [promoInput, setPromoInput] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountAmount: number } | null>(null);
+  const [promoMessage, setPromoMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [pickup, setPickup] = useState<Coordinates>(
     initialPickup || {
@@ -243,10 +265,22 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const distanceKm = roadDistanceKm;
   const estimatedDuration = estimateDurationMinutes(distanceKm);
 
-  const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, 0);
-  const recommendedPrice = fareBreakdown.roundedPrice;
+  // Active Service Areas Geofence validation
+  const activeServiceAreas = useMemo(() => serviceAreas.filter((a) => a.isActive), [serviceAreas]);
+  const isOutsideServiceZones = useMemo(() => {
+    if (activeServiceAreas.length === 0) return false;
+    return !activeServiceAreas.some(
+      (area) => calculateDistanceKm(pickup, area.center) <= area.radiusKm
+    );
+  }, [activeServiceAreas, pickup]);
 
-  // Passenger offered price state strictly locked to recommended fixed price
+  const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, 0);
+  const baseRecommendedPrice = fareBreakdown.roundedPrice;
+  const recommendedPrice = appliedPromo
+    ? Math.max(baseRecommendedPrice - appliedPromo.discountAmount, 100)
+    : baseRecommendedPrice;
+
+  // Passenger offered starting fare (editable manually or via chips)
   const [offeredPrice, setOfferedPrice] = useState<number>(recommendedPrice);
 
   // Update offered price if recommended changes
@@ -254,15 +288,47 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     setOfferedPrice(recommendedPrice);
   }, [recommendedPrice]);
 
+  const handleApplyPromo = () => {
+    if (!promoInput.trim()) {
+      setPromoMessage({ type: 'error', text: 'يرجى كتابة رمز الكود أولاً' });
+      return;
+    }
+    const result = applyPromoCode(promoInput.trim(), baseRecommendedPrice);
+    if (result.valid) {
+      setAppliedPromo({
+        code: promoInput.trim().toUpperCase(),
+        discountAmount: result.discountAmount,
+      });
+      setPromoMessage({ type: 'success', text: result.message || 'تم تطبيق الخصم بنجاح!' });
+      setOfferedPrice(result.finalFare);
+    } else {
+      setPromoMessage({ type: 'error', text: result.message || 'الكود غير صالح' });
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoInput('');
+    setPromoMessage(null);
+    setOfferedPrice(baseRecommendedPrice);
+  };
+
   const handleToggleNote = (note: string) => {
-    setSelectedNotes(prev =>
-      prev.includes(note) ? prev.filter(n => n !== note) : [...prev, note]
+    setSelectedNotes((prev) =>
+      prev.includes(note) ? prev.filter((n) => n !== note) : [...prev, note]
     );
   };
 
   const handleConfirmRide = async () => {
     if (distanceKm > 70) {
       setErrorMsg('لا يمكن طلب رحلة أبعد من 70 كم بالدراجة النارية حفاظاً على السلامة والراحة.');
+      return;
+    }
+
+    if (isOutsideServiceZones) {
+      setErrorMsg(
+        'نقطة الانطلاق تقع خارج نطاق الولايات ومناطق الخدمة المفعلة حالياً. يرجى اختيار نقطة ضمن نطاق تغطية MotoDrive.'
+      );
       return;
     }
 
@@ -274,8 +340,9 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
     const res = await requestRide(
       pickup,
       destination,
-      recommendedPrice,
-      fullNote || undefined
+      offeredPrice,
+      fullNote || undefined,
+      appliedPromo?.code
     );
     setIsSubmitting(false);
 
@@ -532,14 +599,189 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Clean Price Display Card */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 shadow-lg text-center space-y-1">
-              <div className="text-[11px] text-slate-400 font-medium">تكلفة الرحلة:</div>
-              <div className="text-4xl font-black text-amber-400 tracking-tight font-mono">
-                {recommendedPrice} <span className="text-base font-bold text-slate-300">د.ج</span>
+            {/* Geofencing Warning if Pickup is outside active zones */}
+            {isOutsideServiceZones && (
+              <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-3.5 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in">
+                <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <div className="font-black text-white text-sm">تنبيه نطاق التغطية والخدمة</div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    نقطة الانطلاق المحددة تقع خارج النطاق الفعلي للمدن والولايات المفعلة حالياً من قبل الإدارة. يرجى اختيار نقطة ضمن نطاق التغطية.
+                  </p>
+                </div>
               </div>
-              <div className="text-[11px] text-amber-300/80 font-medium pt-0.5">
-                مسافة الرحلة: {distanceKm} كم (~{estimatedDuration} دقيقة)
+            )}
+
+            {/* Promo Code Input Section */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  <span>كود الخصم (Promo Code):</span>
+                </div>
+                {appliedPromo && (
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>تم خصم {appliedPromo.discountAmount} د.ج</span>
+                  </span>
+                )}
+              </div>
+
+              {appliedPromo ? (
+                <div className="flex items-center justify-between bg-slate-900 border border-emerald-500/30 rounded-xl px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-amber-400">{appliedPromo.code}</span>
+                    <span className="text-slate-400">تخفيض: {appliedPromo.discountAmount} د.ج</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemovePromo}
+                    className="text-red-400 hover:text-red-300 text-xs font-bold underline"
+                  >
+                    إلغاء الكود
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    placeholder="أدخل رمز الكوبون (مثال: MOTO20)..."
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPromo}
+                    className="py-2 px-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    تطبيق
+                  </button>
+                </div>
+              )}
+
+              {promoMessage && (
+                <div
+                  className={`text-[11px] font-bold ${
+                    promoMessage.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                  }`}
+                >
+                  {promoMessage.text}
+                </div>
+              )}
+            </div>
+
+            {/* Flexible Bidding Section (InDrive Style Bidding System) */}
+            <div className="bg-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-black text-white flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>سعرك المقترح للرحلة (قابل للتفاوض):</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    السعر القياسي المقترح للمسافة: <strong className="text-slate-200">{recommendedPrice} د.ج</strong>
+                  </div>
+                </div>
+
+                {/* Price Difference Indicator Badge */}
+                {offeredPrice !== recommendedPrice && (
+                  <span
+                    className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      offeredPrice > recommendedPrice
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                    }`}
+                  >
+                    {offeredPrice > recommendedPrice
+                      ? `+${offeredPrice - recommendedPrice} د.ج (قبول أسرع ⚡)`
+                      : `-${recommendedPrice - offeredPrice} د.ج`}
+                  </span>
+                )}
+              </div>
+
+              {/* Price adjustment controller */}
+              <div className="flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-2.5">
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice((prev) => Math.max(100, prev - 20))}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-black text-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+                  title="إنقاص السعر 20 د.ج"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+
+                <div className="flex-1 text-center">
+                  <div className="flex items-center justify-center gap-1">
+                    <input
+                      type="number"
+                      step="10"
+                      min="100"
+                      value={offeredPrice}
+                      onChange={(e) => setOfferedPrice(Math.max(100, Number(e.target.value)))}
+                      className="text-3xl font-black text-amber-400 font-mono bg-transparent text-center focus:outline-none w-28"
+                    />
+                    <span className="text-sm font-bold text-slate-400">د.ج</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500">يمكنك تعديل الرقم يدوياً</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice((prev) => prev + 20)}
+                  className="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 font-black text-lg flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+                  title="زيادة السعر 20 د.ج"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Quick Fare Increment Chips */}
+              <div className="grid grid-cols-4 gap-1.5 text-center text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice(recommendedPrice)}
+                  className={`py-1.5 px-1 rounded-xl border transition-all ${
+                    offeredPrice === recommendedPrice
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span>المقترح</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice(recommendedPrice + 30)}
+                  className={`py-1.5 px-1 rounded-xl border transition-all ${
+                    offeredPrice === recommendedPrice + 30
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span>+30 د.ج</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice(recommendedPrice + 50)}
+                  className={`py-1.5 px-1 rounded-xl border transition-all ${
+                    offeredPrice === recommendedPrice + 50
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span>+50 د.ج</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferedPrice(recommendedPrice + 100)}
+                  className={`py-1.5 px-1 rounded-xl border transition-all ${
+                    offeredPrice === recommendedPrice + 100
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                      : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <span>+100 د.ج ⚡</span>
+                </button>
               </div>
             </div>
 

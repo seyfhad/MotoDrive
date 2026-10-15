@@ -28,7 +28,6 @@ service cloud.firestore {
     }
 
     // Prevent plaintext passwords or oversized payloads on user documents
-    // Also lock core identity fields (name, phone, photoUrl) once created unless Admin
     function isValidUserPayload(data) {
       return !('password' in data) &&
              (!('name' in data) || (data.name is string && data.name.size() <= 120)) &&
@@ -53,10 +52,10 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // System Config & Pricing
+    // System Config & Pricing (Admin only write)
     match /system_config/{configId} {
       allow read: if true;
-      allow write: if isValidId(configId);
+      allow write: if isAdmin();
     }
 
     // Health & Connection Test
@@ -64,82 +63,81 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Service Areas
+    // Service Areas (Admin only write)
     match /service_areas/{areaId} {
       allow read: if true;
-      allow write: if isValidId(areaId);
+      allow write: if isAdmin();
     }
     match /serviceAreas/{areaId} {
       allow read: if true;
-      allow write: if isValidId(areaId);
+      allow write: if isAdmin();
     }
 
-    // Promo Codes
+    // Promo Codes (Admin only write)
     match /promo_codes/{codeId} {
       allow read: if true;
-      allow write: if isValidId(codeId);
+      allow write: if isAdmin();
     }
 
-    // Users collection (protected against accidental deletion, plaintext passwords, and unauthorized identity edits)
+    // Users collection
     match /users/{userId} {
       allow read: if true;
       allow create: if isValidId(userId) && isValidUserPayload(incoming());
-      allow update: if isValidId(userId) && isValidUserPayload(incoming()) && (isAdmin() || isProfileIdentityUnchanged());
-      allow delete: if isAdmin() || isValidId(userId);
+      allow update: if isValidId(userId) && isValidUserPayload(incoming()) && (isAdmin() || (isSignedIn() && request.auth.uid == userId) || isProfileIdentityUnchanged());
+      allow delete: if isAdmin();
     }
 
-    // Driver Applications Collection
+    // Driver Applications Collection (Admin write/delete only)
     match /driver_applications/{applicationId} {
       allow read: if true;
-      allow create, update: if isValidId(applicationId);
-      allow delete: if isAdmin() || isValidId(applicationId);
+      allow create: if isValidId(applicationId);
+      allow update, delete: if isAdmin();
     }
 
     // Ride Requests Collection
     match /ride_requests/{requestId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     // Drivers collection
     match /drivers/{driverId} {
       allow read: if true;
-      allow create, update: if isValidId(driverId) && isValidDriverPayload(incoming());
-      allow delete: if isAdmin() || isValidId(driverId);
+      allow create: if isValidId(driverId) && isValidDriverPayload(incoming());
+      allow update: if isValidId(driverId) && isValidDriverPayload(incoming()) && (isAdmin() || (isSignedIn() && request.auth.uid == driverId));
+      allow delete: if isAdmin();
 
-      // Driver ratings and feedback subcollection
       match /ratings/{ratingId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
     }
 
     // Rides collection
     match /rides/{rideId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
 
-      // Ride Offers subcollection
       match /offers/{offerId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
 
-      // In-App Live Chat Messages subcollection between Passenger and Driver
       match /messages/{messageId} {
-        allow read, write: if true;
+        allow read, write: if isSignedIn();
       }
     }
 
     // Ratings collection
     match /ratings/{ratingId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
 
     // Complaints collection
     match /complaints/{complaintId} {
-      allow read, write: if true;
+      allow read, create: if true;
+      allow update, delete: if isAdmin();
     }
 
     // Notifications collection
     match /notifications/{notificationId} {
-      allow read, write: if true;
+      allow read, write: if isSignedIn();
     }
   }
 }

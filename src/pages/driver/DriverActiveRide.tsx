@@ -6,6 +6,7 @@ import { Phone, Navigation, Clock, Check, AlertTriangle, User, Shield, ChevronRi
 import confetti from 'canvas-confetti';
 import { RideTracker } from '../../components/Map/RideTracker';
 import { InAppChatModal } from '../../components/chat/InAppChatModal';
+import { InAppCallModal } from '../../components/chat/InAppCallModal';
 
 interface DriverActiveRideProps {
   ride: Ride;
@@ -15,6 +16,7 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
   const { activeDriver, advanceRideStatus, cancelRide, pricing } = useApp();
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showChatModal, setShowChatModal] = useState(false);
+  const [showCallModal, setShowCallModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('الراكب لم يحضر');
   const [cashCollected, setCashCollected] = useState(false);
 
@@ -92,13 +94,14 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
             <span>دردشة</span>
           </button>
 
-          <a
-            href={`tel:${ride.passengerPhone}`}
-            className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors"
-            title="الاتصال بالراكب"
+          <button
+            type="button"
+            onClick={() => setShowCallModal(true)}
+            className="w-10 h-10 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 transition-colors cursor-pointer"
+            title="الاتصال بالراكب (مكالمة آمنة مشفرة)"
           >
             <Phone className="w-5 h-5" />
-          </a>
+          </button>
         </div>
       </div>
 
@@ -237,6 +240,17 @@ export const DriverActiveRide: React.FC<DriverActiveRideProps> = ({ ride }) => {
         otherPartyName={ride.passengerName || 'الراكب'}
         isOpen={showChatModal}
         onClose={() => setShowChatModal(false)}
+      />
+
+      {/* Masked Safe VoIP Call Modal for Driver */}
+      <InAppCallModal
+        isOpen={showCallModal}
+        onClose={() => setShowCallModal(false)}
+        otherPartyName={ride.passengerName || 'الراكب'}
+        otherPartyRole="passenger"
+        otherPartyPhone={ride.passengerPhone || '0550000000'}
+        otherPartyPhoto={ride.passengerPhoto}
+        rideId={ride.id}
       />
       </div>
     </div>

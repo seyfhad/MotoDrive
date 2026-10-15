@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
+import { auth } from '../../lib/firebase';
 import { AdminDriversPanel } from '../../components/admin/AdminDriversPanel';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminRides } from './AdminRides';
@@ -9,6 +10,7 @@ import { AdminServiceAreas } from './AdminServiceAreas';
 import { AdminComplaints } from './AdminComplaints';
 import { AdminUsers } from './AdminUsers';
 import { AdminVerificationPanel } from '../../components/admin/AdminVerificationPanel';
+import { AdminPromoCodes } from './AdminPromoCodes';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { androidNativeService } from '../../services/androidNativeService';
 import {
@@ -31,27 +33,25 @@ import {
   X,
   Loader2,
   CheckCircle2,
+  Tag,
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
   const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
   const [activeTab, setActiveTab] = useState<
-    'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'verification'
+    'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'verification' | 'promos'
   >('dashboard');
   const [usersRoleFilter, setUsersRoleFilter] = useState<'all' | 'driver' | 'passenger'>('all');
   const [showRoleMenu, setShowRoleMenu] = useState(false);
 
-  // Admin Access Control: Check if unlocked via passcode or owner identity
-  const isWebAdminUnlocked =
-    typeof window !== 'undefined' &&
-    (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-      localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
-  const isOwner =
-    isWebAdminUnlocked ||
-    currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-    activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
-    currentUser?.uid === 'admin-owner-seyfhad' ||
-    activePassenger?.id === 'admin-owner-seyfhad';
+  // Admin Access Control: Strictly require Firebase Auth & Firestore admin role (no browser storage bypass)
+  const firebaseUser = auth.currentUser || currentUser;
+  const isAdminUser =
+    firebaseUser != null &&
+    (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+     activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+     activePassenger?.role === 'admin' ||
+     currentUser?.role === 'admin');
 
   // In-app modals replacing blocked window.confirm / window.prompt in iframes
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -62,15 +62,15 @@ export const AdminPanel: React.FC = () => {
   const [broadcastBody, setBroadcastBody] = useState('مرحباً بكم، تم تحديث أسعار وتغطية الرحلات!');
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
 
-  if (!isOwner) {
+  if (!isAdminUser) {
     return (
       <div className="max-w-md mx-auto p-6 my-12 bg-slate-900 border border-red-500/30 rounded-3xl text-center space-y-4 shadow-2xl" dir="rtl">
         <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto text-2xl">
           🔒
         </div>
-        <h3 className="text-lg font-black text-white">الوصول مرفوض</h3>
+        <h3 className="text-lg font-black text-white">الوصول مرفوض (يتطلب مصادقة المسؤول)</h3>
         <p className="text-xs text-slate-300 leading-relaxed">
-          هذه اللوحة مخصصة للمسؤول فقط.
+          هذه اللوحة محمية وتتطلب تسجيل الدخول بحساب مسؤول (Admin) مصرح له عبر Firebase Auth وصلاحيات قاعدة البيانات.
         </p>
       </div>
     );
@@ -251,6 +251,19 @@ export const AdminPanel: React.FC = () => {
             <CheckCircle2 className="w-4 h-4" />
             <span>توثيق الحسابات</span>
           </button>
+
+          {/* 9. أكواد الخصم والعروض */}
+          <button
+            onClick={() => setActiveTab('promos')}
+            className={`py-2 px-3.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'promos'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            <span>أكواد الخصم والعروض</span>
+          </button>
         </div>
       </div>
 
@@ -264,6 +277,7 @@ export const AdminPanel: React.FC = () => {
         {activeTab === 'service_areas' && <AdminServiceAreas />}
         {activeTab === 'complaints' && <AdminComplaints />}
         {activeTab === 'verification' && <AdminVerificationPanel />}
+        {activeTab === 'promos' && <AdminPromoCodes />}
       </main>
 
       {/* Logout Confirmation Modal (Works 100% inside iframes without window.confirm) */}

@@ -509,6 +509,7 @@ export const DriverHome: React.FC = () => {
         <TripRatingModal
           ride={ratingRide}
           isOpen={Boolean(ratingRide)}
+          raterRole="driver"
           onClose={() => {
             if (ratingRide) {
               sessionStorage.setItem(`dismissed_driver_rating_${ratingRide.id}`, 'true');

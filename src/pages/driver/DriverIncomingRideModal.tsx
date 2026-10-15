@@ -168,7 +168,7 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
 
             {/* Quick Counter Chips */}
             <div className="grid grid-cols-4 gap-1.5">
-              {[20, 40, 60, 80].map(add => {
+              {[30, 50, 100, 150].map((add) => {
                 const target = passengerPrice + add;
                 const isSelected = counterPrice === target;
                 return (
@@ -176,35 +176,47 @@ export const DriverIncomingRideModal: React.FC<DriverIncomingRideModalProps> = (
                     key={add}
                     type="button"
                     onClick={() => setCounterPrice(target)}
-                    className={`py-1.5 px-1 rounded-xl text-xs font-bold transition-all border ${
+                    className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border ${
                       isSelected
-                        ? 'bg-amber-500 text-slate-950 border-amber-400'
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md'
                         : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
                     }`}
                   >
                     <div>{target} د.ج</div>
-                    <div className="text-[9px] text-slate-400">+{add}</div>
+                    <div className="text-[9px] text-amber-400">+{add}</div>
                   </button>
                 );
               })}
             </div>
 
-            {/* Adjust counter buttons */}
-            <div className="flex items-center justify-between gap-2 pt-1">
+            {/* Adjust counter buttons and manual input */}
+            <div className="flex items-center justify-between gap-2 pt-1 bg-slate-900 p-2 rounded-xl border border-slate-800">
               <button
                 type="button"
-                onClick={() => setCounterPrice(prev => Math.max(passengerPrice, prev - 10))}
-                className="w-9 h-9 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center font-bold"
+                onClick={() => setCounterPrice((prev) => Math.max(passengerPrice, prev - 10))}
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 flex items-center justify-center font-bold active:scale-95 transition-all"
+                title="إنقاص 10 د.ج"
               >
                 <Minus className="w-4 h-4" />
               </button>
-              <div className="text-lg font-black text-amber-400">
-                {counterPrice} <span className="text-xs text-slate-400">د.ج</span>
+
+              <div className="flex items-center justify-center gap-1">
+                <input
+                  type="number"
+                  step="10"
+                  min={passengerPrice}
+                  value={counterPrice}
+                  onChange={(e) => setCounterPrice(Math.max(passengerPrice, Number(e.target.value)))}
+                  className="text-2xl font-black text-amber-400 font-mono bg-transparent text-center focus:outline-none w-24"
+                />
+                <span className="text-xs text-slate-400 font-bold">د.ج</span>
               </div>
+
               <button
                 type="button"
-                onClick={() => setCounterPrice(prev => prev + 10)}
-                className="w-9 h-9 rounded-xl bg-slate-800 text-amber-400 flex items-center justify-center font-bold"
+                onClick={() => setCounterPrice((prev) => prev + 10)}
+                className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 flex items-center justify-center font-bold active:scale-95 transition-all"
+                title="زيادة 10 د.ج"
               >
                 <Plus className="w-4 h-4" />
               </button>

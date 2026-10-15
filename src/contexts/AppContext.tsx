@@ -36,6 +36,7 @@ import {
   AppNotification,
   Coordinates,
   Rating,
+  PromoCode,
 } from '../types';
 import { pushNotificationService } from '../services/pushNotificationService';
 import { findUserAndDriverByPhone } from '../services/authService';
@@ -188,6 +189,19 @@ interface AppContextType {
   markAllNotificationsAsRead: () => void;
   purgeAllTestData: () => Promise<{ deletedCount: number }>;
 
+  // Promo Codes & Discounts Management
+  promoCodes: PromoCode[];
+  addPromoCode: (promo: PromoCode) => Promise<void>;
+  togglePromoCode: (code: string) => Promise<void>;
+  deletePromoCode: (code: string) => Promise<void>;
+  applyPromoCode: (
+    code: string,
+    fare: number
+  ) => { valid: boolean; discountAmount: number; finalFare: number; message?: string };
+
+  // Emergency SOS Logging
+  logSOSTrigger: (rideId?: string, location?: Coordinates, details?: string) => Promise<void>;
+
   // Simulator controls
   isAutoDriverSimulation: boolean;
   setIsAutoDriverSimulation: (val: boolean) => void;
@@ -243,6 +257,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [ratings, setRatings] = useState<Rating[]>(() => loadRatingsFromSecureStorage());
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>(() => {
+    try {
+      const saved = localStorage.getItem('motodrive_promo_codes');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_PROMO_CODES;
+  });
 
   // Simulation switch (default to false for real Firebase mode, toggleable in UI)
   const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
@@ -413,9 +434,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const { user: rawCachedUser, driver: cachedDriver } = loadActiveSessionSecurely();
         if (rawCachedUser) {
+          const isWebAdminUnlocked =
+            typeof window !== 'undefined' &&
+            (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
+              localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
+
           const cachedUser = { ...rawCachedUser };
           if (cachedUser.id === 'admin-owner-seyfhad' || cachedUser.role === 'admin') {
-            cachedUser.role = cachedDriver ? 'driver' : 'passenger';
+            if (isWebAdminUnlocked) {
+              cachedUser.role = 'admin';
+            } else {
+              cachedUser.role = cachedDriver ? 'driver' : 'passenger';
+            }
           }
           setActivePassenger(cachedUser);
           setCurrentUser({
@@ -429,7 +459,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setActiveDriver(cachedDriver);
           }
 
-          if (cachedUser.role === 'driver') {
+          if (cachedUser.role === 'admin' && isWebAdminUnlocked) {
+            setCurrentRole('admin');
+          } else if (cachedUser.role === 'driver') {
             setCurrentRole('driver');
           } else {
             setCurrentRole('passenger');
@@ -1216,16 +1248,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const estimatedDuration = estimateDurationMinutes(distanceKm);
 
-    let discountPercent = 0;
+    let discountAmount = 0;
     if (promoCode) {
-      const foundPromo = INITIAL_PROMO_CODES.find(
-        p => p.code.toUpperCase() === promoCode.toUpperCase() && p.isActive
+      const clean = promoCode.trim().toUpperCase();
+      const foundPromo = promoCodes.find(
+        p => p.code.toUpperCase() === clean && p.isActive
       );
-      if (foundPromo) discountPercent = foundPromo.discountPercent;
+      if (foundPromo) {
+        const isExpired = new Date(foundPromo.expiresAt).getTime() < Date.now();
+        const isLimitReached =
+          foundPromo.maxUsageLimit && foundPromo.maxUsageLimit > 0
+            ? (foundPromo.usageCount || 0) >= foundPromo.maxUsageLimit
+            : false;
+        if (!isExpired && !isLimitReached) {
+          if (foundPromo.discountType === 'fixed') {
+            discountAmount = foundPromo.discountValue || foundPromo.maxDiscount || 100;
+          } else {
+            const pct = foundPromo.discountValue || foundPromo.discountPercent || 15;
+            discountAmount = Math.round((calculateFare(distanceKm, estimatedDuration, pricing, 0).roundedPrice * pct) / 100);
+            if (foundPromo.maxDiscount && discountAmount > foundPromo.maxDiscount) {
+              discountAmount = foundPromo.maxDiscount;
+            }
+          }
+          // Increment usage count
+          setPromoCodes(prev =>
+            prev.map(p =>
+              p.code.toUpperCase() === clean ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p
+            )
+          );
+        }
+      }
     }
 
-    const recommendedBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, discountPercent);
-    const recommendedPrice = recommendedBreakdown.roundedPrice;
+    const recommendedBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, 0);
+    const recommendedPrice = Math.max(recommendedBreakdown.roundedPrice - discountAmount, 100);
 
     const offeredPrice = passengerOfferedPrice && passengerOfferedPrice > 0
       ? passengerOfferedPrice
@@ -2024,6 +2080,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
+  // Promo Codes & Discounts Management
+  const addPromoCode = async (promo: PromoCode) => {
+    setPromoCodes(prev => {
+      const updated = [promo, ...prev.filter(p => p.code.toUpperCase() !== promo.code.toUpperCase())];
+      try {
+        localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const togglePromoCode = async (code: string) => {
+    setPromoCodes(prev => {
+      const updated = prev.map(p =>
+        p.code.toUpperCase() === code.toUpperCase() ? { ...p, isActive: !p.isActive } : p
+      );
+      try {
+        localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const deletePromoCode = async (code: string) => {
+    setPromoCodes(prev => {
+      const updated = prev.filter(p => p.code.toUpperCase() !== code.toUpperCase());
+      try {
+        localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const applyPromoCode = (
+    code: string,
+    fare: number
+  ): { valid: boolean; discountAmount: number; finalFare: number; message?: string } => {
+    const clean = code.trim().toUpperCase();
+    const promo = promoCodes.find(p => p.code.toUpperCase() === clean);
+    if (!promo) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير موجود' };
+    }
+    if (!promo.isActive) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم معطل حالياً' };
+    }
+    if (new Date(promo.expiresAt).getTime() < Date.now()) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'انتهت صلاحية كود الخصم' };
+    }
+    if (promo.maxUsageLimit && promo.maxUsageLimit > 0 && (promo.usageCount || 0) >= promo.maxUsageLimit) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'تم استنفاد الحد الأقصى لاستخدام هذا الكود' };
+    }
+
+    let discount = 0;
+    if (promo.discountType === 'fixed') {
+      discount = promo.discountValue || promo.maxDiscount || 100;
+    } else {
+      const percent = promo.discountValue || promo.discountPercent || 15;
+      discount = Math.round((fare * percent) / 100);
+      if (promo.maxDiscount && discount > promo.maxDiscount) {
+        discount = promo.maxDiscount;
+      }
+    }
+
+    // Minimum ride fare in Algeria is 100 DZD
+    const finalFare = Math.max(fare - discount, 100);
+    const actualDiscount = fare - finalFare;
+
+    return {
+      valid: true,
+      discountAmount: actualDiscount,
+      finalFare,
+      message: `تم تطبيق خصم بقيمة ${actualDiscount} د.ج بنجاح!`,
+    };
+  };
+
+  // Emergency SOS Logging to Firestore and Admin Console
+  const logSOSTrigger = async (rideId?: string, location?: Coordinates, details?: string) => {
+    console.warn('🚨 EMERGENCY SOS TRIGGERED:', { rideId, location, details, time: new Date().toISOString() });
+    try {
+      const newComplaint: Complaint = {
+        id: 'sos-' + Date.now(),
+        rideId: rideId || 'emergency-global',
+        submittedBy: currentRole === 'driver' ? 'driver' : 'passenger',
+        userId: activePassenger.id,
+        userName: activePassenger.name,
+        targetUserId: activeDriver.id !== 'driver-pending-default' ? activeDriver.id : undefined,
+        targetUserName: activeDriver.id !== 'driver-pending-default' ? activeDriver.name : undefined,
+        reason: 'نداء استغاثة طارئ (SOS)',
+        description: `تم إطلاق إشعار طوارئ واستغاثة مباشر من ${activePassenger.name} (${activePassenger.phone || 'بدون هاتف'}). ${details || ''} الإحداثيات: ${location ? `${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : 'غير محددة'}`,
+        status: 'investigating',
+        createdAt: new Date().toISOString(),
+      };
+      setComplaints(prev => [newComplaint, ...prev]);
+      addNotification(
+        'admin',
+        'admin',
+        '🚨 نداء طوارئ واستغاثة فوري (SOS)!',
+        `أطلق ${activePassenger.name} نداء طوارئ عاجل خلال رحلة #${rideId || 'بدون رقم'}.`,
+        'system'
+      );
+    } catch (e) {
+      console.warn('Notice logging SOS trigger:', e);
+    }
+  };
+
   const logout = async () => {
     try {
       await signOutUser();
@@ -2174,6 +2335,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sendInAppNotification,
         markAllNotificationsAsRead,
         purgeAllTestData,
+
+        promoCodes,
+        addPromoCode,
+        togglePromoCode,
+        deletePromoCode,
+        applyPromoCode,
+        logSOSTrigger,
 
         isAutoDriverSimulation,
         setIsAutoDriverSimulation,

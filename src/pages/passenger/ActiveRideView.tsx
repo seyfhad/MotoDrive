@@ -6,6 +6,7 @@ import { Phone, Star, Shield, AlertTriangle, CheckCircle, Navigation, Clock, Use
 import confetti from 'canvas-confetti';
 import { RideTracker } from '../../components/Map/RideTracker';
 import { InAppChatModal } from '../../components/chat/InAppChatModal';
+import { InAppCallModal } from '../../components/chat/InAppCallModal';
 import { ShareLiveRideModal } from '../../components/shared/ShareLiveRideModal';
 import { getRideRequestTimestampMs, PENDING_RIDE_EXPIRY_MS } from '../../services/dataVaultService';
 
@@ -712,37 +713,15 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
       />
 
       {/* Masked Safe Calling Dialog */}
-      {showCallModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-xs w-full text-center space-y-4">
-            <div className="w-12 h-12 mx-auto rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <Phone className="w-6 h-6" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">اتصال بالسائق</h4>
-              <p className="text-xs text-slate-400 mt-1">يمكنك الاتصال بالسائق مباشرة لتنسيق موقع الالتقاء</p>
-            </div>
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 font-mono text-base font-bold text-amber-400" dir="ltr">
-              {ride.driverPhone || '0550000000'}
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setShowCallModal(false)}
-                className="py-2.5 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold"
-              >
-                إلغاء
-              </button>
-              <a
-                href={`tel:${ride.driverPhone || '0550000000'}`}
-                onClick={() => setShowCallModal(false)}
-                className="py-2.5 bg-emerald-500 text-slate-950 rounded-xl text-xs font-black flex items-center justify-center"
-              >
-                اتصال الآن
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+      <InAppCallModal
+        isOpen={showCallModal}
+        onClose={() => setShowCallModal(false)}
+        otherPartyName={ride.driverName || 'سائق MotoDrive'}
+        otherPartyRole="driver"
+        otherPartyPhone={ride.driverPhone || '0550000000'}
+        otherPartyPhoto={ride.driverPhoto}
+        rideId={ride.id}
+      />
 
       {/* Cancellation Modal */}
       {showCancelModal && (
