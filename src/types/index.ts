@@ -277,6 +277,7 @@ export interface PromoCode {
   isActive: boolean;
   expiresAt: string;
   usageCount: number;
+  createdAt?: string;
 }
 
 export interface DriverApplication {

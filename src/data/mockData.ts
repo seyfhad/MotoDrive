@@ -64,21 +64,5 @@ export const INITIAL_SERVICE_AREAS: ServiceArea[] = ALL_58_SERVICE_AREAS;
 
 export const INITIAL_COMPLAINTS: Complaint[] = [];
 
-export const INITIAL_PROMO_CODES: PromoCode[] = [
-  {
-    code: 'MOTO20',
-    discountPercent: 20,
-    maxDiscount: 150,
-    isActive: true,
-    expiresAt: '2026-12-31T23:59:59Z',
-    usageCount: 0,
-  },
-  {
-    code: 'SAHL10',
-    discountPercent: 10,
-    maxDiscount: 100,
-    isActive: true,
-    expiresAt: '2026-12-31T23:59:59Z',
-    usageCount: 0,
-  },
-];
+export const INITIAL_PROMO_CODES: PromoCode[] = [];
+

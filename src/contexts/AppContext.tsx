@@ -10,6 +10,8 @@ import {
   onSnapshot,
   getDocs,
   setDoc as fbSetDoc,
+  deleteDoc,
+  updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db, auth, isFirestoreQuotaExceeded } from '../lib/firebase';
@@ -215,17 +217,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(false);
 
-  // Current role selector for passenger/driver (never defaults to admin from localStorage)
+  // Active profiles (fresh guest state by default)
+  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => GUEST_PASSENGER);
+  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => {
+    try {
+      const saved = localStorage.getItem('motodrive_active_driver');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return DEFAULT_PENDING_DRIVER;
+  });
+
+  // Current role selector for passenger/driver
   const [currentRole, setCurrentRoleState] = useState<UserRole>(() => {
     try {
-      const isWebAdminUnlocked =
-        sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-        localStorage.getItem('motodrive_web_admin_unlocked') === 'true';
       const saved = localStorage.getItem(STORAGE_PREFIX + 'role');
-      if (saved === 'admin' && isWebAdminUnlocked) {
-        return 'admin';
-      }
-      if (saved === 'driver' || saved === 'passenger') {
+      if (saved === 'driver' || saved === 'passenger' || saved === 'admin') {
         return saved;
       }
     } catch {}
@@ -235,16 +243,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCurrentRole = useCallback((nextRole: UserRole) => {
     if (nextRole === 'admin') {
       const isAllowed =
-        typeof window !== 'undefined' &&
-        (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-          localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
+        currentUser?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+        activePassenger?.email?.toLowerCase() === 'seyfhad@gmail.com' ||
+        activePassenger?.role === 'admin' ||
+        currentUser?.role === 'admin';
       if (!isAllowed) {
         setCurrentRoleState('passenger');
         return;
       }
     }
     setCurrentRoleState(nextRole);
-  }, []);
+  }, [currentUser, activePassenger]);
 
   const [passengers, setPassengers] = useState<UserProfile[]>(INITIAL_PASSENGERS);
   const [drivers, setDrivers] = useState<DriverProfile[]>(INITIAL_DRIVERS);
@@ -260,25 +269,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>(() => {
     try {
       const saved = localStorage.getItem('motodrive_promo_codes');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(p => p.createdAt || (p.code !== 'MOTO20' && p.code !== 'SAHL10'));
+        }
+      }
     } catch {}
-    return INITIAL_PROMO_CODES;
+    return [];
   });
 
   // Simulation switch (default to false for real Firebase mode, toggleable in UI)
   const [isAutoDriverSimulation, setIsAutoDriverSimulation] = useState<boolean>(false);
-
-  // Active profiles (fresh guest state by default)
-  const [activePassenger, setActivePassenger] = useState<UserProfile>(() => GUEST_PASSENGER);
-  const [activeDriver, setActiveDriver] = useState<DriverProfile>(() => {
-    try {
-      const saved = localStorage.getItem('motodrive_active_driver');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return DEFAULT_PENDING_DRIVER;
-  });
 
   // One-time Production Reset v5 (Purge all legacy users, drivers, rides, complaints, ratings, and local vaults)
   useEffect(() => {
@@ -429,23 +431,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // 1. FIREBASE & SUPABASE AUTH & USER PROFILE INITIALIZATION
   // --------------------------------------------------------------------------
   useEffect(() => {
-    // 1a. Hydrate cached local user session for instant startup (Passengers & Drivers ONLY — never auto-open Admin)
+    // 1a. Hydrate cached local user session for instant startup
     const hydrateLocalSession = () => {
       try {
         const { user: rawCachedUser, driver: cachedDriver } = loadActiveSessionSecurely();
         if (rawCachedUser) {
-          const isWebAdminUnlocked =
-            typeof window !== 'undefined' &&
-            (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-              localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
-
           const cachedUser = { ...rawCachedUser };
-          if (cachedUser.id === 'admin-owner-seyfhad' || cachedUser.role === 'admin') {
-            if (isWebAdminUnlocked) {
-              cachedUser.role = 'admin';
-            } else {
-              cachedUser.role = cachedDriver ? 'driver' : 'passenger';
-            }
+          if (cachedUser.email?.toLowerCase() === 'seyfhad@gmail.com') {
+            cachedUser.role = 'admin';
           }
           setActivePassenger(cachedUser);
           setCurrentUser({
@@ -453,13 +446,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             displayName: cachedUser.name,
             email: cachedUser.email,
             photoURL: cachedUser.photoUrl,
+            role: cachedUser.role,
           } as any);
 
           if (cachedDriver) {
             setActiveDriver(cachedDriver);
           }
 
-          if (cachedUser.role === 'admin' && isWebAdminUnlocked) {
+          if (cachedUser.role === 'admin') {
             setCurrentRole('admin');
           } else if (cachedUser.role === 'driver') {
             setCurrentRole('driver');
@@ -477,8 +471,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubscribe = subscribeToAuth(async (firebaseUser, userProfile) => {
       if (firebaseUser && userProfile) {
-        if (userProfile.role === 'admin') {
-          userProfile.role = 'passenger';
+        if (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com') {
+          userProfile.role = 'admin';
         }
         setCurrentUser(firebaseUser);
         setIsFirebaseConnected(true);
@@ -499,28 +493,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Driver profile auto restore notice:', err);
           });
 
-        // Never auto-switch to admin on auth; only passenger or driver unless explicitly unlocked via Web bike icon
-        const isWebAdminActive =
-          typeof window !== 'undefined' &&
-          (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-            localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
-
-        if (!isWebAdminActive) {
-          if (userProfile.role === 'driver') {
-            setCurrentRole('driver');
-            localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
-          } else {
-            setCurrentRole('passenger');
-            localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
-          }
+        if (userProfile.role === 'admin') {
+          setCurrentRole('admin');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'admin');
+        } else if (userProfile.role === 'driver') {
+          setCurrentRole('driver');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'driver');
+        } else {
+          setCurrentRole('passenger');
+          localStorage.setItem(STORAGE_PREFIX + 'role', 'passenger');
         }
       } else {
-        const isWebAdminActive =
-          typeof window !== 'undefined' &&
-          (sessionStorage.getItem('motodrive_web_admin_unlocked') === 'true' ||
-            localStorage.getItem('motodrive_web_admin_unlocked') === 'true');
-        if (isWebAdminActive) return;
-
         const { user: existingSessionUser } = loadActiveSessionSecurely();
         if (!existingSessionUser) {
           setCurrentUser(null);
@@ -577,6 +560,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             handleFirestoreError(err, OperationType.GET, pricingPath);
           } catch (e) {}
         }
+      }
+    );
+
+    // 2.1b Subscribe to Promo Codes (public read, admin write)
+    const promoQuery = query(collection(db, 'promo_codes'));
+    const unsubPromo = onSnapshot(
+      promoQuery,
+      (querySnap) => {
+        const fetchedPromos: PromoCode[] = querySnap.docs.map(
+          (d) => ({ code: d.id, ...d.data() } as PromoCode)
+        );
+        setPromoCodes(fetchedPromos);
+        try {
+          localStorage.setItem('motodrive_promo_codes', JSON.stringify(fetchedPromos));
+        } catch {}
+      },
+      (err) => {
+        console.warn('Promo codes subscription notice:', err?.message);
       }
     );
 
@@ -840,6 +841,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       unsubPricing();
+      if (unsubPromo) unsubPromo();
       if (unsubRides) unsubRides();
       if (unsubDrivers) unsubDrivers();
       if (unsubUsers) unsubUsers();
@@ -2080,37 +2082,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
-  // Promo Codes & Discounts Management
+  // Promo Codes & Discounts Management (Admin-Controlled & Real-Time Synced)
   const addPromoCode = async (promo: PromoCode) => {
+    const cleanCode = promo.code.trim().toUpperCase();
+    const cleanPromo: PromoCode = {
+      ...promo,
+      code: cleanCode,
+      isActive: promo.isActive !== undefined ? promo.isActive : true,
+      usageCount: promo.usageCount || 0,
+      createdAt: (promo as any).createdAt || new Date().toISOString(),
+    };
+
     setPromoCodes(prev => {
-      const updated = [promo, ...prev.filter(p => p.code.toUpperCase() !== promo.code.toUpperCase())];
+      const updated = [cleanPromo, ...prev.filter(p => p.code.toUpperCase() !== cleanCode)];
       try {
         localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
       } catch {}
       return updated;
     });
+
+    try {
+      const promoRef = doc(db, 'promo_codes', cleanCode);
+      await setDoc(promoRef, cleanPromo, { merge: true });
+    } catch (e) {
+      console.warn('Failed to sync promo code to Firestore:', e);
+    }
   };
 
   const togglePromoCode = async (code: string) => {
+    const cleanCode = code.trim().toUpperCase();
+    let newStatus = true;
     setPromoCodes(prev => {
-      const updated = prev.map(p =>
-        p.code.toUpperCase() === code.toUpperCase() ? { ...p, isActive: !p.isActive } : p
-      );
+      const updated = prev.map(p => {
+        if (p.code.toUpperCase() === cleanCode) {
+          newStatus = !p.isActive;
+          return { ...p, isActive: newStatus };
+        }
+        return p;
+      });
       try {
         localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
       } catch {}
       return updated;
     });
+
+    try {
+      const promoRef = doc(db, 'promo_codes', cleanCode);
+      await updateDoc(promoRef, { isActive: newStatus });
+    } catch (e) {
+      console.warn('Failed to toggle promo in Firestore:', e);
+    }
   };
 
   const deletePromoCode = async (code: string) => {
+    const cleanCode = code.trim().toUpperCase();
     setPromoCodes(prev => {
-      const updated = prev.filter(p => p.code.toUpperCase() !== code.toUpperCase());
+      const updated = prev.filter(p => p.code.toUpperCase() !== cleanCode);
       try {
         localStorage.setItem('motodrive_promo_codes', JSON.stringify(updated));
       } catch {}
       return updated;
     });
+
+    try {
+      const promoRef = doc(db, 'promo_codes', cleanCode);
+      await deleteDoc(promoRef);
+    } catch (e) {
+      console.warn('Failed to delete promo from Firestore:', e);
+    }
   };
 
   const applyPromoCode = (
@@ -2118,15 +2157,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fare: number
   ): { valid: boolean; discountAmount: number; finalFare: number; message?: string } => {
     const clean = code.trim().toUpperCase();
+    if (!clean) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'يرجى إدخال رمز الكوبون أولاً' };
+    }
     const promo = promoCodes.find(p => p.code.toUpperCase() === clean);
     if (!promo) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير موجود' };
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير موجود أو غير مفعّل من قِبل الإدارة' };
     }
     if (!promo.isActive) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم معطل حالياً' };
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم معطل حالياً من قِبل الإدارة' };
     }
-    if (new Date(promo.expiresAt).getTime() < Date.now()) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'انتهت صلاحية كود الخصم' };
+    if (promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now()) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'انتهت صلاحية كود الخصم المحدد' };
     }
     if (promo.maxUsageLimit && promo.maxUsageLimit > 0 && (promo.usageCount || 0) >= promo.maxUsageLimit) {
       return { valid: false, discountAmount: 0, finalFare: fare, message: 'تم استنفاد الحد الأقصى لاستخدام هذا الكود' };
@@ -2151,7 +2193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       valid: true,
       discountAmount: actualDiscount,
       finalFare,
-      message: `تم تطبيق خصم بقيمة ${actualDiscount} د.ج بنجاح!`,
+      message: `تم تطبيق كود الخصم (${promo.code}) بنجاح! تم خصم ${actualDiscount} د.ج`,
     };
   };
 

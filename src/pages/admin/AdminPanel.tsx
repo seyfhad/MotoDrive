@@ -13,6 +13,7 @@ import { AdminVerificationPanel } from '../../components/admin/AdminVerification
 import { AdminPromoCodes } from './AdminPromoCodes';
 import { MotoIcon } from '../../components/shared/MotoIcon';
 import { androidNativeService } from '../../services/androidNativeService';
+import { signInWithGoogle } from '../../services/authService';
 import {
   ShieldCheck,
   Users,
@@ -34,10 +35,11 @@ import {
   Loader2,
   CheckCircle2,
   Tag,
+  LogIn,
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
-  const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger } = useApp();
+  const { setCurrentRole, broadcastNotification, logout, drivers, rides, complaints, passengers, currentUser, activePassenger, promoCodes } = useApp();
   const [activeTab, setActiveTab] = useState<
     'users' | 'dashboard' | 'rides' | 'map' | 'pricing' | 'service_areas' | 'complaints' | 'verification' | 'promos'
   >('dashboard');
@@ -70,8 +72,31 @@ export const AdminPanel: React.FC = () => {
         </div>
         <h3 className="text-lg font-black text-white">الوصول مرفوض (يتطلب مصادقة المسؤول)</h3>
         <p className="text-xs text-slate-300 leading-relaxed">
-          هذه اللوحة محمية وتتطلب تسجيل الدخول بحساب مسؤول (Admin) مصرح له عبر Firebase Auth وصلاحيات قاعدة البيانات.
+          هذه اللوحة محمية وتتطلب تسجيل الدخول بحساب مسؤول (Admin) مصرح له عبر Firebase Auth وصلاحيات قاعدة البيانات (seyfhad@gmail.com).
         </p>
+        <div className="pt-2 space-y-2">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await signInWithGoogle('admin');
+              } catch (e) {
+                console.warn('Admin login error:', e);
+              }
+            }}
+            className="w-full py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>تسجيل الدخول كمسؤول عبر Google</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentRole('passenger')}
+            className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            العودة إلى تطبيق الركاب
+          </button>
+        </div>
       </div>
     );
   }
@@ -262,7 +287,18 @@ export const AdminPanel: React.FC = () => {
             }`}
           >
             <Tag className="w-4 h-4" />
-            <span>أكواد الخصم والعروض</span>
+            <span>كود الخصم ({promoCodes?.length || 0})</span>
+            {promoCodes && promoCodes.filter((p) => p.isActive).length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  activeTab === 'promos'
+                    ? 'bg-slate-950 text-amber-400'
+                    : 'bg-emerald-500 text-slate-950'
+                }`}
+              >
+                {promoCodes.filter((p) => p.isActive).length} مفعّل
+              </span>
+            )}
           </button>
         </div>
       </div>

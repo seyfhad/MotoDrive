@@ -594,18 +594,19 @@ export const subscribeToAuth = (
 
       if (userSnap.exists()) {
         const snapData = userSnap.data() as UserProfile;
-        if (snapData.role === 'admin') {
-          snapData.role = 'passenger';
+        if (firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com') {
+          snapData.role = 'admin';
         }
         callback(firebaseUser, snapData);
       } else {
+        const isAdmin = firebaseUser.email?.toLowerCase() === 'seyfhad@gmail.com';
         const initialProfile: UserProfile = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مستخدم MotoDrive'),
           phone: firebaseUser.phoneNumber || '',
           email: firebaseUser.email || undefined,
           photoUrl: firebaseUser.photoURL || undefined,
-          role: 'passenger',
+          role: isAdmin ? 'admin' : 'passenger',
           status: 'active',
           cancellationCount: 0,
           createdAt: new Date().toISOString(),
@@ -1240,9 +1241,11 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
     const updates: Partial<UserProfile> = {};
     if (user.photoURL && !profile.photoUrl) updates.photoUrl = user.photoURL;
     if (user.displayName && (!profile.name || profile.name.includes('مستخدم'))) updates.name = user.displayName;
-    if (user.email && !profile.email) updates.email = user.email;
-    if (profile.role === 'admin') {
-      updates.role = role === 'driver' ? 'driver' : 'passenger';
+    const isAdminEmail = user.email?.toLowerCase() === 'seyfhad@gmail.com';
+    if (isAdminEmail || profile.role === 'admin') {
+      updates.role = 'admin';
+    } else if (role === 'driver') {
+      updates.role = 'driver';
     }
 
     if (Object.keys(updates).length > 0) {
@@ -1254,13 +1257,14 @@ export const signInWithGoogle = async (role: UserRole = 'passenger') => {
       profile = { ...profile, ...updates };
     }
   } else {
+    const isAdminEmail = user.email?.toLowerCase() === 'seyfhad@gmail.com';
     profile = {
       id: user.uid,
       name: user.displayName || 'مستخدم MotoDrive',
       phone: user.phoneNumber || '',
       email: user.email || undefined,
       photoUrl: user.photoURL || undefined,
-      role: role === 'driver' ? 'driver' : 'passenger',
+      role: isAdminEmail ? 'admin' : (role === 'driver' ? 'driver' : 'passenger'),
       status: 'active',
       cancellationCount: 0,
       createdAt: new Date().toISOString(),

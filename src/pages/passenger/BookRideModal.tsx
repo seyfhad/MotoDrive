@@ -30,7 +30,6 @@ import {
   RefreshCw,
   AlertTriangle,
   Tag,
-  ShieldAlert,
   CheckCircle2,
 } from 'lucide-react';
 
@@ -54,7 +53,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   initialPickup,
   initialDestination,
 }) => {
-  const { requestRide, pricing, activePassenger, serviceAreas, applyPromoCode } = useApp();
+  const { requestRide, pricing, activePassenger, applyPromoCode } = useApp();
 
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<{ code: string; discountAmount: number } | null>(null);
@@ -265,15 +264,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const distanceKm = roadDistanceKm;
   const estimatedDuration = estimateDurationMinutes(distanceKm);
 
-  // Active Service Areas Geofence validation
-  const activeServiceAreas = useMemo(() => serviceAreas.filter((a) => a.isActive), [serviceAreas]);
-  const isOutsideServiceZones = useMemo(() => {
-    if (activeServiceAreas.length === 0) return false;
-    return !activeServiceAreas.some(
-      (area) => calculateDistanceKm(pickup, area.center) <= area.radiusKm
-    );
-  }, [activeServiceAreas, pickup]);
-
   const fareBreakdown = calculateFare(distanceKm, estimatedDuration, pricing, 0);
   const baseRecommendedPrice = fareBreakdown.roundedPrice;
   const recommendedPrice = appliedPromo
@@ -322,13 +312,6 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
   const handleConfirmRide = async () => {
     if (distanceKm > 70) {
       setErrorMsg('لا يمكن طلب رحلة أبعد من 70 كم بالدراجة النارية حفاظاً على السلامة والراحة.');
-      return;
-    }
-
-    if (isOutsideServiceZones) {
-      setErrorMsg(
-        'نقطة الانطلاق تقع خارج نطاق الولايات ومناطق الخدمة المفعلة حالياً. يرجى اختيار نقطة ضمن نطاق تغطية MotoDrive.'
-      );
       return;
     }
 
@@ -599,77 +582,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
               </div>
             </div>
 
-            {/* Geofencing Warning if Pickup is outside active zones */}
-            {isOutsideServiceZones && (
-              <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-2xl p-3.5 text-amber-200 text-xs flex items-start gap-3 animate-in fade-in">
-                <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <div className="font-black text-white text-sm">تنبيه نطاق التغطية والخدمة</div>
-                  <p className="text-slate-300 text-[11px] leading-relaxed">
-                    نقطة الانطلاق المحددة تقع خارج النطاق الفعلي للمدن والولايات المفعلة حالياً من قبل الإدارة. يرجى اختيار نقطة ضمن نطاق التغطية.
-                  </p>
-                </div>
-              </div>
-            )}
 
-            {/* Promo Code Input Section */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold">
-                  <Tag className="w-3.5 h-3.5 text-amber-400" />
-                  <span>كود الخصم (Promo Code):</span>
-                </div>
-                {appliedPromo && (
-                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" />
-                    <span>تم خصم {appliedPromo.discountAmount} د.ج</span>
-                  </span>
-                )}
-              </div>
-
-              {appliedPromo ? (
-                <div className="flex items-center justify-between bg-slate-900 border border-emerald-500/30 rounded-xl px-3 py-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-amber-400">{appliedPromo.code}</span>
-                    <span className="text-slate-400">تخفيض: {appliedPromo.discountAmount} د.ج</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRemovePromo}
-                    className="text-red-400 hover:text-red-300 text-xs font-bold underline"
-                  >
-                    إلغاء الكود
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={promoInput}
-                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
-                    placeholder="أدخل رمز الكوبون (مثال: MOTO20)..."
-                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyPromo}
-                    className="py-2 px-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer shrink-0"
-                  >
-                    تطبيق
-                  </button>
-                </div>
-              )}
-
-              {promoMessage && (
-                <div
-                  className={`text-[11px] font-bold ${
-                    promoMessage.type === 'success' ? 'text-emerald-400' : 'text-red-400'
-                  }`}
-                >
-                  {promoMessage.text}
-                </div>
-              )}
-            </div>
 
             {/* Flexible Bidding Section (InDrive Style Bidding System) */}
             <div className="bg-slate-950 border-2 border-amber-500/40 rounded-2xl p-4 shadow-xl space-y-3">
@@ -838,6 +751,65 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
                 {errorMsg}
               </div>
             )}
+
+            {/* Promo Code Input Section (Positioned Directly Above Publish Button) */}
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  <span>كود الخصم (Promo Code):</span>
+                </div>
+                {appliedPromo && (
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>تم خصم {appliedPromo.discountAmount} د.ج</span>
+                  </span>
+                )}
+              </div>
+
+              {appliedPromo ? (
+                <div className="flex items-center justify-between bg-slate-900 border border-emerald-500/30 rounded-xl px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-amber-400">{appliedPromo.code}</span>
+                    <span className="text-slate-400">تخفيض: {appliedPromo.discountAmount} د.ج</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemovePromo}
+                    className="text-red-400 hover:text-red-300 text-xs font-bold underline cursor-pointer"
+                  >
+                    إلغاء الكود
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    placeholder="أدخل رمز الكوبون (مثال: MOTO20)..."
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white uppercase placeholder:text-slate-600 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPromo}
+                    className="py-2 px-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+                  >
+                    تطبيق
+                  </button>
+                </div>
+              )}
+
+              {promoMessage && (
+                <div
+                  className={`text-[11px] font-bold ${
+                    promoMessage.type === 'success' ? 'text-emerald-400' : 'text-red-400'
+                  }`}
+                >
+                  {promoMessage.text}
+                </div>
+              )}
+            </div>
 
             {/* Submit Action Button */}
             <button
