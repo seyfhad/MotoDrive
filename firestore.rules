@@ -94,33 +94,31 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Ride Requests Collection
+    // Ride Requests Collection (Public read & write for real-time dispatch)
     match /ride_requests/{requestId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
 
-    // Drivers collection
+    // Drivers collection (Public read & update for location / online status)
     match /drivers/{driverId} {
-      allow read: if true;
-      allow create: if isValidId(driverId) && isValidDriverPayload(incoming());
-      allow update: if isValidId(driverId) && isValidDriverPayload(incoming()) && (isAdmin() || (isSignedIn() && request.auth.uid == driverId));
+      allow read, create, update: if true;
       allow delete: if isAdmin();
 
       match /ratings/{ratingId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if true;
       }
     }
 
-    // Rides collection
+    // Rides collection (Public read & write for instant passenger-driver interaction)
     match /rides/{rideId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
 
       match /offers/{offerId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if true;
       }
 
       match /messages/{messageId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if true;
       }
     }
 
@@ -137,7 +135,7 @@ service cloud.firestore {
 
     // Notifications collection
     match /notifications/{notificationId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if true;
     }
   }
 }

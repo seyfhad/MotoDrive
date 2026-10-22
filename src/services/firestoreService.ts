@@ -607,22 +607,29 @@ export const updateFirestoreDriverLocation = updateDriverLocation;
 export const updateDriverOnlineStatus = async (
   driverId: string,
   isOnline: boolean,
-  isAvailable: boolean
+  isAvailable: boolean,
+  customStatus?: string
 ): Promise<void> => {
   if (isFirestoreQuotaExceeded()) return;
+  const dutyValue = customStatus || (isOnline ? (isAvailable ? 'available' : 'busy') : 'offline');
   try {
     const driverRef = doc(db, 'drivers', driverId);
-    await setDoc(
-      driverRef,
-      {
-        isOnline,
-        isAvailable,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const docUpdates: Record<string, any> = {
+      isOnline,
+      isAvailable,
+      dutyStatus: dutyValue,
+      updatedAt: serverTimestamp(),
+    };
+    // Only update approval status if explicitly provided as an administrative status
+    if (customStatus && ['approved', 'pending', 'rejected', 'suspended'].includes(customStatus)) {
+      docUpdates.status = customStatus;
+    }
+    await setDoc(driverRef, docUpdates, { merge: true });
   } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
+    console.warn(`Notice updating driver ${driverId} status in Firestore:`, err);
+    try {
+      handleFirestoreError(err, OperationType.UPDATE, `drivers/${driverId}`);
+    } catch {}
   }
 };
 

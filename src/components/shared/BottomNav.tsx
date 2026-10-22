@@ -12,9 +12,22 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, onTabChange }) => {
-  const { currentRole, currentPassengerRide, activeDriver } = useApp();
+  const { currentRole, currentPassengerRide, activeDriver, rides } = useApp();
 
   if (currentRole === 'admin') return null;
+
+  const isDriverApproved =
+    activeDriver.status === 'approved' ||
+    (activeDriver as any).status === 'available' ||
+    (activeDriver as any).status === 'busy' ||
+    (activeDriver as any).status === 'offline';
+
+  const availableOrdersCount = rides.filter(
+    (r) =>
+      r &&
+      (r.status === 'searching' || r.status === 'offers_available' || r.status === 'pending') &&
+      !['completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'expired'].includes(r.status)
+  ).length;
 
   const handleTabClick = (tab: string) => {
     if (onTabChange) onTabChange(tab);
@@ -68,7 +81,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, o
               <span className="text-xs font-bold">حسابي</span>
             </button>
           </>
-        ) : activeDriver.status !== 'approved' ? (
+        ) : !isDriverApproved ? (
           <button
             id="nav-tab-driver-pending"
             onClick={() => handleTabClick('home')}
@@ -96,16 +109,20 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, o
               id="nav-tab-driver-requests"
               onClick={() => handleTabClick('requests')}
               className={`flex-1 flex flex-col items-center justify-center gap-1 py-1.5 px-1.5 rounded-2xl transition-all cursor-pointer select-none relative min-h-[44px] ${
-                activeTab === 'requests'
+                activeTab === 'requests' || activeTab === 'orders'
                   ? 'text-amber-400 font-black scale-105 bg-amber-500/10 border border-amber-500/20'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
               }`}
             >
               <Radio className="w-4 h-4" />
               <span className="text-[10px] font-bold">الطلبات</span>
-              {activeDriver.isOnline && (
+              {availableOrdersCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-black flex items-center justify-center shadow-md animate-pulse">
+                  {availableOrdersCount}
+                </span>
+              ) : activeDriver.isOnline ? (
                 <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              )}
+              ) : null}
             </button>
 
             <button

@@ -15,7 +15,7 @@ export const AdminPricing: React.FC = () => {
   const [pricePerKm, setPricePerKm] = useState(pricing.pricePerKm ?? 25);
   const [pricePerMinute, setPricePerMinute] = useState(pricing.pricePerMinute ?? 2);
   const [minimumFare, setMinimumFare] = useState(pricing.minimumFare ?? 110);
-  const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee ?? 100);
+  const [cancellationFee, setCancellationFee] = useState(pricing.cancellationFee ?? 0);
   const [platformCommissionPercent, setPlatformCommissionPercent] = useState(pricing.platformCommissionPercent ?? 0);
   const [nightMultiplier, setNightMultiplier] = useState(pricing.nightMultiplier ?? 1.0);
   const [peakMultiplier, setPeakMultiplier] = useState(pricing.peakMultiplier ?? 1.0);
@@ -27,7 +27,7 @@ export const AdminPricing: React.FC = () => {
     setPricePerKm(pricing.pricePerKm ?? 25);
     setPricePerMinute(pricing.pricePerMinute ?? 2);
     setMinimumFare(pricing.minimumFare ?? 110);
-    setCancellationFee(pricing.cancellationFee ?? 100);
+    setCancellationFee(pricing.cancellationFee ?? 0);
     setPlatformCommissionPercent(pricing.platformCommissionPercent ?? 0);
     setNightMultiplier(pricing.nightMultiplier ?? 1.0);
     setPeakMultiplier(pricing.peakMultiplier ?? 1.0);
@@ -41,7 +41,7 @@ export const AdminPricing: React.FC = () => {
       pricePerKm: Number(pricePerKm) >= 0 ? Number(pricePerKm) : 25,
       pricePerMinute: Number(pricePerMinute) >= 0 ? Number(pricePerMinute) : 2,
       minimumFare: Number(minimumFare) >= 0 ? Number(minimumFare) : 110,
-      cancellationFee: Number(cancellationFee) >= 0 ? Number(cancellationFee) : 100,
+      cancellationFee: Number(cancellationFee) >= 0 ? Number(cancellationFee) : 0,
       platformCommissionPercent: Number(platformCommissionPercent) >= 0 ? Number(platformCommissionPercent) : 0,
       nightMultiplier: Number(nightMultiplier) || 1.0,
       peakMultiplier: Number(peakMultiplier) || 1.0,
@@ -159,7 +159,12 @@ export const AdminPricing: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1 font-semibold">رسوم إلغاء الرحلة بعد تحرك السائق:</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-400 font-semibold">رسوم إلغاء الرحلة بعد تحرك السائق:</label>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold">
+                  ملغاة نهائياً (0 د.ج مجاناً)
+                </span>
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   type="number"

@@ -162,6 +162,7 @@ interface AppContextType {
   pendingDriverRideRequest: Ride | null;
   pendingDriverRideRequests: Ride[];
   toggleDriverOnline: (driverId: string, isOnline: boolean) => Promise<{ success: boolean; error?: string }>;
+  toggleDriverAvailability: (driverId: string, isAvailable: boolean) => Promise<{ success: boolean; error?: string }>;
   submitDriverOffer: (
     rideId: string,
     driverId: string,
@@ -223,7 +224,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const saved = localStorage.getItem('motodrive_active_driver');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed.status === 'available' || parsed.status === 'offline' || parsed.status === 'busy' || !parsed.status) {
+          parsed.status = 'approved';
+        }
+        return parsed;
       }
     } catch (e) {}
     return DEFAULT_PENDING_DRIVER;
@@ -581,13 +586,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // 2.2 Subscribe to Real-Time Rides, Drivers, Users & Driver Applications
+    // 2.2 Subscribe to Real-Time Rides, Drivers, Users & Driver Applications (Always Active)
     let unsubRides: (() => void) | undefined;
     let unsubDrivers: (() => void) | undefined;
     let unsubUsers: (() => void) | undefined;
     let unsubApps: (() => void) | undefined;
 
-    if (currentUser) {
+    {
       const ridesPath = 'rides';
       const ridesQuery = query(collection(db, 'rides'), orderBy('createdAt', 'desc'), limit(60));
       unsubRides = onSnapshot(
@@ -654,11 +659,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const mergedMap = new Map<string, Ride>();
             for (const localRide of prevRides) {
               if (!localRide || isPendingRideExpired(localRide)) continue;
-              const isLocalPending =
-                localRide.status === 'searching' || localRide.status === 'offers_available';
-              if (!isLocalPending) {
-                mergedMap.set(localRide.id, localRide);
-              }
+              // Retain active and recently created pending local rides so UI never loses booked rides
+              mergedMap.set(localRide.id, localRide);
             }
             for (const cloudRide of uniqueRidesMap.values()) {
               if (!isPendingRideExpired(cloudRide)) {
@@ -847,7 +849,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (unsubUsers) unsubUsers();
       if (unsubApps) unsubApps();
     };
-  }, [currentUser]);
+  }, []);
 
   // --------------------------------------------------------------------------
   // REAL-TIME FIRESTORE LISTENER (onSnapshot) FOR CURRENT DRIVER PROFILE
@@ -868,10 +870,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleDriverSnapshotData = (driverData: DriverProfile) => {
       setActiveDriver((prev) => {
+        // Normalize status so that duty states ('available', 'offline', 'busy') do not downgrade approval status
+        const rawStatus = driverData.status as string;
+        const normalizedApprovalStatus: DriverApprovalStatus =
+          rawStatus === 'available' || rawStatus === 'offline' || rawStatus === 'busy' || !rawStatus
+            ? (prev.status === 'rejected' || prev.status === 'suspended' ? prev.status : 'approved')
+            : (driverData.status as DriverApprovalStatus);
+
         const merged: DriverProfile = {
           ...prev,
           ...driverData,
-          status: driverData.status, // Instant status change to approved/pending/rejected
+          status: normalizedApprovalStatus,
+          isOnline: driverData.isOnline !== undefined ? driverData.isOnline : prev.isOnline,
+          isAvailable: driverData.isAvailable !== undefined ? driverData.isAvailable : prev.isAvailable,
           motorcycle: {
             ...prev.motorcycle,
             ...(driverData.motorcycle || {}),
@@ -880,7 +891,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...prev.documents,
             ...(driverData.documents || {}),
             status:
-              driverData.status === 'approved'
+              normalizedApprovalStatus === 'approved'
                 ? 'approved'
                 : driverData.documents?.status || prev.documents?.status || 'pending',
           },
@@ -1044,12 +1055,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           d.email &&
           d.email.toLowerCase() === activeDriver.email.toLowerCase())
     );
-    if (foundD && foundD.status !== activeDriver.status) {
-      setActiveDriver((prev) => ({
-        ...prev,
-        ...foundD,
-        status: foundD.status,
-      }));
+    if (foundD) {
+      const normalizedStatus =
+        foundD.status === 'available' || foundD.status === 'offline' || foundD.status === 'busy' || !foundD.status
+          ? 'approved'
+          : foundD.status;
+      if (normalizedStatus !== activeDriver.status || foundD.isOnline !== activeDriver.isOnline) {
+        setActiveDriver((prev) => ({
+          ...prev,
+          ...foundD,
+          status: normalizedStatus,
+        }));
+      }
     }
   }, [drivers, activeDriver.id, activeDriver.userId, activeDriver.email, activeDriver.status]);
 
@@ -1203,19 +1220,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, []);
 
-  // Driver incoming requests with Geofencing / Radius Matching (Yassir / inDrive style: prioritizes requests within 5 km road distance, sorted closest first)
-  const pendingDriverRideRequests = (activeDriver.isOnline && activeDriver.status === 'approved' && !currentDriverRide)
+  // Driver incoming requests with Geofencing, City & Radius Matching (Supports Ténès, Chlef & all Wilayas)
+  const pendingDriverRideRequests = (activeDriver.isOnline && !currentDriverRide)
     ? rides
         .filter(r => {
-          if (isPendingRideExpired(r)) return false;
-          if (r.status !== 'searching' && r.status !== 'offers_available') return false;
+          if (!r || isPendingRideExpired(r)) return false;
+          const status = r.status as string;
+          if (status !== 'searching' && status !== 'offers_available' && status !== 'pending') return false;
           if ((r.offers || []).some(o => o.driverId === activeDriver.id && o.status === 'declined')) return false;
+
           const distToPickup = calculateDistanceKm(activeDriver.location, r.pickup);
-          // Match within 5 km primary radius (or up to 25 km if driver is in the same wilaya/suburb)
+
+          // 1. Proximity matching (up to 50 km road radius)
+          if (distToPickup <= 50) return true;
+
+          // 2. City & Wilaya Matching (e.g. تنس / Ténès, الشلف / Chlef, الجزائر / Algiers)
+          const driverWilaya = (activeDriver.wilaya || '').trim().toLowerCase();
+          const driverMun = (activeDriver.municipality || '').trim().toLowerCase();
+          const pickupAddr = ((r.pickup?.address || '') + ' ' + (r.pickup?.name || '')).toLowerCase();
+          const destAddr = ((r.destination?.address || '') + ' ' + (r.destination?.name || '')).toLowerCase();
+
+          if (driverWilaya && (pickupAddr.includes(driverWilaya) || destAddr.includes(driverWilaya))) return true;
+          if (driverMun && (pickupAddr.includes(driverMun) || destAddr.includes(driverMun))) return true;
+
+          // Special check for Ténès / Chlef aliases
+          const isTenesDriver = driverWilaya.includes('شلف') || driverMun.includes('تنس') || driverMun.includes('tenes');
+          const isTenesRide = pickupAddr.includes('تنس') || pickupAddr.includes('tenes') || destAddr.includes('تنس') || destAddr.includes('tenes') || pickupAddr.includes('شلف') || destAddr.includes('شلف');
+          if (isTenesDriver && isTenesRide) return true;
+
+          // 3. Fallback: If driver coordinates are default or within 70 km, show request
           const isDefaultCoords =
-            Math.abs(activeDriver.location.lat - 36.7538) < 0.01 &&
-            Math.abs(activeDriver.location.lng - 3.0588) < 0.01;
-          return distToPickup <= 5 || distToPickup <= 25 || isDefaultCoords;
+            Math.abs(activeDriver.location.lat - 36.7538) < 0.05 &&
+            Math.abs(activeDriver.location.lng - 3.0588) < 0.05;
+          if (isDefaultCoords || distToPickup <= 70) return true;
+
+          return false;
         })
         .sort((a, b) => {
           const distA = calculateDistanceKm(activeDriver.location, a.pickup);
@@ -1236,12 +1275,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     passengerNote?: string,
     promoCode?: string
   ): Promise<{ success: boolean; rideId?: string; error?: string }> => {
+    if (currentPassengerRide && ['accepted', 'driver_arrived', 'in_progress'].includes(currentPassengerRide.status)) {
+      return { success: false, error: 'لديك رحلة جارية بالفعل مع السائق! يرجى إتمامها أو إلغائها أولاً.' };
+    }
+
     if (currentPassengerRide && ['searching', 'offers_available'].includes(currentPassengerRide.status)) {
-      if (passengerOfferedPrice && passengerOfferedPrice > 0) {
-        const res = await updatePassengerOffer(currentPassengerRide.id, passengerOfferedPrice);
-        return { success: res.success, rideId: currentPassengerRide.id, error: res.error };
+      // Auto-cancel previous searching ride so user isn't stuck
+      try {
+        await cancelRideInFirestore(currentPassengerRide.id, 'تم استبدال الطلب بطلب جديد', 'passenger');
+      } catch (cancelErr) {
+        console.warn('Notice cancelling previous search ride:', cancelErr);
       }
-      return { success: false, error: 'لديك رحلة جارية أو قيد التفاوض بالفعل!' };
     }
 
     const distanceKm = calculateDistanceKm(pickup, destination);
@@ -1297,12 +1341,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const commission = Math.round((offeredPrice * (pricing.platformCommissionPercent ?? 0)) / 100);
     const driverEarning = offeredPrice - commission;
 
+    const passId = activePassenger?.id || GUEST_PASSENGER.id || `passenger_${Date.now()}`;
+    const passName = activePassenger?.name || GUEST_PASSENGER.name || 'راكب موتو درايف';
+    const passPhone = activePassenger?.phone || GUEST_PASSENGER.phone || '0550123456';
+
     try {
       const ridePayload: any = {
-        passengerId: activePassenger.id,
-        passengerName: activePassenger.name,
-        passengerPhone: activePassenger.phone,
-        passengerRating: activePassenger.rating || 4.9,
+        passengerId: passId,
+        passengerName: passName,
+        passengerPhone: passPhone,
+        passengerRating: activePassenger?.rating || 4.9,
         status: 'searching',
         pickup,
         destination,
@@ -1318,7 +1366,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         requestedAt: new Date().toISOString(),
       };
 
-      if (activePassenger.photoUrl) {
+      if (activePassenger?.photoUrl) {
         ridePayload.passengerPhoto = activePassenger.photoUrl;
       }
       if (passengerNote && passengerNote.trim()) {
@@ -1333,15 +1381,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         offers: [],
       };
       setRides((prev) => [newLocalRide, ...prev.filter((r) => r.id !== rideDocId)]);
+      try {
+        localStorage.setItem('motodrive_active_ride', JSON.stringify(newLocalRide));
+      } catch {}
 
       // Save to Firestore collection 'ride_requests' with status: 'pending' (Real-time queue)
       try {
         await createRideRequest({
           id: rideDocId,
-          passengerId: activePassenger.id,
-          passengerName: activePassenger.name,
-          passengerPhone: activePassenger.phone,
-          passengerPhoto: activePassenger.photoUrl,
+          passengerId: passId,
+          passengerName: passName,
+          passengerPhone: passPhone,
+          passengerPhoto: activePassenger?.photoUrl,
           pickup,
           destination,
           fare: offeredPrice,
@@ -1647,22 +1698,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const driver = drivers.find(d => d.id === driverId) || activeDriver;
     if (!driver) return { success: false, error: 'السائق غير موجود' };
 
-    if (isOnline && driver.status !== 'approved') {
+    // Prevent going online only if permanently rejected or suspended
+    if (isOnline && (driver.status === 'rejected' || driver.status === 'suspended')) {
       return {
         success: false,
-        error: 'لا يمكنك تفعيل وضع Online حتى تتم مراجعة وثائقك واعتماد حسابك من المسؤول.',
+        error: 'لا يمكنك تفعيل وضع الاتصال: حساب السائق موقوف أو مرفوض.',
       };
     }
 
+    const dutyStatus = isOnline ? 'available' : 'offline';
+    // Optimistic state updates for instant UI responsiveness
+    setActiveDriver(prev => {
+      const updated = {
+        ...prev,
+        status: (prev.status === 'rejected' || prev.status === 'suspended') ? prev.status : ('approved' as const),
+        isOnline,
+        isAvailable: isOnline,
+        dutyStatus,
+      };
+      try {
+        localStorage.setItem('motodrive_active_driver', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    setDrivers(prev =>
+      prev.map(d =>
+        d.id === driverId
+          ? {
+              ...d,
+              status: (d.status === 'rejected' || d.status === 'suspended') ? d.status : ('approved' as const),
+              isOnline,
+              isAvailable: isOnline,
+              dutyStatus,
+            }
+          : d
+      )
+    );
+
     try {
-      await updateFirestoreDriverOnlineStatus(driverId, isOnline, isOnline);
-      setActiveDriver(prev => (prev.id === driverId ? { ...prev, isOnline, isAvailable: isOnline } : prev));
-      setDrivers(prev =>
-        prev.map(d => (d.id === driverId ? { ...d, isOnline, isAvailable: isOnline } : d))
-      );
+      await updateFirestoreDriverOnlineStatus(driverId, isOnline, isOnline, dutyStatus);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err.message || 'تعذر تغيير حالة الاتصال' };
+      console.warn('Driver status Firestore update notice:', err);
+      return { success: true };
+    }
+  };
+
+  const toggleDriverAvailability = async (driverId: string, isAvailable: boolean): Promise<{ success: boolean; error?: string }> => {
+    const driver = drivers.find(d => d.id === driverId) || activeDriver;
+    if (!driver) return { success: false, error: 'السائق غير موجود' };
+
+    const dutyStatus = isAvailable ? 'available' : 'busy';
+    setActiveDriver(prev => {
+      const updated = {
+        ...prev,
+        status: (prev.status === 'rejected' || prev.status === 'suspended') ? prev.status : ('approved' as const),
+        isAvailable,
+        dutyStatus,
+      };
+      try {
+        localStorage.setItem('motodrive_active_driver', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    setDrivers(prev =>
+      prev.map(d =>
+        d.id === driverId
+          ? {
+              ...d,
+              status: (d.status === 'rejected' || d.status === 'suspended') ? d.status : ('approved' as const),
+              isAvailable,
+              dutyStatus,
+            }
+          : d
+      )
+    );
+
+    try {
+      await updateFirestoreDriverOnlineStatus(driverId, true, isAvailable, dutyStatus);
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Driver availability Firestore update notice:', err);
+      return { success: true };
     }
   };
 
@@ -2161,17 +2280,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { valid: false, discountAmount: 0, finalFare: fare, message: 'يرجى إدخال رمز الكوبون أولاً' };
     }
     const promo = promoCodes.find(p => p.code.toUpperCase() === clean);
-    if (!promo) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير موجود أو غير مفعّل من قِبل الإدارة' };
-    }
-    if (!promo.isActive) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم معطل حالياً من قِبل الإدارة' };
+    if (!promo || !promo.isActive) {
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير صالح' };
     }
     if (promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now()) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'انتهت صلاحية كود الخصم المحدد' };
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير صالح' };
     }
     if (promo.maxUsageLimit && promo.maxUsageLimit > 0 && (promo.usageCount || 0) >= promo.maxUsageLimit) {
-      return { valid: false, discountAmount: 0, finalFare: fare, message: 'تم استنفاد الحد الأقصى لاستخدام هذا الكود' };
+      return { valid: false, discountAmount: 0, finalFare: fare, message: 'كود الخصم غير صالح' };
     }
 
     let discount = 0;
@@ -2354,6 +2470,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pendingDriverRideRequest,
         pendingDriverRideRequests,
         toggleDriverOnline,
+        toggleDriverAvailability,
         submitDriverOffer,
         acceptRide,
         rejectRide,

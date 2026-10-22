@@ -8,7 +8,7 @@ export const DEFAULT_PRICING: PricingSettings = {
   pricePerKm: 12.5, // 12.5 DA / km average rate
   pricePerMinute: 0, // 0 DA / min
   minimumFare: 110, // 110 DA minimum
-  cancellationFee: 100, // 100 DA
+  cancellationFee: 0, // 0 DA - تم إلغاء رسوم الإلغاء نهائياً (مجاني 100%)
   platformCommissionPercent: 0, // 0% عمولة المنصة - الأرباح كاملة 100% للسائق
   nightMultiplier: 1.0,
   peakMultiplier: 1.0,

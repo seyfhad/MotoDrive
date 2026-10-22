@@ -292,7 +292,7 @@ export const BookRideModal: React.FC<BookRideModalProps> = ({
       setPromoMessage({ type: 'success', text: result.message || 'تم تطبيق الخصم بنجاح!' });
       setOfferedPrice(result.finalFare);
     } else {
-      setPromoMessage({ type: 'error', text: result.message || 'الكود غير صالح' });
+      setPromoMessage({ type: 'error', text: result.message || 'كود الخصم غير صالح' });
     }
   };
 

@@ -22,6 +22,7 @@ import { PassengerProfile } from './pages/passenger/PassengerProfile';
 
 // Driver Views
 import { DriverHome } from './pages/driver/DriverHome';
+import { DriverOrders } from './pages/driver/DriverOrders';
 import { DriverEarnings } from './pages/driver/DriverEarnings';
 import { DriverTrips } from './pages/driver/DriverTrips';
 import { DriverProfile } from './pages/driver/DriverProfile';
@@ -210,15 +211,23 @@ const AppContent: React.FC = () => {
 
   // Render Driver Tabs
   const renderDriverView = () => {
-    // Strictly block access to ride requests / earnings if driver status is not approved by the owner
-    if (activeDriver.status !== 'approved') {
+    // Check if driver is approved by admin (or active duty)
+    const isApproved =
+      activeDriver.status === 'approved' ||
+      (activeDriver as any).status === 'available' ||
+      (activeDriver as any).status === 'busy' ||
+      (activeDriver as any).status === 'offline';
+
+    if (!isApproved) {
       return <DriverPendingApprovalView />;
     }
 
     switch (activeTab) {
       case 'home':
-      case 'requests':
         return <DriverHome />;
+      case 'requests':
+      case 'orders':
+        return <DriverOrders />;
       case 'earnings':
         return <DriverEarnings />;
       case 'trips':

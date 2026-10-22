@@ -25,6 +25,7 @@ export const DriverHome: React.FC = () => {
     setActiveDriver,
     drivers,
     toggleDriverOnline,
+    toggleDriverAvailability,
     currentDriverRide,
     pendingDriverRideRequests,
     acceptRide,
@@ -58,7 +59,13 @@ export const DriverHome: React.FC = () => {
   }, [activeDriver.id]);
 
   // إذا لم تتم الموافقة بعد على السائق من طرف المالك، يتم عرض واجهة انتظار الموافقة وتدقيق الوثائق مع نافذة تعديل وإعادة إرسال البيانات
-  if (activeDriver.status !== 'approved') {
+  const isApproved =
+    activeDriver.status === 'approved' ||
+    (activeDriver as any).status === 'available' ||
+    (activeDriver as any).status === 'busy' ||
+    (activeDriver as any).status === 'offline';
+
+  if (!isApproved) {
     return (
       <>
         <DriverPendingApprovalView onReapply={() => setShowRegisterModal(true)} />
@@ -108,18 +115,27 @@ export const DriverHome: React.FC = () => {
     const newStatus = !activeDriver.isOnline;
     const res = await toggleDriverOnline(activeDriver.id, newStatus);
     if (!res.success) {
-      setOnlineError(res.error || 'لا يمكن تفعيل الحالة Online');
+      setOnlineError(res.error || 'لا يمكن تغيير حالة الاتصال');
+    } else {
+      setLocationSuccessMsg(
+        newStatus
+          ? '🟢 تم تفعيل وضع الاتصال: أنت الآن متصل [ ONLINE ] ومتاح لاستقبال الرحلات'
+          : '⚪ تم إيقاف الاتصال: أنت الآن غير متصل [ OFFLINE ]'
+      );
+      setTimeout(() => setLocationSuccessMsg(null), 4000);
     }
   };
 
   const handleToggleAvailability = async (newAvail: boolean) => {
-    if (!activeDriver.isOnline) return;
+    if (!activeDriver.isOnline) {
+      // If offline and driver clicks available, automatically turn them online
+      if (newAvail) {
+        await handleToggleOnline();
+      }
+      return;
+    }
     try {
-      await updateDriverOnlineStatus(activeDriver.id, true, newAvail);
-      setActiveDriver({
-        ...activeDriver,
-        isAvailable: newAvail,
-      });
+      await toggleDriverAvailability(activeDriver.id, newAvail);
       setLocationSuccessMsg(newAvail ? '🟢 تم ضبط حالتك: متاح للرحلات' : '🔴 تم ضبط حالتك: مشغول مؤقتاً');
       setTimeout(() => setLocationSuccessMsg(null), 4000);
     } catch (e: any) {

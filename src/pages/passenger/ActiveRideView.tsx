@@ -729,9 +729,7 @@ export const ActiveRideView: React.FC<ActiveRideViewProps> = ({ ride, onClose })
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-xs w-full text-right space-y-3">
             <h4 className="text-sm font-bold text-red-400">تأكيد إلغاء الرحلة</h4>
             <p className="text-xs text-slate-400">
-              {ride.status === 'accepted' || ride.status === 'driver_arriving'
-                ? 'تنبيه: السائق قد تحرك بالفعل في اتجاهك. قد تطبق رسوم إلغاء حسب سياسة الاستخدام.'
-                : 'هل تود إلغاء الرحلة؟'}
+              هل تود إلغاء الرحلة؟ (إلغاء الرحلة مجاني 100% بدون أي رسوم إلغاء أو اقتطاع مالي).
             </p>
             <div className="space-y-1.5">
               {['السائق تأخر كثيراً', 'تغيير الوجهة', 'سبب طارئ آخر'].map(r => (
